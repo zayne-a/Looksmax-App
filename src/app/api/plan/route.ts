@@ -10,13 +10,17 @@
 // Generation is two-tier. FREE: zero AI calls, ever — the deterministic
 // template engine (buildStubPlan) IS the free product, assembled entirely
 // from the user's own data; non-subscribers never consume Gemini quota.
-// PREMIUM: two-pass AI curation (standard draft + ONE deep-curation
-// refinement pass at a 45s per-attempt timeout; the draft is served if
-// refinement fails in any way). The deterministic Foundations (vitals)
-// block is built by the KB and merged into premium plans unchanged —
-// the AI never writes or rewrites it.
+// PREMIUM: part-by-part AI generation — the 4 protocol sections plus a
+// small frame call, all in parallel across the key pool, each part
+// falling back to the deterministic engine's version of that part. The
+// deterministic Foundations (vitals) block and projection are built by
+// the KB and merged into premium plans unchanged — the AI never writes
+// or rewrites them. Premium runs against a hard synchronous deadline:
+// if no AI part has landed by then, the deterministic plan is served
+// flagged aiPending and generation completes in the background via
+// after(), replacing the saved plan when it lands.
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type {
   AscendPlan,
@@ -29,6 +33,10 @@ import { extractProductTypes, topTriggerSources } from "@/lib/eval";
 
 const PRIMARY_MODEL = "gemini-3.8-flash";
 const FALLBACK_MODEL = "gemini-3.6-flash";
+
+/** Premium requests can finish generating in the background (after())
+ *  when the synchronous budget runs out — allow the function the room. */
+export const maxDuration = 300;
 
 // ---------- Gemini key pool with failover ----------
 //
@@ -91,14 +99,18 @@ function isQuotaError(status: number, body: string): boolean {
   return body.includes("RESOURCE_EXHAUSTED");
 }
 
-/** Per-attempt timeout for a single Gemini call. A hung upstream request is
- *  worthless to wait on — abort it and fail over instead. */
-const ATTEMPT_TIMEOUT_MS = 20_000;
+/** Per-attempt timeouts for the part-by-part premium calls. A hung
+ *  upstream request is worthless to wait on — abort it and fail over. */
+const SECTION_ATTEMPT_TIMEOUT_MS = 25_000;
+const FRAME_ATTEMPT_TIMEOUT_MS = 15_000;
 
-/** Premium refinement attempts get a longer leash: the curation pass is
- *  worth more than the seconds it costs, and its failure still serves the
- *  standard draft, so a slow refinement can never hurt the user. */
-const PREMIUM_ATTEMPT_TIMEOUT_MS = 45_000;
+/** Synchronous premium budget: a subscriber's request never waits longer
+ *  than this for AI. Past it, the deterministic plan is served flagged
+ *  aiPending and generation finishes in the background. */
+const SYNC_DEADLINE_MS = 60_000;
+
+/** Background budget for the after() completion of an aiPending plan. */
+const BG_DEADLINE_MS = 240_000;
 
 /** True when a fetch rejection is our own timeout (or a manual abort). */
 function isTimeoutError(err: unknown): boolean {
@@ -173,7 +185,13 @@ function collectText(plan: AscendPlan): string {
  * RX-ONLY categories.
  */
 export function passesSafetyFilter(plan: AscendPlan): boolean {
-  const lower = collectText(plan).toLowerCase();
+  return passesSafetyText(collectText(plan));
+}
+
+/** The same checks over raw text — used to vet individual AI-generated
+ *  parts (one section, the frame) before they are merged into a plan. */
+function passesSafetyText(raw: string): boolean {
+  const lower = raw.toLowerCase();
 
   for (const term of EXCLUDED_TERMS) {
     const idx = lower.indexOf(term);
@@ -369,7 +387,7 @@ Example 3 — inputs: combination skin, pigmentation 66/100, goalRanking ["de-ta
 - sample task: {"title": "SPF 50+ PA++++ — daily, with reapplication", "detail": "Two finger-lengths: face, ears, neck, every AM before you leave. Reapply every 2–3 hours outdoors — no exceptions on high-UV days.", "frequency": "daily", "whyYou": "because you ranked de-tan as your #1 goal and you're outdoors most of the day — sunscreen is what stops new tanning; the brighteners only work on top of it"}
 - sample task: {"title": "Vitamin C serum 10–15% — 3 drops, AM", "detail": "Three drops on dry skin after cleansing, before moisturiser. Mid-tier types only — the molecule matters, not the label.", "frequency": "daily", "whyYou": "because your pigmentation reading is elevated (66/100) and de-tan is your #1 goal — vitamin C is the AM brightener paired with your PM azelaic acid"}`;
 
-function buildUserMessage(req: PlanRequest, kbExcerpts: string): string {
+function userDataBlock(req: PlanRequest, kbExcerpts: string): string {
   return [
     "## User measurements (deterministic scan)",
     JSON.stringify(req.measurements ?? { note: "no scan data provided" }, null, 2),
@@ -379,8 +397,46 @@ function buildUserMessage(req: PlanRequest, kbExcerpts: string): string {
     "",
     "## Knowledge-base excerpts (ground every recommendation in these)",
     kbExcerpts,
+  ].join("\n");
+}
+
+function buildSectionMessage(
+  req: PlanRequest,
+  kbExcerpts: string,
+  draft: PlanSection
+): string {
+  return [
+    userDataBlock(req, kbExcerpts),
     "",
-    "Write the AscendPlan JSON now. Strict JSON only.",
+    `## Section to write: "${draft.id}"`,
+    "",
+    "## Deterministic draft of this section (deepen it: sharpen every task with the user's own numbers, add quantities and week-over-week progressions, cut anything that could belong to anyone; keep exactly 4 weeks, 2-4 tasks per week)",
+    JSON.stringify(draft, null, 2),
+    "",
+    "Write the section JSON now. Strict JSON only: the single section object, nothing else.",
+  ].join("\n");
+}
+
+function buildFrameMessage(
+  req: PlanRequest,
+  kbExcerpts: string,
+  draft: AscendPlan
+): string {
+  return [
+    userDataBlock(req, kbExcerpts),
+    "",
+    "## Deterministic draft frame (sharpen it: numbers first, zero filler; keep the fixes ordered by the user's ranked goals)",
+    JSON.stringify(
+      {
+        headline: draft.headline,
+        scoreSummary: draft.scoreSummary,
+        priorityFixes: draft.priorityFixes,
+      },
+      null,
+      2
+    ),
+    "",
+    "Write the frame JSON now. Strict JSON only: headline, scoreSummary, priorityFixes, nothing else.",
   ].join("\n");
 }
 
@@ -429,26 +485,43 @@ function extractText(data: unknown): string | null {
 }
 
 type KeyAttempt =
-  | { ok: true; plan: AscendPlan }
-  | { ok: false; quota: boolean; error: string };
+  | { ok: true; text: string }
+  | { ok: false; quota: boolean; capacity: boolean; error: string };
 
 /**
- * Try one key across the model chain (primary → fallback). A quota/rate-limit
- * response abandons the key immediately (both models share its quota); other
- * failures fall through to the next model as before.
+ * Try one key across the model chain (primary → fallback) and return the
+ * raw response text. A quota/rate-limit response abandons the key
+ * immediately (both models share its quota); a timeout does the same —
+ * trying the fallback model on a hung key would just burn more time.
+ * A 503 marks the attempt as a capacity failure (the model is melting,
+ * not the key), which the pool counts toward its circuit breaker.
+ * `deadline` is an absolute epoch-ms cap: no attempt starts past it and
+ * every attempt's timeout is clamped to the time remaining.
  */
-async function tryKeyWithModels(
+async function tryKeyRaw(
   apiKey: string,
   systemPrompt: string,
   userMessage: string,
-  timeoutMs: number
+  timeoutMs: number,
+  deadline: number
 ): Promise<KeyAttempt> {
   const models = [PRIMARY_MODEL, FALLBACK_MODEL];
   let lastError = "unknown error";
+  let capacity = false;
 
   for (const model of models) {
+    const remaining = deadline - Date.now();
+    if (remaining < 1_000) {
+      return { ok: false, quota: false, capacity, error: "deadline reached" };
+    }
     try {
-      const res = await callGemini(model, apiKey, systemPrompt, userMessage, timeoutMs);
+      const res = await callGemini(
+        model,
+        apiKey,
+        systemPrompt,
+        userMessage,
+        Math.min(timeoutMs, remaining)
+      );
       if (!res.ok) {
         // Peek at the body only to detect quota exhaustion; never log it.
         const body = await res.text().catch(() => "");
@@ -456,9 +529,11 @@ async function tryKeyWithModels(
           return {
             ok: false,
             quota: true,
+            capacity,
             error: `${model} returned HTTP ${res.status} (quota/rate limit)`,
           };
         }
+        if (res.status === 503) capacity = true;
         lastError = `${model} returned HTTP ${res.status}`;
         console.warn(`[plan] ${lastError}; trying next model`);
         continue;
@@ -470,161 +545,243 @@ async function tryKeyWithModels(
         console.warn(`[plan] ${lastError}; trying next model`);
         continue;
       }
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(cleanJson(text));
-      } catch {
-        lastError = `${model} returned invalid JSON`;
-        console.warn(`[plan] ${lastError}; trying next model`);
-        continue;
-      }
-      if (!isValidPlan(parsed)) {
-        lastError = `${model} returned JSON failing schema validation`;
-        console.warn(`[plan] ${lastError}; trying next model`);
-        continue;
-      }
-      if (!passesSafetyFilter(parsed)) {
-        lastError = `${model} output failed the safety filter`;
-        console.warn(`[plan] ${lastError}; trying next model`);
-        continue;
-      }
-      return { ok: true, plan: parsed };
+      return { ok: true, text };
     } catch (err) {
-      // A timed-out (hung) call poisons the key for this request: abandon it
-      // immediately and let the pool fail over, exactly like a quota hit.
-      // Trying the fallback model on the same hung key would just burn
-      // another 20s.
       if (isTimeoutError(err)) {
-        const error = `${model} timed out after ${timeoutMs / 1000}s`;
+        const error = `${model} timed out`;
         console.warn(`[plan] ${error}; abandoning key, failing over`);
-        return { ok: false, quota: true, error };
+        return { ok: false, quota: true, capacity, error };
       }
       lastError = err instanceof Error ? err.message : String(err);
       console.warn(`[plan] ${model} call failed: ${lastError}`);
     }
   }
 
-  return { ok: false, quota: false, error: lastError };
+  return { ok: false, quota: false, capacity, error: lastError };
 }
 
 /**
- * Run one generation pass through the key pool: keys in rotation order,
- * each tried across the model chain with the given per-attempt timeout.
- * Returns the first valid, safety-checked plan, or null when every
- * key/model failed.
+ * Run one generation job through the key pool and parse its output.
+ * Keys are tried in rotation order until one yields output that `parse`
+ * accepts, the deadline passes, or the capacity circuit breaker trips:
+ * 3 keys in a row reporting Google-side 503s means a capacity storm, in
+ * which more keys will not help — the job aborts and the caller falls
+ * back fast instead of stacking timeouts for minutes.
  */
-async function runPool(
+async function runPoolText<T>(
   systemPrompt: string,
   userMessage: string,
-  timeoutMs: number
-): Promise<AscendPlan | null> {
+  timeoutMs: number,
+  deadline: number,
+  parse: (text: string) => T | null
+): Promise<T | null> {
   const keys = getApiKeys();
+  if (keys.length === 0) return null;
   const order = orderedKeyIndexes(keys.length, Date.now());
-  let lastError = "unknown error";
+  let capacityStreak = 0;
 
   for (const keyIndex of order) {
-    const attempt = await tryKeyWithModels(
+    if (Date.now() >= deadline) break;
+    const attempt = await tryKeyRaw(
       keys[keyIndex],
       systemPrompt,
       userMessage,
-      timeoutMs
+      timeoutMs,
+      deadline
     );
-    if (attempt.ok) return attempt.plan;
-    lastError = attempt.error;
+    if (attempt.ok) {
+      const parsed = parse(attempt.text);
+      if (parsed !== null) return parsed;
+      console.warn("[plan] output failed validation; trying next key");
+      capacityStreak = 0;
+      continue;
+    }
     if (attempt.quota) {
       keyCooldowns.set(keyIndex, Date.now() + KEY_COOLDOWN_MS);
       console.warn(
         `[plan] key #${keyIndex + 1} hit quota/rate limit; cooling down ${KEY_COOLDOWN_MS / 1000}s, failing over to next key`
       );
     }
+    if (attempt.capacity) {
+      capacityStreak += 1;
+      if (capacityStreak >= 3) {
+        console.warn(
+          "[plan] capacity circuit breaker: 3 keys in a row hit 503s; aborting job"
+        );
+        break;
+      }
+    } else {
+      capacityStreak = 0;
+    }
   }
 
-  console.warn(`[plan] generation pass exhausted all keys (${lastError})`);
+  console.warn("[plan] generation job exhausted all keys");
   return null;
 }
 
-// ---------- Premium deep-curation pass ----------
+// ---------- Premium generation: parallel, part by part ----------
 //
-// Premium tier runs ONE refinement pass over the standard draft: a second
-// Gemini call (same pool/failover, longer per-attempt timeout) that audits
-// the draft against the user's actual signals. The refined output passes
-// the same schema validation + safety filter as any draft; on ANY failure
-// the standard draft is served — premium is never worse than free.
+// Premium plans are generated PART BY PART, in parallel: one call per
+// protocol section plus one small "frame" call (headline, score summary,
+// priority fixes). A single monolithic call had to emit the entire plan
+// JSON at once — slow, prone to truncation against the output-token cap,
+// and any validation failure restarted it from zero. Part-by-part calls
+// are individually fast, run concurrently across the key pool, and fail
+// independently: a failed part falls back to the deterministic engine's
+// version of that same part, never to a lesser whole plan. Foundations
+// and the projection always come from the KB engine unchanged.
 
-const REFINEMENT_SYSTEM_PROMPT = `You are the senior curation editor for the "Ascend" app. You receive a DRAFT personalized plan (JSON) plus the user's measurements and quiz answers. Your job is a deep-curation pass — return a tightened, deepened version of the SAME plan. Output STRICT JSON matching the exact same AscendPlan schema as the draft (headline, scoreSummary, priorityFixes, sections with id/title/summary/whyForYou/weeks[{week, focus, tasks[{title, detail, frequency, whyYou}]}], disclaimers). No markdown fences, no prose outside the JSON.
+const SECTION_MODE_SUFFIX = `
 
-CURATION CHECKLIST (apply every item):
-1. TRIGGER CHECK: every task must carry a specific "whyYou" citing the user's actual measurement or quiz answer that triggered it. Rewrite any vague, generic, or missing whyYou so it names the concrete signal (a number, a ranked goal, a routine level, a lifestyle answer).
-2. GOAL ORDERING: reorder sections so the section matching the user's #1 ranked goal leads, then #2, then the rest. Reorder priorityFixes the same way. Keep all 4 sections (ids: skin, diet, exercise, style), exactly 4 weeks per section, 2-4 tasks per week.
-3. DEEPEN SPECIFICITY: make week-by-week tasks more concrete — quantities (amounts, minutes, sets/reps, two-finger lengths of SPF), week-over-week progressions (what is added or increased in weeks 2, 3 and 4), and substitutions (a swap for each key step when the primary isn't available or doesn't suit the user).
-4. DELETE FILLER: remove or sharpen any task that could appear in anyone's plan unchanged. If a task doesn't depend on THIS user's signals, rewrite it until it does.
-5. Keep the headline and scoreSummary accurate to the user's numbers; sharpen them if they read generic.
-6. VOICE ENFORCEMENT: the plan must read like a paid protocol, never a chatbot answer. Strip greetings, motivation filler ("you've got this"), hedging ("it's important to remember"), and any meta commentary about the plan. Rewrite into terse imperative directives: every task detail ≤ 2 short sentences carrying specifics (quantities, percentages, grams, minutes, sets×reps, exact days, product strengths). Ban vague advice ("eat healthy", "exercise regularly"). Section summaries are ONE directive line. Confirm every section has a measurable "Checkpoint —" line in one week's focus and that hard rules stand alone as "RULE —" tasks (frequency "always").
-7. SATURATION & PROJECTION AUDIT: every section must visibly cite at least 2–3 of THIS user's specific data points — measured degrees/percentages/ratios, skin-signal readings, their maintenance kcal and protein grams, their face shape by name, their ranked goals in their order, their budget tier, their timeline. Rewrite any section that could belong to anyone else. Audit the projection: horizon matches their timelineWeeks; outcomes are derived from their numbers (fat math: daily kcal change × horizon days ÷ 7700); framing stays "realistically achievable" — delete miracles, guarantees, and any 30-day-transformation language anywhere in the plan. The plan must read throughout as Phase 1 of the 12-week phased protocol.
-8. FOUNDATIONS: the plan object you receive has NO "foundations" field and you must NOT add one — the deterministic vitals block (sleep, hydration, movement, non-negotiables) is built outside this pass and merged in afterwards, unchanged.
+SECTION MODE — OUTPUT CONTRACT FOR THIS CALL:
+Return ONLY the single section object as strict JSON: {"id", "title", "summary", "whyForYou", "weeks": [{"week", "focus", "tasks": [{"title", "detail", "frequency", "whyYou"}]}]}. No other fields, no markdown fences, no prose.
+Apply every rule above to THIS section: saturate it with the user's own numbers (at least 2-3 specific data points), terse imperative protocol voice, quantities in every task detail, week-over-week progression, at least one "Checkpoint —" line in a week's focus, hard rules as "RULE —" tasks with frequency "always", and a specific whyYou on EVERY task citing its concrete trigger. Exactly 4 weeks, 2-4 tasks per week.`;
 
-HARD CONSTRAINTS (identical to drafting — violating any of these fails the pass):
-- Softmaxxing ONLY: skincare, hair, grooming, posture, fitness, nutrition, sleep, and style. No medical diagnoses of any kind.
-- Never recommend drugs, hormones, or surgery — no finasteride, minoxidil regimens, steroids, testosterone, fillers, botox, rhinoplasty, or any surgical specifics.
-- Prescription categories (tretinoin, isotretinoin, hydrocortisone, bimatoprost, minoxidil) may be MENTIONED only with "consult a dermatologist" framing — never recommended directly, never with dosages, strengths, or frequencies.
-- Never mention aminophylline, xanthigen, GHK-Cu, or DSIP under any circumstances. Never recommend melatonin; for sleep issues say "discuss with a doctor".
-- In disclaimers, never use the words diagnose/diagnosis/diagnostic — use "not medical advice" phrasing instead. Keep at least 3 disclaimers.
-- Product TYPES only (e.g. "vitamin C serum") — never brand names.
-- Direct coach voice — respectful, never shaming, zero motivation filler.`;
+const FRAME_MODE_SUFFIX = `
 
-function buildRefinementMessage(req: PlanRequest, draft: AscendPlan): string {
-  return [
-    "## User measurements (deterministic scan)",
-    JSON.stringify(req.measurements ?? { note: "no scan data provided" }, null, 2),
-    "",
-    "## Quiz answers",
-    JSON.stringify(req.quiz, null, 2),
-    "",
-    "## Draft plan to curate (JSON)",
-    JSON.stringify(draft, null, 2),
-    "",
-    "Apply the full curation checklist and return the refined AscendPlan JSON now. Strict JSON only.",
-  ].join("\n");
+FRAME MODE — OUTPUT CONTRACT FOR THIS CALL:
+Return ONLY this frame object as strict JSON: {"headline": string, "scoreSummary": string, "priorityFixes": [{"title", "why", "impact": "high|medium|low", "effort": "low|medium|high"}]}. No other fields, no markdown fences, no prose.
+Apply every rule above: the headline names the protocol like a product (never a full sentence, never a transformation promise); scoreSummary is at most 2 sentences, numbers first, zero encouragement padding; 3-5 priorityFixes ordered by the user's ranked goals, each "why" citing a concrete measurement or answer.`;
+
+interface PlanFrame {
+  headline: string;
+  scoreSummary: string;
+  priorityFixes: AscendPlan["priorityFixes"];
 }
 
-async function generateWithGemini(
-  req: PlanRequest
-): Promise<{ plan: AscendPlan; source: "gemini" | "stub" }> {
-  const kbExcerpts = getRelevantKbExcerpts(req.measurements, req.quiz);
-  const userMessage = buildUserMessage(req, kbExcerpts);
+function isValidFrame(x: unknown): x is PlanFrame {
+  if (typeof x !== "object" || x === null) return false;
+  const o = x as Record<string, unknown>;
+  if (typeof o.headline !== "string" || o.headline.trim().length === 0) return false;
+  if (typeof o.scoreSummary !== "string" || o.scoreSummary.trim().length === 0) return false;
+  if (!Array.isArray(o.priorityFixes) || o.priorityFixes.length < 3 || o.priorityFixes.length > 5) return false;
+  return o.priorityFixes.every((f) => {
+    if (typeof f !== "object" || f === null) return false;
+    const fix = f as Record<string, unknown>;
+    return (
+      typeof fix.title === "string" &&
+      typeof fix.why === "string" &&
+      ["high", "medium", "low"].includes(fix.impact as string) &&
+      ["low", "medium", "high"].includes(fix.effort as string)
+    );
+  });
+}
 
-  // Pass 1 — standard generation.
-  const draft = await runPool(SYSTEM_PROMPT, userMessage, ATTEMPT_TIMEOUT_MS);
-  if (!draft) {
-    console.warn("[plan] standard generation failed on all keys; using stub plan");
-    return { plan: buildStubPlan(req.measurements, req.quiz), source: "stub" };
+function parseJsonLoose(text: string): unknown {
+  try {
+    return JSON.parse(cleanJson(text));
+  } catch {
+    return null;
   }
+}
 
-  // Pass 2 — deep-curation refinement. Any failure serves the draft:
-  // premium is never worse than the standard generation.
-  const refined = await runPool(
-    REFINEMENT_SYSTEM_PROMPT,
-    buildRefinementMessage(req, draft),
-    PREMIUM_ATTEMPT_TIMEOUT_MS
+/** Generate ONE protocol section with the AI, or null on any failure. */
+async function generateSection(
+  req: PlanRequest,
+  kbExcerpts: string,
+  draft: PlanSection,
+  deadline: number
+): Promise<PlanSection | null> {
+  return runPoolText(
+    SYSTEM_PROMPT + SECTION_MODE_SUFFIX,
+    buildSectionMessage(req, kbExcerpts, draft),
+    SECTION_ATTEMPT_TIMEOUT_MS,
+    deadline,
+    (text) => {
+      const parsed = parseJsonLoose(text);
+      if (!isPlanSection(parsed) || parsed.id !== draft.id) return null;
+      const sectionText = [
+        parsed.title,
+        parsed.summary,
+        parsed.whyForYou,
+        ...parsed.weeks.flatMap((w) => [
+          w.focus,
+          ...w.tasks.flatMap((t) => [t.title, t.detail, t.frequency]),
+        ]),
+      ].join("\n");
+      return passesSafetyText(sectionText) ? parsed : null;
+    }
   );
-  if (refined) {
-    console.log("[plan] premium refinement pass applied");
-  } else {
-    console.warn("[plan] premium refinement failed; serving standard draft");
-  }
-
-  // Foundations are deterministic — built by the KB, merged in unchanged.
-  // The AI may rewrite protocol sections; it never touches the vitals.
-  const aiPlan = refined ?? draft;
-  return { plan: withFoundations(aiPlan, req), source: "gemini" };
 }
 
-/** Merge the deterministic Foundations block into an AI-generated plan. */
-function withFoundations(plan: AscendPlan, req: PlanRequest): AscendPlan {
-  return {
-    ...plan,
-    foundations: buildFoundations(req.measurements ?? null, req.quiz),
+/** Generate the plan frame (headline, summary, fixes), or null. */
+async function generateFrame(
+  req: PlanRequest,
+  kbExcerpts: string,
+  draft: AscendPlan,
+  deadline: number
+): Promise<PlanFrame | null> {
+  return runPoolText(
+    SYSTEM_PROMPT + FRAME_MODE_SUFFIX,
+    buildFrameMessage(req, kbExcerpts, draft),
+    FRAME_ATTEMPT_TIMEOUT_MS,
+    deadline,
+    (text) => {
+      const parsed = parseJsonLoose(text);
+      if (!isValidFrame(parsed)) return null;
+      const frameText = [
+        parsed.headline,
+        parsed.scoreSummary,
+        ...parsed.priorityFixes.flatMap((f) => [f.title, f.why]),
+      ].join("\n");
+      return passesSafetyText(frameText) ? parsed : null;
+    }
+  );
+}
+
+/**
+ * Assemble a premium plan: deterministic engine output as the chassis
+ * (foundations, projection, disclaimers, section order by ranked goals),
+ * with every part the AI successfully generates swapped in. `source` is
+ * "gemini" when at least one part came from the AI; "stub" when nothing
+ * landed before the deadline (the caller then flags the plan aiPending
+ * and, for account holders, finishes the job in the background).
+ */
+async function generatePremiumPlan(
+  req: PlanRequest,
+  deadline: number
+): Promise<{ plan: AscendPlan; source: "gemini" | "stub" }> {
+  const stub = buildStubPlan(req.measurements ?? null, req.quiz);
+  if (getApiKeys().length === 0) return { plan: stub, source: "stub" };
+  const kbExcerpts = getRelevantKbExcerpts(req.measurements, req.quiz);
+
+  const [frame, ...aiSections] = await Promise.all([
+    generateFrame(req, kbExcerpts, stub, deadline),
+    ...stub.sections.map((draft) =>
+      generateSection(req, kbExcerpts, draft, deadline)
+    ),
+  ]);
+
+  const aiById = new Map<string, PlanSection>();
+  for (const s of aiSections) if (s) aiById.set(s.id, s);
+  if (aiById.size === 0 && !frame) {
+    console.warn(
+      "[plan] premium part-by-part generation produced nothing; serving deterministic plan"
+    );
+    return { plan: stub, source: "stub" };
+  }
+
+  const plan: AscendPlan = {
+    ...stub,
+    sections: stub.sections.map((draft) => aiById.get(draft.id) ?? draft),
+    ...(frame
+      ? {
+          headline: frame.headline,
+          scoreSummary: frame.scoreSummary,
+          priorityFixes: frame.priorityFixes,
+        }
+      : {}),
   };
+  if (!passesSafetyFilter(plan)) {
+    console.warn(
+      "[plan] merged premium plan failed the safety filter; serving deterministic plan"
+    );
+    return { plan: stub, source: "stub" };
+  }
+  console.log(
+    `[plan] premium plan assembled: ${aiById.size}/4 AI sections${frame ? " + AI frame" : ""}`
+  );
+  return { plan, source: "gemini" };
 }
 
 /** One-line diversity note per generated plan (personalization spec guardrail 4). */
@@ -636,20 +793,24 @@ function logDiversity(plan: AscendPlan): void {
   );
 }
 
-/** Resolve a Supabase access token to the account's entitlement flags.
- *  Service-role client: bypasses RLS for this read-only lookup. Returns
- *  null on any problem (unconfigured, bad token) so generation never
- *  breaks because of auth — the caller falls back to the client tier. */
-async function entitlementForToken(
-  token: string,
-): Promise<{ is_admin: boolean; is_premium: boolean } | null> {
+/** Service-role Supabase client (bypasses RLS). Null when unconfigured. */
+function serviceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceKey) return null;
+  return createClient(url, serviceKey, { auth: { persistSession: false } });
+}
+
+/** Resolve a Supabase access token to the account's id + entitlement
+ *  flags. Returns null on any problem (unconfigured, bad token) so
+ *  generation never breaks because of auth — the caller falls back to
+ *  the client tier. */
+async function entitlementForToken(
+  token: string,
+): Promise<{ userId: string; is_admin: boolean; is_premium: boolean } | null> {
+  const admin = serviceClient();
+  if (!admin) return null;
   try {
-    const admin = createClient(url, serviceKey, {
-      auth: { persistSession: false },
-    });
     const { data: userData } = await admin.auth.getUser(token);
     const uid = userData?.user?.id;
     if (!uid) return null;
@@ -660,6 +821,7 @@ async function entitlementForToken(
       .single();
     if (!profile) return null;
     return {
+      userId: uid,
       is_admin: Boolean(profile.is_admin),
       is_premium: Boolean(profile.is_premium),
     };
@@ -691,10 +853,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // premium, free accounts can never talk their way into it.
     let tier: "free" | "premium" =
       planReq.tier === "premium" ? "premium" : "free";
+    let uid: string | null = null;
     const authHeader = req.headers.get("authorization");
     if (authHeader?.startsWith("Bearer ")) {
       const ent = await entitlementForToken(authHeader.slice(7));
-      if (ent) tier = ent.is_premium || ent.is_admin ? "premium" : "free";
+      if (ent) {
+        tier = ent.is_premium || ent.is_admin ? "premium" : "free";
+        uid = ent.userId;
+      }
     }
 
     // FREE tier: ZERO AI calls. The deterministic template engine is the
@@ -717,12 +883,65 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json(res);
     }
 
-    const result = await generateWithGemini(planReq);
+    const result = await generatePremiumPlan(
+      planReq,
+      Date.now() + SYNC_DEADLINE_MS
+    );
     logDiversity(result.plan);
+    if (result.source === "gemini") {
+      const res: PlanResponse = { plan: result.plan, source: "gemini", tier };
+      return NextResponse.json(res);
+    }
+
+    // The AI didn't land inside the sync deadline (usually a Google
+    // capacity spell). The subscriber still gets the complete
+    // deterministic protocol NOW, flagged aiPending. With an account,
+    // the plan is saved server-side and generation keeps running in the
+    // background via after() — the deep-curated version replaces the
+    // saved plan in their dashboard when it lands.
+    const pendingPlan: AscendPlan = { ...result.plan, aiPending: true };
+    let scheduled = false;
+    const admin = uid ? serviceClient() : null;
+    if (uid && admin) {
+      const { data: row } = await admin
+        .from("plans")
+        .insert({
+          user_id: uid,
+          scan_id: planReq.scanId ?? null,
+          tier,
+          plan: pendingPlan,
+        })
+        .select("id")
+        .single();
+      if (row) {
+        scheduled = true;
+        const rowId = (row as { id: string }).id;
+        after(async () => {
+          try {
+            const retry = await generatePremiumPlan(
+              planReq,
+              Date.now() + BG_DEADLINE_MS
+            );
+            // Success swaps in the curated plan; failure clears the
+            // pending flag so the dashboard never promises forever.
+            const finalPlan =
+              retry.source === "gemini" ? retry.plan : result.plan;
+            await admin
+              .from("plans")
+              .update({ plan: finalPlan })
+              .eq("id", rowId);
+          } catch {
+            /* the saved deterministic protocol stands on its own */
+          }
+        });
+      }
+    }
+    const deliverPending = scheduled || !uid;
     const res: PlanResponse = {
-      plan: result.plan,
-      source: result.source,
+      plan: deliverPending ? pendingPlan : result.plan,
+      source: "stub",
       tier,
+      aiPending: deliverPending,
     };
     return NextResponse.json(res);
   } catch (err) {

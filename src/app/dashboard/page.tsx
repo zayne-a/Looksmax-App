@@ -281,6 +281,11 @@ export default function DashboardPage() {
                     <p className="text-xs text-muted">
                       {fmtDate(p.created_at)} ·{" "}
                       {p.tier === "premium" ? "Deep-curated (Pro)" : "Standard"}
+                      {p.plan.aiPending && (
+                        <span className="ml-2 inline-block rounded-full border border-gold/40 bg-gold/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gold-soft">
+                          AI personalisation in progress
+                        </span>
+                      )}
                     </p>
                   </div>
                   {linked?.quiz ? (

@@ -49,6 +49,42 @@ const REASSURANCE_LINES = [
   "Every step cites your scan and your goals",
 ];
 
+/** Rotating popup cards for the wait: what the AI is doing right now,
+ *  plus protocol facts worth reading. A long premium wait should feel
+ *  alive — never a frozen spinner. */
+const WAIT_CARDS = [
+  {
+    kicker: "Deep curation",
+    title: "Every task is audited against your numbers",
+    body: "A step that could belong to anyone gets rewritten until it cites your scan, your goals, your stats — or it gets cut.",
+  },
+  {
+    kicker: "Skin protocol",
+    title: "SPF is the highest-ROI step you own",
+    body: "Two finger-lengths, every morning. Brighteners and actives only work on top of sun protection — never instead of it.",
+  },
+  {
+    kicker: "Your numbers",
+    title: "Calories and protein computed from your body",
+    body: "Maintenance kcal from your height, weight and age; protein from your bodyweight. No template ranges anywhere in your plan.",
+  },
+  {
+    kicker: "Foundations",
+    title: "Sleep is a training session",
+    body: "Growth hormone peaks in deep sleep. Your plan treats sleep, water and daily steps as non-negotiables — they compound everything else.",
+  },
+  {
+    kicker: "The Ascend way",
+    title: "Phase 1 of a 12-week protocol",
+    body: "No 30-day miracle promises. Four weeks of measurable checkpoints, then progression — that's how real change is built.",
+  },
+  {
+    kicker: "Style protocol",
+    title: "Your haircut is chosen from your face shape",
+    body: "Measured thirds, ratios and symmetry decide the cut and the fit formulas — not trends.",
+  },
+];
+
 /** The build sequence never flashes: results wait at least this long. */
 const MIN_BUILD_MS = 4000;
 /**
@@ -286,15 +322,21 @@ function BuildingScreen({
   microIdx,
   frontPhoto,
   measurements,
+  elapsedMs,
+  onSkip,
 }: {
   progress: number;
   stageIdx: number;
   microIdx: number;
   frontPhoto: string | null;
   measurements: FaceMeasurements | null;
+  elapsedMs: number;
+  onSkip: () => void;
 }) {
   const allDone = stageIdx >= BUILD_STAGES.length;
   const onLastStage = stageIdx >= BUILD_STAGES.length - 1;
+  const cardIdx = Math.floor(elapsedMs / 6000) % WAIT_CARDS.length;
+  const card = WAIT_CARDS[cardIdx];
   return (
     <div className="mx-auto flex min-h-[74vh] w-full max-w-xl flex-col items-center justify-center px-4 py-14 sm:px-6">
       {frontPhoto ? (
@@ -374,9 +416,54 @@ function BuildingScreen({
         </div>
       </Card>
 
+      <div className="mt-6 w-full max-w-sm">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={cardIdx}
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.35 }}
+            className="rounded-2xl border border-white/10 bg-white/[0.04] p-4 text-left"
+          >
+            <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-gold">
+              {card.kicker}
+            </p>
+            <p className="mt-1.5 font-display text-base font-extrabold text-bone">
+              {card.title}
+            </p>
+            <p className="mt-1 text-sm leading-relaxed text-muted">
+              {card.body}
+            </p>
+          </motion.div>
+        </AnimatePresence>
+        <div className="mt-3 flex justify-center gap-1.5">
+          {WAIT_CARDS.map((c, i) => (
+            <span
+              key={c.kicker}
+              className={`h-1.5 rounded-full transition-all ${
+                i === cardIdx ? "w-5 bg-gold" : "w-1.5 bg-white/15"
+              }`}
+            />
+          ))}
+        </div>
+      </div>
+
       <p className="mt-6 text-center text-xs leading-relaxed text-muted">
-        Built from your numbers and your goals — never a generic template.
+        {elapsedMs > 90_000
+          ? "Still crafting — the AI is under heavy demand right now. Open your full protocol below and let the deep version finish in the background."
+          : elapsedMs > 45_000
+            ? "Taking longer than usual — premium curation is the deep version, and it's worth the wait."
+            : "Built from your numbers and your goals — never a generic template."}
       </p>
+      {elapsedMs > 40_000 && !allDone && (
+        <button
+          onClick={onSkip}
+          className="mt-4 rounded-full border border-gold/50 bg-gold/10 px-6 py-2.5 text-sm font-bold text-gold-soft transition hover:bg-gold/20"
+        >
+          Show my full plan now
+        </button>
+      )}
     </div>
   );
 }
@@ -856,6 +943,7 @@ export default function PlanPage() {
     setPlanError,
     frontPhoto,
     savedScanId,
+    user,
   } = useApp();
   const savedScanIdRef = useRef(savedScanId);
   savedScanIdRef.current = savedScanId;
@@ -866,6 +954,11 @@ export default function PlanPage() {
   const [stageIdx, setStageIdx] = useState(0);
   const [microIdx, setMicroIdx] = useState(0);
   const [revealed, setRevealed] = useState(false);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [aiPending, setAiPending] = useState(false);
+  const [justLanded, setJustLanded] = useState(false);
+  const previewRef = useRef(false);
+  const skipFiredRef = useRef(false);
   const fetchStarted = useRef(false);
   const runStartedAt = useRef<number | null>(null);
   const planRef = useRef(plan);
@@ -902,6 +995,7 @@ export default function PlanPage() {
         body: JSON.stringify({
           measurements,
           quiz,
+          scanId: savedScanIdRef.current,
           // v1 has no auth: free tier by default; owner test mode (the
           // paywall code, see lib/admin.ts) requests the premium tier so
           // Zayne can test the paid experience. v2 derives the tier
@@ -918,13 +1012,22 @@ export default function PlanPage() {
       }
       const data = (await res.json()) as PlanResponse;
       setPlan(data.plan);
+      setAiPending(Boolean(data.aiPending || data.plan.aiPending));
+      if (previewRef.current) {
+        previewRef.current = false;
+        setJustLanded(true);
+      }
       // Persist to the account (no-op logged out) so the user can come
-      // back to this exact plan from their dashboard.
-      void savePlan(
-        data.plan,
-        data.tier ?? (isOwnerTestMode() ? "premium" : "free"),
-        savedScanIdRef.current,
-      );
+      // back to this exact plan from their dashboard. Skipped when the
+      // server flagged the plan aiPending: it already saved the row and
+      // owns the background upgrade of that row.
+      if (!data.aiPending) {
+        void savePlan(
+          data.plan,
+          data.tier ?? (isOwnerTestMode() ? "premium" : "free"),
+          savedScanIdRef.current,
+        );
+      }
     } catch (err) {
       setPlanError(
         err instanceof Error
@@ -944,6 +1047,34 @@ export default function PlanPage() {
     fetchStarted.current = false;
     setPlan(null);
   }, [setPlan]);
+
+  // Long-wait escape hatch: pull the deterministic plan instantly (the
+  // free path is computed, not generated) and show it as a preview while
+  // the premium generation keeps running. When the AI plan lands it
+  // swaps in automatically (see the justLanded flag in loadPlan).
+  const skipWait = useCallback(async () => {
+    if (skipFiredRef.current || planRef.current || !quiz) return;
+    skipFiredRef.current = true;
+    try {
+      const res = await fetch("/api/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          measurements,
+          quiz,
+          tier: "free",
+        } satisfies PlanRequest),
+      });
+      if (!res.ok) return;
+      const data = (await res.json()) as PlanResponse;
+      if (!planRef.current) {
+        previewRef.current = true;
+        setPlan(data.plan);
+      }
+    } catch {
+      /* the main generation is still running; nothing to do */
+    }
+  }, [measurements, quiz, setPlan]);
 
   const exitOwnerMode = useCallback(() => {
     setOwnerTestMode(false);
@@ -965,6 +1096,11 @@ export default function PlanPage() {
     setStageIdx(0);
     setMicroIdx(0);
     setRevealed(false);
+    setElapsedMs(0);
+    setAiPending(false);
+    setJustLanded(false);
+    skipFiredRef.current = false;
+    previewRef.current = false;
   }, [planLoading]);
 
   // Results show immediately when a plan was already in the store on mount
@@ -984,6 +1120,7 @@ export default function PlanPage() {
     const id = setInterval(() => {
       const started = runStartedAt.current ?? Date.now();
       const elapsed = Date.now() - started;
+      setElapsedMs(elapsed);
       if (planRef.current && elapsed >= MIN_BUILD_MS) {
         setStageIdx(BUILD_STAGES.length);
         setProgress((p) => Math.min(100, p + (100 - p) * 0.3 + 1.5));
@@ -1009,6 +1146,13 @@ export default function PlanPage() {
     const t = setTimeout(() => setRevealed(true), 600);
     return () => clearTimeout(t);
   }, [plan, revealed, progress]);
+
+  // The "your AI plan just landed" note dismisses itself.
+  useEffect(() => {
+    if (!justLanded) return;
+    const t = setTimeout(() => setJustLanded(false), 9000);
+    return () => clearTimeout(t);
+  }, [justLanded]);
 
   const retry = () => {
     fetchStarted.current = false;
@@ -1066,6 +1210,8 @@ export default function PlanPage() {
           microIdx={microIdx}
           frontPhoto={frontPhoto}
           measurements={measurements}
+          elapsedMs={elapsedMs}
+          onSkip={skipWait}
         />
       );
     }
@@ -1131,6 +1277,35 @@ export default function PlanPage() {
                 Turn off
               </Button>
             </div>
+          </div>
+        </Reveal>
+      )}
+
+      {(aiPending || plan.aiPending) && (
+        <Reveal className="mb-8">
+          <div className="rounded-2xl border border-gold/30 bg-gold/10 p-4 sm:p-5">
+            <p className="text-sm leading-relaxed text-gold-soft">
+              <span className="font-bold">
+                Your AI deep-personalisation is still being crafted.
+              </span>{" "}
+              The AI is under heavy demand right now, so your complete
+              protocol is open below — the deep-curated version{" "}
+              {user
+                ? "will replace it here and in your dashboard within a few minutes. No need to stay on this page."
+                : "will swap in here within a few minutes if you keep this page open — or create a free account and it will be saved to your dashboard."}
+            </p>
+          </div>
+        </Reveal>
+      )}
+
+      {justLanded && (
+        <Reveal className="mb-8">
+          <div className="rounded-2xl border border-gold/50 bg-gold/15 p-4 sm:p-5">
+            <p className="text-sm leading-relaxed text-gold-soft">
+              <span className="font-bold">Your AI-personalised plan just landed</span>{" "}
+              — you're now reading the deep-curated version, audited against
+              your numbers.
+            </p>
           </div>
         </Reveal>
       )}

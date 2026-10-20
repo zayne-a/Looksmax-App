@@ -122,6 +122,10 @@ export interface AscendPlan {
   priorityFixes: PriorityFix[];
   projection: PlanProjection;
   foundations: PlanFoundations;
+  /** True while AI deep-curation is still generating in the background;
+   *  a plan carrying the flag is the full deterministic protocol. The
+   *  flag disappears when the curated version replaces the plan. */
+  aiPending?: boolean;
   sections: PlanSection[];
   disclaimers: string[];
 }
@@ -137,6 +141,9 @@ export interface PlanRequest {
    * never trust the client-sent value.
    */
   tier?: "free" | "premium";
+  /** Id of the already-saved scan this plan belongs to, so a plan whose
+   *  AI generation finishes in the background can be filed correctly. */
+  scanId?: string | null;
 }
 
 export interface PlanResponse {
@@ -145,4 +152,8 @@ export interface PlanResponse {
   /** The tier the server actually served (derived from the account's
    *  entitlement when a session token was sent). */
   tier?: "free" | "premium";
+  /** True when the served plan is the deterministic protocol while its
+   *  AI deep-curation finishes in the background (account holders get
+   *  the curated version in their dashboard when it lands). */
+  aiPending?: boolean;
 }
