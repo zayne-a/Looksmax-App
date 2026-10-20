@@ -253,6 +253,102 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ================= THE LOOPHOLES =================
+          Competitor-gap section (Zayne, 2026-10-20): name the traps found
+          in Umax & the other rating apps — sourced from their own 1-star
+          reviews and store listings (see research_notes/
+          looksmax-app-store-reviews-gaps-20261020-0015) — and contrast
+          each with the Ascend policy. Sits before the quiz so users see
+          it before they start. Keep claims truthful to the research. */}
+      <section className="border-y border-gold/10 bg-ink-2">
+        <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
+          <SectionHeading
+            eyebrow="The loopholes"
+            title="Every rating app has a trap. We removed all of them."
+            sub="We read hundreds of 1-star reviews of Umax and the other rating apps. The same traps, over and over — so we built Ascend the opposite way. Your first scan proves it, free."
+          />
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Reveal>
+              <Card className="h-full">
+                <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-muted">
+                  Umax &amp; the rating apps
+                </p>
+                <ul className="mt-5 space-y-4">
+                  {[
+                    ["Pay — or invite 3 friends —", "before you see a single result. It's their #1 complaint, straight from their own 1-star reviews."],
+                    ["Every scan costs extra.", "Credits, scan packs, and “supercharge” upsells — even after you've already subscribed."],
+                    ["Card before rating.", "They want your payment details before they've shown you one number."],
+                    ["Generic advice.", "“Wash your face with water” — handed to people with 10-step routines."],
+                    ["Your selfies, uploaded.", "Stored on their servers. One leading app's own store listing admits your data “isn't encrypted.”"],
+                    ["Trial traps.", "Subscriptions their users say they can't cancel — renewing anyway."],
+                  ].map(([lead, text]) => (
+                    <li key={lead} className="flex items-start gap-3 text-sm">
+                      <span
+                        aria-hidden
+                        className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-red-400/30 bg-red-400/10 text-[11px] font-black text-red-300"
+                      >
+                        ✕
+                      </span>
+                      <span className="leading-relaxed text-muted">
+                        <strong className="font-bold text-bone/90">{lead}</strong>{" "}
+                        {text}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            </Reveal>
+            <Reveal delay={0.08}>
+              <Card glow className="h-full border-gold/50">
+                <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-gold">
+                  Ascend — the way out
+                </p>
+                <ul className="mt-5 space-y-4">
+                  {[
+                    ["Your full first scan is free.", "Real measurements and scores before any paywall. No card. No invites."],
+                    ["Unlimited scans.", "Rescan every week of your protocol and watch the numbers move. One flat price — no per-scan charges, ever."],
+                    ["One plan = everything.", "No stacked upsells, no second paywall for your “true potential.”"],
+                    ["A protocol built from your numbers.", "Your jaw ratio, your skin signals, your goals — sequenced week by week, not copied from a poster."],
+                    ["Measured on your phone.", "Your photo never leaves your device for measurement. Nothing to leak, sell, or train on."],
+                    ["Cancel in one tap.", "Leave during the trial and you pay nothing. No maze, no begging support."],
+                  ].map(([lead, text]) => (
+                    <li key={lead} className="flex items-start gap-3 text-sm">
+                      <svg
+                        aria-hidden
+                        className="mt-0.5 h-5 w-5 shrink-0 text-gold"
+                        viewBox="0 0 20 20"
+                        fill="none"
+                      >
+                        <circle cx="10" cy="10" r="9" stroke="currentColor" strokeWidth="1.5" />
+                        <path
+                          d="M6.5 10.2l2.4 2.4 4.6-5"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      <span className="leading-relaxed text-muted">
+                        <strong className="font-bold text-bone">{lead}</strong>{" "}
+                        {text}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            </Reveal>
+          </div>
+          <Reveal className="mt-8 text-center">
+            <Button href="/quiz" className="px-9 py-3.5">
+              Get my free scan
+            </Button>
+            <p className="mt-3 text-xs text-muted">
+              No card · No invites · Unlimited scans on Pro
+            </p>
+          </Reveal>
+        </div>
+      </section>
+
       {/* ================= HOW IT WORKS ================= */}
       <section
         id="how-it-works"
