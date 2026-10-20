@@ -1,4 +1,4 @@
-# Privacy/Terms links now point at the real /privacy and /terms pages instead of "#" (audit fix).
+# Guides link added alongside Privacy/Terms/Pricing/Toolbox.
 "use client";
 
 import Link from "next/link";
@@ -29,6 +29,9 @@ export default function Footer() {
           </Link>
           <Link href="/calculators" className="transition hover:text-bone">
             Toolbox
+          </Link>
+          <Link href="/guides" className="transition hover:text-bone">
+            Guides
           </Link>
         </div>
         <p className="mt-8 text-xs text-muted/60">

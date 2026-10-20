@@ -1,3 +1,4 @@
+# Guides added to the main nav — the library is a first-class destination, not a footer afterthought.
 import Link from "next/link";
 import { Button } from "@/components/ui";
 import AccountLink from "@/components/AccountLink";
@@ -5,6 +6,7 @@ import AccountLink from "@/components/AccountLink";
 const links = [
   { href: "/#how-it-works", label: "How it works" },
   { href: "/calculators", label: "Toolbox" },
+  { href: "/guides", label: "Guides" },
   { href: "/coach", label: "Coach" },
   { href: "/why-ascend", label: "Why Ascend" },
   { href: "/paywall", label: "Pricing" },

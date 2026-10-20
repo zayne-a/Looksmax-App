@@ -1,4 +1,4 @@
-# Gate comment updated to v2 reality: /api/plan truncates free plans server-side, so the blur below veils placeholders, not shipped content.
+# Each protocol pillar now ends with "Go deeper" links into the Guides library (SECTION_GUIDES), so the personalised plan and the general advice read as one system.
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -9,6 +9,7 @@ import { isOwnerTestMode, setOwnerTestMode } from "@/lib/admin";
 import { getSupabase } from "@/lib/supabase";
 import { listCheckins, savePlan } from "@/lib/account";
 import JourneyRoadmap from "@/components/JourneyRoadmap";
+import { SECTION_GUIDES, getGuide } from "@/lib/guides";
 import { getOrStartJourneyStart } from "@/lib/journey";
 import type {
   AscendPlan,
@@ -1491,6 +1492,26 @@ export default function PlanPage() {
                 <span className="font-bold">Why you: </span>
                 {section.whyForYou}
               </p>
+              {(SECTION_GUIDES[section.id] ?? []).length > 0 && (
+                <p className="mt-3 text-[13px] leading-relaxed text-muted">
+                  <span className="font-bold text-bone">Go deeper: </span>
+                  {(SECTION_GUIDES[section.id] ?? []).map((gslug, gi) => {
+                    const g = getGuide(gslug);
+                    if (!g) return null;
+                    return (
+                      <span key={gslug}>
+                        {gi > 0 && " · "}
+                        <Link
+                          href={`/guides/${gslug}`}
+                          className="font-semibold text-gold-soft underline-offset-2 hover:underline"
+                        >
+                          {g.title}
+                        </Link>
+                      </span>
+                    );
+                  })}
+                </p>
+              )}
               <div className="mt-6">
                 {visible.map((week, wi) => (
                   <WeekBlock

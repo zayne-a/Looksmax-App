@@ -1,4 +1,4 @@
-# AUDIT FIXES (2026-10-20): todayKey hooks hoisted ABOVE the early returns (hook-count crash on cold load with a session). NEW: the WeeklyPlan view renders in the Today tab for subscribers — their full weekly plan alongside everything else, per Zayne. WeeklyCheckin/CoachReview intentionally stay ungated as shipped (Zayne: do not simplify what was added); the public claims were corrected instead.
+# Tonight (2026-10-20): a Guides Library card joins the Today tab (browse-all + quick chips), and the FaceBreakdown renders in Progress from the latest scan (only when landmarks were actually measured — never for quiz-only scans). Nothing removed; presentation of existing data only, per Zayne.
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
@@ -12,6 +12,8 @@ import WeeklyCheckin from "@/components/WeeklyCheckin";
 import CoachReview from "@/components/CoachReview";
 import TodayHome from "@/components/TodayHome";
 import WeeklyPlan from "@/components/WeeklyPlan";
+import FaceBreakdown from "@/components/FaceBreakdown";
+import { GUIDES } from "@/lib/guides";
 import AppNav, { type AppTab } from "@/components/AppNav";
 import TrackCalendar from "@/components/TrackCalendar";
 import MeasurementDay from "@/components/MeasurementDay";
@@ -375,6 +377,37 @@ export default function DashboardPage() {
         </Reveal>
       )}
 
+      {/* GUIDES LIBRARY — the clear general layer, one tap from home */}
+      <Reveal delay={0.065} className="mt-6">
+        <Card>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-gold">
+                The Guides Library
+              </p>
+              <p className="mt-1 max-w-md text-sm leading-relaxed text-muted">
+                Every topic, explained clearly in one place — no fluff
+                research to dig through.
+              </p>
+            </div>
+            <Button href="/guides" variant="ghost" className="px-5 py-2.5 text-sm">
+              Browse all guides
+            </Button>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {GUIDES.slice(0, 6).map((g) => (
+              <Link
+                key={g.slug}
+                href={`/guides/${g.slug}`}
+                className="rounded-full border border-white/12 px-3.5 py-1.5 text-xs font-bold text-muted transition hover:border-gold/40 hover:text-gold-soft"
+              >
+                {g.title}
+              </Link>
+            ))}
+          </div>
+        </Card>
+      </Reveal>
+
         </>
       )}
 
@@ -409,6 +442,13 @@ export default function DashboardPage() {
           daysActive={daysActive7}
         />
       </Reveal>
+
+      {/* FACE BREAKDOWN — trait by trait, from the latest scan */}
+      {latest?.measurements?.landmarksDetected && (
+        <Reveal delay={0.075} className="mt-6">
+          <FaceBreakdown measurements={latest.measurements} />
+        </Reveal>
+      )}
 
       {/* RECORD CALENDAR — every tracked day (subscriber interface) */}
       {isPro && (
