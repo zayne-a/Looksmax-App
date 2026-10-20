@@ -320,19 +320,23 @@ export default function DashboardPage() {
         />
       </Reveal>
 
-      {/* RECORD CALENDAR — every tracked day */}
-      <Reveal delay={0.075} className="mt-6">
-        <TrackCalendar
-          logs={dailyLogs}
-          checkins={checkins ?? []}
-          scans={scans ?? []}
-        />
-      </Reveal>
+      {/* RECORD CALENDAR — every tracked day (subscriber interface) */}
+      {isPro && (
+        <Reveal delay={0.075} className="mt-6">
+          <TrackCalendar
+            logs={dailyLogs}
+            checkins={checkins ?? []}
+            scans={scans ?? []}
+          />
+        </Reveal>
+      )}
 
-      {/* ACHIEVEMENTS — the badge shelf */}
-      <Reveal delay={0.08} className="mt-6">
-        <Achievements items={achievements} />
-      </Reveal>
+      {/* ACHIEVEMENTS — the badge shelf (subscriber interface) */}
+      {isPro && (
+        <Reveal delay={0.08} className="mt-6">
+          <Achievements items={achievements} />
+        </Reveal>
+      )}
 
       {/* SCORE JOURNEY */}
       <Reveal delay={0.08} className="mt-10">
