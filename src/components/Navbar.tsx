@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Button } from "@/components/ui";
+import AccountLink from "@/components/AccountLink";
 
 const links = [
   { href: "/#how-it-works", label: "How it works" },
@@ -28,6 +29,7 @@ export default function Navbar() {
               {l.label}
             </Link>
           ))}
+          <AccountLink />
         </nav>
         <Button href="/quiz" className="px-5 py-2 text-sm">
           Start free scan

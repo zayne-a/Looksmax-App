@@ -5,6 +5,8 @@ import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { useApp } from "@/lib/store";
 import { isOwnerTestMode, setOwnerTestMode } from "@/lib/admin";
+import { getSupabase } from "@/lib/supabase";
+import { savePlan } from "@/lib/account";
 import type {
   AscendPlan,
   FaceMeasurements,
@@ -853,7 +855,10 @@ export default function PlanPage() {
     setPlanLoading,
     setPlanError,
     frontPhoto,
+    savedScanId,
   } = useApp();
+  const savedScanIdRef = useRef(savedScanId);
+  savedScanIdRef.current = savedScanId;
 
   // Building-sequence state: drives the staged waiting experience while
   // /api/plan generates (and during the completion tail after it lands).
@@ -879,9 +884,21 @@ export default function PlanPage() {
     setPlanLoading(true);
     setPlanError(null);
     try {
+      // Attach the session (if any): the server derives the tier from
+      // the account's entitlement (admin/premium) when a valid token
+      // arrives, instead of trusting the client-sent tier.
+      const sb = getSupabase();
+      const session = sb
+        ? (await sb.auth.getSession()).data.session
+        : null;
       const res = await fetch("/api/plan", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(session
+            ? { Authorization: `Bearer ${session.access_token}` }
+            : {}),
+        },
         body: JSON.stringify({
           measurements,
           quiz,
@@ -901,6 +918,13 @@ export default function PlanPage() {
       }
       const data = (await res.json()) as PlanResponse;
       setPlan(data.plan);
+      // Persist to the account (no-op logged out) so the user can come
+      // back to this exact plan from their dashboard.
+      void savePlan(
+        data.plan,
+        data.tier ?? (isOwnerTestMode() ? "premium" : "free"),
+        savedScanIdRef.current,
+      );
     } catch (err) {
       setPlanError(
         err instanceof Error

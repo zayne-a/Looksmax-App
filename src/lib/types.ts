@@ -142,4 +142,7 @@ export interface PlanRequest {
 export interface PlanResponse {
   plan: AscendPlan;
   source: "gemini" | "stub";
+  /** The tier the server actually served (derived from the account's
+   *  entitlement when a session token was sent). */
+  tier?: "free" | "premium";
 }

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { useApp } from "@/lib/store";
+import { saveScan } from "@/lib/account";
 import { analyzeSkin, checkPhotoQuality, computeMeasurements } from "@/lib/face";
 import type { FaceMeasurements } from "@/lib/types";
 import { Button, Card, Eyebrow } from "@/components/ui";
@@ -110,7 +111,15 @@ function BeatRow({
 
 export default function ScanPage() {
   const router = useRouter();
-  const { setMeasurements, setFrontPhoto } = useApp();
+  const { quiz, setMeasurements, setFrontPhoto, setSavedScanId } = useApp();
+
+  // Persist the finished scan to the user's account when logged in
+  // (no-op logged out). The row id lets the plan page link its plan.
+  const persistScan = (m: FaceMeasurements) => {
+    void saveScan(m, quiz).then((id) => {
+      if (id) setSavedScanId(id);
+    });
+  };
 
   const [frontUrl, setFrontUrl] = useState<string | null>(null);
   const [sideUrl, setSideUrl] = useState<string | null>(null);
@@ -178,7 +187,9 @@ export default function ScanPage() {
   };
 
   const continueQuizOnly = (note: string) => {
-    setMeasurements(quizOnlyMeasurements(note));
+    const m = quizOnlyMeasurements(note);
+    setMeasurements(m);
+    persistScan(m);
     router.push("/plan");
   };
 
@@ -255,6 +266,7 @@ export default function ScanPage() {
           : quality.issues,
       };
       setMeasurements(measurements);
+      persistScan(measurements);
       router.push("/plan");
     } catch (e) {
       // Graceful fallback: never leave the user stuck.

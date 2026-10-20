@@ -17,6 +17,7 @@
 // the AI never writes or rewrites it.
 
 import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import type {
   AscendPlan,
   PlanRequest,
@@ -635,6 +636,38 @@ function logDiversity(plan: AscendPlan): void {
   );
 }
 
+/** Resolve a Supabase access token to the account's entitlement flags.
+ *  Service-role client: bypasses RLS for this read-only lookup. Returns
+ *  null on any problem (unconfigured, bad token) so generation never
+ *  breaks because of auth — the caller falls back to the client tier. */
+async function entitlementForToken(
+  token: string,
+): Promise<{ is_admin: boolean; is_premium: boolean } | null> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !serviceKey) return null;
+  try {
+    const admin = createClient(url, serviceKey, {
+      auth: { persistSession: false },
+    });
+    const { data: userData } = await admin.auth.getUser(token);
+    const uid = userData?.user?.id;
+    if (!uid) return null;
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("is_admin, is_premium")
+      .eq("id", uid)
+      .single();
+    if (!profile) return null;
+    return {
+      is_admin: Boolean(profile.is_admin),
+      is_premium: Boolean(profile.is_premium),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     let body: unknown;
@@ -651,12 +684,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // Generation tier. v1 has no auth, so the client-sent value is accepted
-    // as-is and the plan page always sends "free". v2: NEVER trust this
-    // value — derive the tier server-side from the user's subscription
-    // entitlement instead.
-    const tier: "free" | "premium" =
+    // Generation tier. Default: the client-sent value (logged-out flow;
+    // the plan page sends "free", or "premium" in owner test mode).
+    // With a valid Supabase session token the tier is DERIVED from the
+    // account's entitlement instead — admin/premium profiles always get
+    // premium, free accounts can never talk their way into it.
+    let tier: "free" | "premium" =
       planReq.tier === "premium" ? "premium" : "free";
+    const authHeader = req.headers.get("authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      const ent = await entitlementForToken(authHeader.slice(7));
+      if (ent) tier = ent.is_premium || ent.is_admin ? "premium" : "free";
+    }
 
     // FREE tier: ZERO AI calls. The deterministic template engine is the
     // free product — protocol selection, every number, the projection and
@@ -665,7 +704,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (tier === "free") {
       const plan = buildStubPlan(planReq.measurements ?? null, planReq.quiz);
       logDiversity(plan);
-      const res: PlanResponse = { plan, source: "stub" };
+      const res: PlanResponse = { plan, source: "stub", tier };
       return NextResponse.json(res);
     }
 
@@ -674,13 +713,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     if (getApiKeys().length === 0) {
       const plan = buildStubPlan(planReq.measurements ?? null, planReq.quiz);
       logDiversity(plan);
-      const res: PlanResponse = { plan, source: "stub" };
+      const res: PlanResponse = { plan, source: "stub", tier };
       return NextResponse.json(res);
     }
 
     const result = await generateWithGemini(planReq);
     logDiversity(result.plan);
-    const res: PlanResponse = { plan: result.plan, source: result.source };
+    const res: PlanResponse = {
+      plan: result.plan,
+      source: result.source,
+      tier,
+    };
     return NextResponse.json(res);
   } catch (err) {
     console.error("[plan] unexpected error:", err instanceof Error ? err.message : err);
