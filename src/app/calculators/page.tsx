@@ -6,26 +6,49 @@ import { useApp } from "@/lib/store";
 import type { QuizAnswers } from "@/lib/types";
 import {
   ACTIVITY_LEVELS,
+  CALORIE_ACTIVITY_LEVELS,
+  CALORIE_ACTIVITY_MULTIPLIER,
   INPUT_LIMITS,
   bmi,
+  bmrAll,
+  calorieTargets,
   ffmi,
+  idealWeight,
+  leanBodyMass,
+  macrosFor,
   navyBodyFat,
+  proteinNeeds,
   tdee,
+  zigzag,
   type ActivityLevel,
   type CalcGender,
+  type CalorieActivityLevel,
+  type CalorieGoalId,
   type LimitKey,
 } from "@/lib/calculators";
 import { CountUp, Reveal } from "@/components/motion";
 
 // ------------------------------------------------------------ plumbing ----
 
-type TabId = "bmi" | "bodyfat" | "ffmi" | "tdee";
+type TabId =
+  | "calorie"
+  | "bmi"
+  | "bodyfat"
+  | "ffmi"
+  | "tdee"
+  | "ideal"
+  | "leanmass"
+  | "protein";
 
 const TABS: { id: TabId; label: string }[] = [
+  { id: "calorie", label: "Calories" },
   { id: "bmi", label: "BMI" },
   { id: "bodyfat", label: "Body Fat" },
   { id: "ffmi", label: "FFMI" },
   { id: "tdee", label: "TDEE + Macros" },
+  { id: "ideal", label: "Ideal Weight" },
+  { id: "leanmass", label: "Lean Mass" },
+  { id: "protein", label: "Protein" },
 ];
 
 interface NumFieldState {
@@ -647,11 +670,699 @@ function TdeePanel({ quiz }: { quiz: QuizAnswers | null }) {
   );
 }
 
+type MacroTab = "moderate" | "lowCarb" | "highCarb";
+
+const MACRO_TABS: { id: MacroTab; label: string; detail: string }[] = [
+  { id: "moderate", label: "Moderate", detail: "30 / 35 / 35" },
+  { id: "lowCarb", label: "Low-carb", detail: "40 / 20 / 40" },
+  { id: "highCarb", label: "High-carb", detail: "30 / 50 / 20" },
+];
+
+const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+function rateText(weeklyChangeKg: number): string {
+  if (weeklyChangeKg === 0) return "Hold steady";
+  const mag = Math.abs(weeklyChangeKg);
+  return weeklyChangeKg < 0
+    ? `Lose ~${mag} kg/week`
+    : `Gain ~${mag} kg/week`;
+}
+
+function ZigzagTable({
+  title,
+  caption,
+  days,
+  weeklyTotal,
+}: {
+  title: string;
+  caption: string;
+  days: number[];
+  weeklyTotal: number;
+}) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-ink-3/70 p-4">
+      <div className="flex items-baseline justify-between gap-2">
+        <p className="text-sm font-semibold text-bone">{title}</p>
+        <p className="text-xs text-muted">
+          Week total{" "}
+          <span className="font-semibold text-bone/80">
+            {weeklyTotal.toLocaleString("en-US")} kcal
+          </span>
+        </p>
+      </div>
+      <p className="mt-0.5 text-xs text-muted">{caption}</p>
+      <div className="mt-3 grid grid-cols-7 gap-1">
+        {days.map((d, i) => (
+          <div key={i} className="text-center">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+              {DAY_LABELS[i]}
+            </p>
+            <p className="mt-1 text-[13px] font-bold leading-tight text-bone">
+              {d.toLocaleString("en-US")}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CaloriePanel({
+  quiz,
+  bodyFatSeed,
+  onGoBodyFat,
+}: {
+  quiz: QuizAnswers | null;
+  bodyFatSeed: string;
+  onGoBodyFat: () => void;
+}) {
+  const [gender, setGender] = useState<CalcGender>(quiz?.gender ?? "male");
+  const [activity, setActivity] = useState<CalorieActivityLevel>("moderate");
+  const [goal, setGoal] = useState<CalorieGoalId>(
+    quiz?.bodyGoal === "cut"
+      ? "loss"
+      : quiz?.bodyGoal === "build"
+        ? "gain"
+        : "maintain"
+  );
+  const [macroTab, setMacroTab] = useState<MacroTab>("moderate");
+  const age = useNumField(undefined, "ageYears");
+  const height = useNumField(quiz?.heightCm, "heightCm");
+  const weight = useNumField(quiz?.weightKg, "weightKg");
+  const bodyFat = useNumField(
+    bodyFatSeed ? Number(bodyFatSeed) : undefined,
+    "bodyFatPct"
+  );
+
+  // Optional field: an empty body fat is valid (Mifflin-St Jeor is used
+  // instead), so suppress the "required" error while the box is untouched.
+  const bodyFatDisplay: NumFieldState = {
+    ...bodyFat,
+    error: bodyFat.raw.trim() === "" ? null : bodyFat.error,
+  };
+
+  // Prefill body fat from the Body Fat tab result when it becomes available.
+  useEffect(() => {
+    if (bodyFatSeed && bodyFat.raw === "") bodyFat.setRaw(bodyFatSeed);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bodyFatSeed]);
+
+  const result = useMemo(() => {
+    if (age.error || height.error || weight.error) return null;
+    const hasBodyFat = bodyFat.raw.trim() !== "";
+    if (hasBodyFat && bodyFat.error) return null;
+    try {
+      const bmr = bmrAll({
+        sex: gender,
+        age: age.value,
+        weightKg: weight.value,
+        heightCm: height.value,
+        bodyFatPct: hasBodyFat ? bodyFat.value : undefined,
+      });
+      const usedBmr = bmr.katchMcArdle ?? bmr.mifflin;
+      const maintenance = Math.round(
+        usedBmr * CALORIE_ACTIVITY_MULTIPLIER[activity]
+      );
+      return {
+        bmr,
+        usedBmr,
+        method:
+          bmr.katchMcArdle !== null
+            ? "Katch-McArdle"
+            : "Mifflin-St Jeor",
+        maintenance,
+        targets: calorieTargets(maintenance, gender),
+      };
+    } catch {
+      return null;
+    }
+  }, [
+    gender,
+    activity,
+    age.value,
+    age.error,
+    height.value,
+    height.error,
+    weight.value,
+    weight.error,
+    bodyFat.value,
+    bodyFat.error,
+    bodyFat.raw,
+  ]);
+
+  const selected =
+    result?.targets.find((t) => t.id === goal) ?? result?.targets[0] ?? null;
+  const splits = selected ? macrosFor(selected.kcal) : null;
+  const cycling =
+    selected && result && selected.id !== "maintain"
+      ? zigzag(selected.kcal, result.maintenance)
+      : null;
+
+  return (
+    <Panel
+      title="Calorie Calculator"
+      intro="Your daily calorie budget, built properly: basal metabolic rate from the equation that fits you, scaled by how active you really are, then mapped to seven goal targets — with macro splits and calorie-cycling schedules for the goal you pick."
+    >
+      <Segmented
+        label="Gender"
+        options={[
+          { value: "male", label: "Male" },
+          { value: "female", label: "Female" },
+        ]}
+        value={gender}
+        onChange={setGender}
+      />
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Age" unit="years" field={age} testId="cal-age" hint="e.g. 25" />
+        <Field label="Height" unit="cm" field={height} testId="cal-height" hint="e.g. 178" />
+        <Field label="Weight" unit="kg" field={weight} testId="cal-weight" hint="e.g. 75" />
+        <Field
+          label="Body fat (optional)"
+          unit="%"
+          field={bodyFatDisplay}
+          testId="cal-bodyfat"
+          hint="Entered? BMR uses Katch-McArdle instead"
+        />
+      </div>
+      <p className="-mt-2 text-xs text-muted">
+        Don&rsquo;t know your body fat?{" "}
+        <button
+          type="button"
+          onClick={onGoBodyFat}
+          className="font-semibold text-gold-soft underline decoration-gold/40 underline-offset-2 transition hover:text-gold"
+        >
+          Use the Body Fat calculator below
+        </button>
+        .
+      </p>
+      <Select
+        label="Activity level"
+        value={activity}
+        onChange={(v) => setActivity(v as CalorieActivityLevel)}
+        options={CALORIE_ACTIVITY_LEVELS.map((a) => ({
+          value: a.id,
+          label: `${a.label} (×${a.multiplier})`,
+          detail: a.detail,
+        }))}
+      />
+      {result && selected ? (
+        <>
+          <div className="rounded-2xl border border-gold/25 bg-gradient-to-b from-gold/[0.07] to-transparent p-6">
+            <div className="grid grid-cols-2 gap-4 text-center">
+              <div>
+                <p className="text-4xl font-extrabold tracking-tight">
+                  <CountUp
+                    key={result.usedBmr}
+                    value={result.usedBmr}
+                    duration={0.7}
+                    className="gold-text"
+                  />
+                </p>
+                <p className="mt-1 text-sm text-muted">
+                  BMR (kcal/day) · {result.method}
+                </p>
+              </div>
+              <div>
+                <p className="text-4xl font-extrabold tracking-tight">
+                  <CountUp
+                    key={result.maintenance}
+                    value={result.maintenance}
+                    duration={0.7}
+                    className="gold-text"
+                  />
+                </p>
+                <p className="mt-1 text-sm text-muted">
+                  Maintenance (kcal/day)
+                </p>
+              </div>
+            </div>
+            <p className="mt-4 text-center text-sm leading-relaxed text-bone/80">
+              {result.method === "Katch-McArdle"
+                ? "Because you entered a body fat %, your BMR comes from the Katch-McArdle equation, which is driven by lean mass and is usually the most accurate of the three."
+                : `Mifflin-St Jeor is the default — the most accurate general equation. For comparison, Harris-Benedict puts your BMR at ${result.bmr.harrisBenedict.toLocaleString("en-US")} kcal. Add a body fat % above to switch to Katch-McArdle.`}
+            </p>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-semibold uppercase tracking-wider text-gold-soft">
+              Pick your goal
+            </h3>
+            <div className="mt-2 space-y-2">
+              {result.targets.map((t) => {
+                const active = t.id === selected.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => setGoal(t.id)}
+                    className={`flex w-full items-center justify-between gap-3 rounded-xl border px-4 py-3 text-left transition ${
+                      active
+                        ? "border-gold bg-gold/10"
+                        : "border-white/10 bg-ink-3 hover:border-gold/40"
+                    }`}
+                  >
+                    <span>
+                      <span
+                        className={`block text-sm font-semibold ${
+                          active ? "text-gold-soft" : "text-bone"
+                        }`}
+                      >
+                        {t.label}
+                      </span>
+                      <span className="block text-xs text-muted">
+                        {rateText(t.weeklyChangeKg)} · {t.pctOfMaintenance}% of
+                        maintenance
+                      </span>
+                      {t.belowSafeFloor && (
+                        <span className="mt-1 block text-xs font-medium text-amber-300">
+                          Below the safe minimum — don&rsquo;t go lower than
+                          this.
+                        </span>
+                      )}
+                    </span>
+                    <span className="text-right">
+                      <span className="block text-xl font-bold text-bone">
+                        {t.kcal.toLocaleString("en-US")}
+                      </span>
+                      <span className="block text-xs text-muted">kcal/day</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {splits && (
+            <div>
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-gold-soft">
+                Macros for {selected.label.toLowerCase()} —{" "}
+                {selected.kcal.toLocaleString("en-US")} kcal
+              </h3>
+              <div
+                role="radiogroup"
+                aria-label="Macro split"
+                className="mt-2 flex gap-2"
+              >
+                {MACRO_TABS.map((mt) => {
+                  const active = macroTab === mt.id;
+                  return (
+                    <button
+                      key={mt.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      onClick={() => setMacroTab(mt.id)}
+                      className={`flex-1 rounded-xl border px-3 py-2.5 text-sm font-medium transition ${
+                        active
+                          ? "border-gold bg-gold/15 text-gold-soft"
+                          : "border-white/10 bg-ink-3 text-muted hover:text-bone"
+                      }`}
+                    >
+                      {mt.label}
+                      <span className="block text-[11px] font-normal opacity-70">
+                        P/C/F {mt.detail}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="mt-3 grid grid-cols-3 gap-2 text-left">
+                {(
+                  [
+                    {
+                      label: "Protein",
+                      g: splits[macroTab].protein,
+                      kcal: splits[macroTab].protein * 4,
+                      pct: splits[macroTab].proteinPct,
+                    },
+                    {
+                      label: "Carbs",
+                      g: splits[macroTab].carbs,
+                      kcal: splits[macroTab].carbs * 4,
+                      pct: splits[macroTab].carbsPct,
+                    },
+                    {
+                      label: "Fat",
+                      g: splits[macroTab].fat,
+                      kcal: splits[macroTab].fat * 9,
+                      pct: splits[macroTab].fatPct,
+                    },
+                  ] as const
+                ).map((m) => (
+                  <div
+                    key={m.label}
+                    className="rounded-xl border border-white/10 bg-ink-3/70 p-3"
+                  >
+                    <p className="text-xs uppercase tracking-wider text-muted">
+                      {m.label} · {m.pct}%
+                    </p>
+                    <p className="mt-1 text-xl font-bold text-bone">
+                      <CountUp key={m.g} value={m.g} duration={0.6} />
+                      <span className="text-sm font-medium text-muted"> g</span>
+                    </p>
+                    <p className="text-xs text-muted">{m.kcal} kcal</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {cycling && (
+            <div>
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-gold-soft">
+                Zigzag schedules — same week, varied days
+              </h3>
+              <p className="mt-1 text-xs leading-relaxed text-muted">
+                Calorie cycling averages out to exactly your target across the
+                week, so progress is identical — high days just land where
+                they help most (hard training days, social meals).
+              </p>
+              <div className="mt-3 space-y-3">
+                <ZigzagTable
+                  title="Schedule A — 2 high / 5 low"
+                  caption="High days at full maintenance (Mon & Thu — move them to your hardest training days); the other five days split what's left."
+                  days={cycling.scheduleA}
+                  weeklyTotal={cycling.weeklyTotal}
+                />
+                <ZigzagTable
+                  title="Schedule B — alternating"
+                  caption="Daily calories swing gently around your target: full days, lighter days, and slightly higher days in rotation."
+                  days={cycling.scheduleB}
+                  weeklyTotal={cycling.weeklyTotal}
+                />
+              </div>
+            </div>
+          )}
+        </>
+      ) : (
+        <p className="rounded-2xl border border-dashed border-white/15 p-6 text-center text-sm text-muted">
+          Enter your age, height, and weight to see your calories.
+        </p>
+      )}
+      <Meaning>
+        This is the number your whole plan hangs on. Cutting too hard crashes
+        testosterone, sleep, and skin quality — you end up smaller but worse
+        looking. The mild targets above lose fat at the fastest rate that
+        still protects muscle, which is what actually sharpens the face.
+      </Meaning>
+      <FormulaNote>
+        BMR by Mifflin-St Jeor (or Katch-McArdle when body fat % is entered;
+        Harris-Benedict shown for comparison), multiplied by a six-tier
+        activity factor. Targets step in 250 kcal increments; loss targets are
+        flagged under the safe floors of 1,500 kcal (men) and 1,200 kcal
+        (women).
+      </FormulaNote>
+    </Panel>
+  );
+}
+
+function IdealWeightPanel({ quiz }: { quiz: QuizAnswers | null }) {
+  const [gender, setGender] = useState<CalcGender>(quiz?.gender ?? "male");
+  const height = useNumField(quiz?.heightCm, "heightCm");
+
+  const result = useMemo(() => {
+    if (height.error) return null;
+    try {
+      return idealWeight(height.value, gender);
+    } catch {
+      return null;
+    }
+  }, [height.value, height.error, gender]);
+
+  const formulas = result
+    ? [
+        { label: "Hamwi", kg: result.hamwi },
+        { label: "Devine", kg: result.devine },
+        { label: "Robinson", kg: result.robinson },
+        { label: "Miller", kg: result.miller },
+      ]
+    : [];
+
+  return (
+    <Panel
+      title="Ideal Weight Calculator"
+      intro="Four classic medical formulas estimate the weight that suits your height, each from a base weight at 5 feet plus a fixed amount per inch above it. They disagree a little — that spread is the honest answer: a range, not a single magic number."
+    >
+      <Segmented
+        label="Gender"
+        options={[
+          { value: "male", label: "Male" },
+          { value: "female", label: "Female" },
+        ]}
+        value={gender}
+        onChange={setGender}
+      />
+      <Field label="Height" unit="cm" field={height} testId="iw-height" hint="e.g. 178" />
+      {result ? (
+        <ResultShell
+          badge="Ideal weight"
+          note={`The four formulas cluster between ${Math.min(
+            ...formulas.map((x) => x.kg)
+          ).toFixed(1)} and ${Math.max(...formulas.map((x) => x.kg)).toFixed(
+            1
+          )} kg. For your height, the healthy BMI range runs ${result.healthyMinKg.toFixed(
+            1
+          )}–${result.healthyMaxKg.toFixed(1)} kg.`}
+        >
+          <div className="grid grid-cols-2 gap-2 text-left sm:grid-cols-4">
+            {formulas.map((x) => (
+              <div
+                key={x.label}
+                className="rounded-xl border border-white/10 bg-ink-3/70 p-3 text-center"
+              >
+                <p className="text-xs uppercase tracking-wider text-muted">
+                  {x.label}
+                </p>
+                <p className="mt-1 text-xl font-bold text-bone">
+                  <CountUp
+                    key={x.kg}
+                    value={x.kg}
+                    decimals={1}
+                    duration={0.6}
+                  />
+                  <span className="text-sm font-medium text-muted"> kg</span>
+                </p>
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-sm text-muted">
+            Healthy BMI range: {result.healthyMinKg.toFixed(1)} –{" "}
+            {result.healthyMaxKg.toFixed(1)} kg
+          </p>
+        </ResultShell>
+      ) : (
+        <p className="rounded-2xl border border-dashed border-white/15 p-6 text-center text-sm text-muted">
+          Enter your height to see your ideal weight range.
+        </p>
+      )}
+      <Meaning>
+        Treat the top of the formula range as a lean-muscular target and the
+        bottom as a slim target. Where you look best inside it depends on how
+        much muscle you carry — the same weight looks completely different at
+        12% body fat than at 20%.
+      </Meaning>
+      <FormulaNote>
+        Hamwi (1964), Devine (1974), Robinson (1983), and Miller (1983)
+        formulas, converted to kilograms. Healthy range = BMI 18.5–24.9 at
+        your height.
+      </FormulaNote>
+    </Panel>
+  );
+}
+
+function LeanMassPanel({ quiz }: { quiz: QuizAnswers | null }) {
+  const [gender, setGender] = useState<CalcGender>(quiz?.gender ?? "male");
+  const height = useNumField(quiz?.heightCm, "heightCm");
+  const weight = useNumField(quiz?.weightKg, "weightKg");
+
+  const result = useMemo(() => {
+    if (height.error || weight.error) return null;
+    try {
+      return leanBodyMass({
+        sex: gender,
+        weightKg: weight.value,
+        heightCm: height.value,
+      });
+    } catch {
+      return null;
+    }
+  }, [gender, height.value, height.error, weight.value, weight.error]);
+
+  const estimates = result
+    ? [
+        { label: "Boer", kg: result.boer },
+        { label: "James", kg: result.james },
+        { label: "Hume", kg: result.hume },
+      ]
+    : [];
+  const average = result
+    ? (result.boer + result.james + result.hume) / 3
+    : 0;
+
+  return (
+    <Panel
+      title="Lean Body Mass Calculator"
+      intro="Lean body mass is everything in you that isn't fat — muscle, bone, organs, water. Three validated formulas estimate it from just height and weight, so you can sanity-check any body fat reading and set a realistic muscle-building target."
+    >
+      <Segmented
+        label="Gender"
+        options={[
+          { value: "male", label: "Male" },
+          { value: "female", label: "Female" },
+        ]}
+        value={gender}
+        onChange={setGender}
+      />
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Height" unit="cm" field={height} testId="lbm-height" />
+        <Field label="Weight" unit="kg" field={weight} testId="lbm-weight" />
+      </div>
+      {result ? (
+        <ResultShell
+          badge="Lean body mass"
+          note={`Averaging the three formulas: about ${average.toFixed(
+            1
+          )} kg of lean mass — roughly ${Math.round(
+            (average / weight.value) * 100
+          )}% of your total weight. The spread between formulas is normal; each was fitted on a different population.`}
+        >
+          <div className="grid grid-cols-3 gap-2 text-left">
+            {estimates.map((x) => (
+              <div
+                key={x.label}
+                className="rounded-xl border border-white/10 bg-ink-3/70 p-3 text-center"
+              >
+                <p className="text-xs uppercase tracking-wider text-muted">
+                  {x.label}
+                </p>
+                <p className="mt-1 text-xl font-bold text-bone">
+                  <CountUp
+                    key={x.kg}
+                    value={x.kg}
+                    decimals={1}
+                    duration={0.6}
+                  />
+                  <span className="text-sm font-medium text-muted"> kg</span>
+                </p>
+              </div>
+            ))}
+          </div>
+        </ResultShell>
+      ) : (
+        <p className="rounded-2xl border border-dashed border-white/15 p-6 text-center text-sm text-muted">
+          Enter your height and weight to estimate lean body mass.
+        </p>
+      )}
+      <Meaning>
+        Lean mass is the asset a cut is supposed to protect. If your weight
+        drops but lean mass drops with it, the face gets gaunt, not sharp.
+        Track this alongside body fat %: fat down, lean mass flat (or up) is
+        the recomposition signature.
+      </Meaning>
+      <FormulaNote>
+        Boer (1984), James (1976), and Hume (1966) lean-mass equations, fitted
+        against hydrostatic weighing and isotope dilution studies.
+      </FormulaNote>
+    </Panel>
+  );
+}
+
+function ProteinPanel({ quiz }: { quiz: QuizAnswers | null }) {
+  const weight = useNumField(quiz?.weightKg, "weightKg");
+
+  const result = useMemo(() => {
+    if (weight.error) return null;
+    try {
+      return proteinNeeds(weight.value);
+    } catch {
+      return null;
+    }
+  }, [weight.value, weight.error]);
+
+  const rows = result
+    ? [
+        {
+          label: "Sedentary",
+          detail: "0.8 g/kg — the minimum to avoid deficiency",
+          range: result.sedentary,
+        },
+        {
+          label: "Active",
+          detail: "1.2–1.4 g/kg — training a few days a week",
+          range: result.active,
+        },
+        {
+          label: "Build muscle",
+          detail: "1.6–2.2 g/kg — surplus or recomposition",
+          range: result.buildMuscle,
+        },
+        {
+          label: "Lose fat",
+          detail: "1.8–2.4 g/kg — protects muscle in a deficit",
+          range: result.loseFat,
+        },
+      ]
+    : [];
+
+  return (
+    <Panel
+      title="Protein Intake Calculator"
+      intro="How much protein you actually need depends on what you're asking your body to do. These targets scale the evidence-based per-kilogram intakes to your weight — the losing-fat target runs highest, because protein is what stands between a cut and muscle loss."
+    >
+      <Field label="Weight" unit="kg" field={weight} testId="pro-weight" hint="e.g. 75" />
+      {result ? (
+        <ResultShell
+          badge="Daily protein"
+          note="Spread it across 3-4 meals — muscle protein synthesis responds best to roughly 0.4 g/kg per meal. Whole foods first; a shake is just a convenient way to close the gap."
+        >
+          <div className="space-y-2 text-left">
+            {rows.map((r) => (
+              <div
+                key={r.label}
+                className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-ink-3/70 px-4 py-3"
+              >
+                <span>
+                  <span className="block text-sm font-semibold text-bone">
+                    {r.label}
+                  </span>
+                  <span className="block text-xs text-muted">{r.detail}</span>
+                </span>
+                <span className="whitespace-nowrap text-lg font-bold text-bone">
+                  {r.range.min === r.range.max
+                    ? `${r.range.min}`
+                    : `${r.range.min}–${r.range.max}`}
+                  <span className="text-sm font-medium text-muted"> g/day</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </ResultShell>
+      ) : (
+        <p className="rounded-2xl border border-dashed border-white/15 p-6 text-center text-sm text-muted">
+          Enter your weight to see your protein targets.
+        </p>
+      )}
+      <Meaning>
+        Protein is the highest-leverage number in this whole toolbox for
+        looks: it preserves the muscle that keeps your jawline and frame
+        defined while fat comes off, and it supports skin, hair, and nail
+        quality. When in doubt, aim for the build-muscle band.
+      </Meaning>
+      <FormulaNote>
+        Sedentary 0.8 g/kg (the RDA); active 1.2–1.4 g/kg; muscle gain
+        1.6–2.2 g/kg; fat loss 1.8–2.4 g/kg — the ranges used in ISSN and
+        Morton et al. position stands.
+      </FormulaNote>
+    </Panel>
+  );
+}
+
 // ---------------------------------------------------------------- page ----
 
 export default function CalculatorsPage() {
   const { quiz } = useApp();
-  const [tab, setTab] = useState<TabId>("bmi");
+  const [tab, setTab] = useState<TabId>("calorie");
   const [bodyFatSeed, setBodyFatSeed] = useState("");
 
   return (
@@ -666,10 +1377,12 @@ export default function CalculatorsPage() {
             The <span className="gold-text">Toolbox</span>
           </h1>
           <p className="mt-4 max-w-2xl text-base leading-relaxed text-muted">
-            Four free, evidence-based calculators for your climb: BMI, body fat
-            percentage, FFMI, and daily calories with macros. They run on the
-            same formulas coaches and researchers use — no sign-up, no
-            guesswork. Your quiz answers prefill the inputs automatically.
+            Eight free, evidence-based calculators for your climb: daily
+            calories with goal targets, BMI, body fat percentage, FFMI, TDEE
+            with macros, ideal weight, lean body mass, and protein intake.
+            They run on the same formulas coaches and researchers use — no
+            sign-up, no guesswork. Your quiz answers prefill the inputs
+            automatically.
           </p>
         </header>
       </Reveal>
@@ -704,12 +1417,22 @@ export default function CalculatorsPage() {
 
       {/* Panels */}
       <div className="mt-8" key={tab} role="tabpanel">
+        {tab === "calorie" && (
+          <CaloriePanel
+            quiz={quiz}
+            bodyFatSeed={bodyFatSeed}
+            onGoBodyFat={() => setTab("bodyfat")}
+          />
+        )}
         {tab === "bmi" && <BmiPanel quiz={quiz} />}
         {tab === "bodyfat" && (
           <BodyFatPanel quiz={quiz} onValidResult={setBodyFatSeed} />
         )}
         {tab === "ffmi" && <FfmiPanel quiz={quiz} bodyFatSeed={bodyFatSeed} />}
         {tab === "tdee" && <TdeePanel quiz={quiz} />}
+        {tab === "ideal" && <IdealWeightPanel quiz={quiz} />}
+        {tab === "leanmass" && <LeanMassPanel quiz={quiz} />}
+        {tab === "protein" && <ProteinPanel quiz={quiz} />}
       </div>
 
       {/* Disclaimer */}

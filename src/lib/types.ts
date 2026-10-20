@@ -25,6 +25,8 @@ export interface QuizAnswers {
   dietQuality: string; // e.g. "poor", "average", "good"
   exerciseFreq: string; // e.g. "never", "1-2x", "3-4x", "5+x"
   motivation: string;
+  /** How soon the user wants results: 4 | 8 | 12 weeks, or 0 = no deadline. */
+  timelineWeeks: 4 | 8 | 12 | 0;
 }
 
 export interface SkinMetrics {
@@ -79,10 +81,47 @@ export interface PriorityFix {
   effort: "low" | "medium" | "high";
 }
 
+/**
+ * The temptation hook: what is REALISTICALLY achievable by the user's chosen
+ * horizon, derived from their own numbers (fat math, skin readings,
+ * milestones). No miracles, no guaranteed outcomes, no fixed short-horizon
+ * transformation promises.
+ */
+export interface PlanProjection {
+  horizonWeeks: number; // the user's timeline (4 | 8 | 12; no deadline → 12)
+  outcomes: string[]; // 3-5 realistic, data-derived outcomes
+  note: string; // honest framing — achievable with consistency, not guaranteed
+}
+
+/**
+ * Deterministic Vitals layer — present in EVERY plan, never AI-generated.
+ * Universal looksmaxxing foundations, parameterised only by the user's own
+ * numbers (hydration from bodyweight, SPF from sun exposure, step target
+ * from current activity). Built by lib/kb.ts `buildFoundations` and merged
+ * into premium AI plans unchanged.
+ */
+export interface PlanFoundations {
+  sleep: {
+    target: string; // e.g. "7–9h · fixed wake time, 7 days a week"
+    rules: string[]; // terse directives, personalised to their current sleep
+  };
+  hydration: {
+    dailyMl: number; // ~35 ml per kg bodyweight
+    detail: string;
+  };
+  movement: {
+    stepTarget: string; // e.g. "10,000 steps/day"
+    cues: string[]; // posture / presence cues
+  };
+  nonNegotiables: string[]; // daily SPF, pillowcase, hands-off-face, oral care…
+}
+
 export interface AscendPlan {
   headline: string;
   scoreSummary: string;
   priorityFixes: PriorityFix[];
+  projection: PlanProjection;
+  foundations: PlanFoundations;
   sections: PlanSection[];
   disclaimers: string[];
 }
@@ -90,6 +129,14 @@ export interface AscendPlan {
 export interface PlanRequest {
   measurements: FaceMeasurements | null;
   quiz: QuizAnswers;
+  /**
+   * Generation tier: "free" = single standard pass; "premium" = standard
+   * pass + one deep-curation refinement pass. Optional; defaults to "free".
+   * v1: client-sent (the plan page always sends "free" — there is no auth).
+   * v2: MUST be derived server-side from the subscription entitlement;
+   * never trust the client-sent value.
+   */
+  tier?: "free" | "premium";
 }
 
 export interface PlanResponse {

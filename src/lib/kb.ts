@@ -6,6 +6,8 @@
 import type {
   AscendPlan,
   FaceMeasurements,
+  PlanFoundations,
+  PlanProjection,
   PlanSection,
   PlanTask,
   PlanWeek,
@@ -328,8 +330,8 @@ function headlineFor(quiz: QuizAnswers): string {
     .map((b) => b.charAt(0).toUpperCase() + b.slice(1))
     .join(" and ");
   return pretty
-    ? `Your 4-Week Ascend Plan: ${pretty}`
-    : "Your 4-Week Ascend Plan";
+    ? `Your Phase 1 Ascend Protocol: ${pretty}`
+    : "Your Phase 1 Ascend Protocol";
 }
 
 function scoreSummaryFor(
@@ -1676,8 +1678,163 @@ export function buildStubPlan(
     headline: headlineFor(quiz),
     scoreSummary: scoreSummaryFor(measurements, quiz),
     priorityFixes: priorityFixesFor(measurements, quiz),
+    projection: buildProjection(measurements, quiz),
+    foundations: buildFoundations(measurements, quiz),
     sections: ordered,
     disclaimers: [...STUB_DISCLAIMERS],
+  };
+}
+
+/**
+ * Deterministic Vitals layer — the same foundations in EVERY plan (free
+ * template and premium AI alike), never AI-generated. Universal
+ * looksmaxxing vitals, parameterised only by the user's own numbers:
+ * hydration from bodyweight, sleep ramp from their current band, step
+ * target from their activity, SPF from their sun exposure, pillowcase
+ * cadence from their breakout count.
+ */
+export function buildFoundations(
+  measurements: FaceMeasurements | null,
+  quiz: QuizAnswers
+): PlanFoundations {
+  // Hydration: ~35 ml per kg bodyweight, rounded to the nearest 50 ml.
+  const weightKg = quiz.weightKg ?? 70;
+  const dailyMl = Math.round((weightKg * 35) / 50) * 50;
+
+  // Sleep: fixed structure for everyone; the ramp line reflects their
+  // current sleep band. Framed as looks — repair happens at night.
+  const sleepRules: string[] = [];
+  if (quiz.sleepHours === "<6" || quiz.sleepHours === "6-7") {
+    sleepRules.push(
+      `You run on ${quiz.sleepHours}h now — move bedtime 20 minutes earlier every 4 days until you clear 7h`
+    );
+  } else {
+    sleepRules.push(
+      "Protect the full window — skin repair and growth hormone peak in the first sleep cycles"
+    );
+  }
+  sleepRules.push(
+    "Fixed wake time, 7 days a week — the anchor everything else hangs on",
+    "Screens off for the last 60 minutes — charge the phone outside the bedroom",
+    "Cool, dark room: blackout curtains, no standby LEDs in line of sight"
+  );
+
+  // Movement: step target scaled to their current activity level.
+  const sedentary =
+    quiz.exerciseFreq === "never" || quiz.exerciseFreq === "1-2x";
+  const stepTarget = sedentary ? "8,000 steps/day" : "10,000 steps/day";
+  const cues = [
+    sedentary
+      ? "Week 1 floor is 6,000 steps — hit it daily before chasing 8,000"
+      : "Two 10-minute walks after meals count toward the target",
+    "Posture default: shoulders down and back, chin level, ribs stacked over hips",
+    "On camera: chin slightly down, jaw pushed 2 cm forward — kills the double-chin shadow",
+  ];
+
+  // Non-negotiables: the daily floor, tightened by their signals.
+  const spf =
+    quiz.sunExposure === "outdoor"
+      ? "SPF 50+ PA++++ every morning — two finger-lengths, reapply every 2–3h outdoors"
+      : quiz.sunExposure === "desk"
+        ? "SPF 30+ every morning — one application covers a desk day"
+        : "SPF 50+ PA++++ every morning — two finger-lengths: face, ears, neck";
+  const activeBreakouts =
+    !!measurements?.landmarksDetected && measurements.skin.blemishCount >= 8;
+  const nonNegotiables = [
+    spf,
+    activeBreakouts
+      ? "Pillowcase swap every 2 days while breakouts are active — oil and bacteria reset nightly"
+      : "Pillowcase change 2×/week — midweek and weekend",
+    "Hands off your face — no touching, picking, or leaning on palms",
+    "Oral care 2×/day: brush, floss, tongue scrape — breath and teeth read on camera",
+    "Grooming floor: nails trimmed, brows tidy, lips never cracked (balm in pocket)",
+  ];
+
+  return {
+    sleep: {
+      target: "7–9h · fixed wake time, 7 days a week",
+      rules: sleepRules,
+    },
+    hydration: {
+      dailyMl,
+      detail: `≈35 ml per kg of your bodyweight. Front-load half (${Math.round(dailyMl / 100) * 50} ml) before noon; keep the bottle in sight, not in a bag.`,
+    },
+    movement: { stepTarget, cues },
+    nonNegotiables,
+  };
+}
+
+/**
+ * Stub projection: realistic, data-derived outcomes for the user's horizon.
+ * Same honesty rules as the LLM path — fat math from their own calorie
+ * numbers (deficit × days ÷ 7700), skin shifts as ranges, habit milestones.
+ * No miracles, no guarantees, no fixed-horizon transformation promises.
+ */
+function buildProjection(
+  measurements: FaceMeasurements | null,
+  quiz: QuizAnswers
+): PlanProjection {
+  const horizonWeeks =
+    quiz.timelineWeeks && quiz.timelineWeeks > 0 ? quiz.timelineWeeks : 12;
+  const outcomes: string[] = [];
+
+  const tdee = estimateTdee(quiz);
+  if (quiz.bodyGoal === "cut") {
+    const kg = ((500 * 7 * horizonWeeks) / 7700).toFixed(1);
+    outcomes.push(
+      tdee
+        ? `≈${kg} kg fat loss at a 500 kcal/day deficit from your ${tdee} kcal maintenance`
+        : `≈${kg} kg fat loss at a steady 500 kcal/day deficit`
+    );
+  } else if (quiz.bodyGoal === "build") {
+    const kg = ((300 * 7 * horizonWeeks) / 7700 / 2).toFixed(1);
+    outcomes.push(
+      `≈${kg} kg of lean-gain potential at a +300 kcal/day surplus with progressive training`
+    );
+  } else {
+    outcomes.push(
+      "Weight held steady while the measurements move — recomposition, not scale change"
+    );
+  }
+
+  if (measurements && measurements.landmarksDetected) {
+    const s = measurements.skin;
+    if (s.blemishCount >= 8) {
+      outcomes.push(
+        `Blemish count trending down from ${s.blemishCount} — visibly fewer active breakouts by week ${Math.min(4, horizonWeeks)}`
+      );
+    } else if (s.redness >= 55) {
+      outcomes.push(
+        `Redness (${Math.round(s.redness)}/100) visibly calmer — most of the shift lands by weeks 3–4`
+      );
+    } else if (s.texture >= 55) {
+      outcomes.push(
+        `Texture (${Math.round(s.texture)}/100) visibly smoother — on camera and to the touch by week ${Math.min(4, horizonWeeks)}`
+      );
+    } else {
+      outcomes.push(
+        "Skin barrier stable and consistent — the base every later phase builds on"
+      );
+    }
+  }
+
+  outcomes.push(
+    quiz.routineLevel === "advanced"
+      ? "Actives sequenced without an irritation setback — logged daily"
+      : "AM/PM routine on autopilot by day 14 — 7 straight days without a missed morning"
+  );
+
+  const top = quiz.goalRanking[0] ?? quiz.goals[0];
+  if (top) {
+    outcomes.push(
+      `First measured progress on your #1 goal (${top}) — checked at your week-${Math.min(4, horizonWeeks)} re-scan`
+    );
+  }
+
+  return {
+    horizonWeeks,
+    outcomes: outcomes.slice(0, 5),
+    note: "Realistically achievable with consistent adherence — not a guarantee. This is Phase 1 of your 12-week protocol; Phases 2 and 3 build on these numbers.",
   };
 }
 

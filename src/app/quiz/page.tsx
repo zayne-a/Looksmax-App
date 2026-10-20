@@ -5,9 +5,13 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useApp } from "@/lib/store";
 import type { QuizAnswers } from "@/lib/types";
+import { IMAGES } from "@/lib/images";
 import { Button, Card, ProgressBar } from "@/components/ui";
 
-const TOTAL_STEPS = 12;
+const TOTAL_STEPS = 14;
+
+/** Non-input theater step right after gender: the mission/promise screen. */
+const MISSION_STEP = 2;
 
 const FOCUS_OPTIONS = [
   { key: "skin", label: "Skin" },
@@ -85,6 +89,13 @@ const DIET_OPTIONS = [
 const EXERCISE_OPTIONS = ["never", "1-2x", "3-4x", "5+x"] as const;
 const BODY_GOALS = ["cut", "maintain", "build"] as const;
 
+const TIMELINE_OPTIONS = [
+  { weeks: 4, title: "4 weeks", sub: "An event is coming — move fast" },
+  { weeks: 8, title: "8 weeks", sub: "Steady, serious progress" },
+  { weeks: 12, title: "12 weeks", sub: "The full transformation" },
+  { weeks: 0, title: "No deadline", sub: "Build the habit, no clock" },
+] as const;
+
 const MOTIVATIONS = [
   "Look better in photos",
   "Boost everyday confidence",
@@ -95,6 +106,7 @@ const MOTIVATIONS = [
 const COACH_LINES = [
   "Let's set the rules — your scale, your call.",
   "This tunes your reference ranges.",
+  "Before we build — one thing to know.",
   "Quick one — this shapes your plan's priorities.",
   "Pick every area you want to level up.",
   "Order what matters most — your plan follows this list.",
@@ -104,7 +116,8 @@ const COACH_LINES = [
   "This tunes your calorie and training targets.",
   "Small habits, big face gains.",
   "This keeps your product list realistic.",
-  "Last one — what's driving you?",
+  "Almost there — this one's for the hard days.",
+  "Last one — this paces your whole protocol.",
 ];
 
 const FOCUS_TO_GOAL: Record<string, string> = {
@@ -196,6 +209,165 @@ function OptionCard({
   );
 }
 
+/** Gender step card: large horizontal card, model portrait on the left
+ *  (circular crop for male, rounded-rectangle for female), title + subline,
+ *  gold treatment when selected. */
+function GenderCard({
+  selected,
+  onSelect,
+  img,
+  imgShape,
+  imgAlt,
+  title,
+  sub,
+}: {
+  selected: boolean;
+  onSelect: () => void;
+  img: string;
+  imgShape: string;
+  imgAlt: string;
+  title: string;
+  sub: string;
+}) {
+  return (
+    <motion.button
+      type="button"
+      onClick={onSelect}
+      whileTap={{ scale: 0.98 }}
+      aria-pressed={selected}
+      className={`flex w-full items-center gap-4 rounded-3xl border p-4 text-left transition-all duration-200 sm:gap-5 sm:p-5 ${
+        selected
+          ? "border-gold bg-gold/10 shadow-[0_0_36px_-8px_rgba(227,185,78,0.6)]"
+          : "border-white/10 bg-ink-2 hover:border-gold/40 hover:bg-ink-3"
+      }`}
+    >
+      <span
+        className={`relative shrink-0 overflow-hidden ring-1 ring-white/15 ${imgShape}`}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={img}
+          alt={imgAlt}
+          className="h-full w-full object-cover"
+          loading="eager"
+        />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-lg font-bold text-bone">{title}</span>
+        <span className="mt-0.5 block text-sm leading-snug text-muted">
+          {sub}
+        </span>
+      </span>
+      {selected && (
+        <svg
+          width="22"
+          height="22"
+          viewBox="0 0 18 18"
+          fill="none"
+          aria-hidden
+          className="shrink-0"
+        >
+          <circle cx="9" cy="9" r="8" fill="#e3b94e" />
+          <path
+            d="M5.8 9.3l2.2 2.2 4.2-4.8"
+            stroke="#12100a"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
+    </motion.button>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Mission interstitial — pure theater, no input collected. Full-      */
+/* screen near-black; the three lines stagger in, then the gold        */
+/* Continue pill fades in toward the bottom. Counts as a normal step   */
+/* in the progress bar.                                                */
+/* ------------------------------------------------------------------ */
+
+const MISSION_EASE = [0.22, 1, 0.36, 1] as const;
+
+function MissionScreen({
+  step,
+  onContinue,
+  onBack,
+}: {
+  step: number;
+  onContinue: () => void;
+  onBack: () => void;
+}) {
+  return (
+    <div className="relative mx-auto flex min-h-[88vh] w-full max-w-xl flex-col px-4 py-8 sm:px-6 sm:py-12">
+      {/* Soft gold aura behind the promise line */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 top-1/2 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full bg-gold/10 blur-[100px]"
+      />
+
+      <div className="relative">
+        <div className="mb-2 flex items-center justify-between">
+          <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-gold">
+            Your profile
+          </p>
+          <p className="text-xs font-semibold text-muted tabular-nums">
+            {step + 1} / {TOTAL_STEPS}
+          </p>
+        </div>
+        <ProgressBar percent={((step + 1) / TOTAL_STEPS) * 100} />
+      </div>
+
+      <div className="relative flex flex-1 flex-col items-center justify-center py-14 text-center">
+        <motion.p
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25, duration: 0.7, ease: MISSION_EASE }}
+          className="text-lg font-medium text-bone/85 sm:text-xl"
+        >
+          Our mission is simple.
+        </motion.p>
+        <motion.p
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 1.05, duration: 0.7, ease: MISSION_EASE }}
+          className="mt-3 text-lg font-medium text-muted sm:text-xl"
+        >
+          To help you become…
+        </motion.p>
+        <motion.h2
+          initial={{ opacity: 0, y: 22 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 1.85, duration: 0.85, ease: MISSION_EASE }}
+          className="font-display mt-5 max-w-md text-4xl font-extrabold leading-[1.12] tracking-tight text-bone sm:text-5xl"
+        >
+          the <span className="gold-text">most attractive</span> version of
+          yourself.
+        </motion.h2>
+      </div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 2.7, duration: 0.7, ease: MISSION_EASE }}
+        className="relative mx-auto w-full max-w-sm"
+      >
+        <Button onClick={onContinue} className="w-full px-8 py-4 text-base">
+          Continue
+        </Button>
+        <button
+          type="button"
+          onClick={onBack}
+          className="mt-4 block w-full text-center text-xs font-medium text-muted/70 transition-colors hover:text-muted"
+        >
+          Back
+        </button>
+      </motion.div>
+    </div>
+  );
+}
+
 export default function QuizPage() {
   const router = useRouter();
   const { setQuiz } = useApp();
@@ -223,6 +395,8 @@ export default function QuizPage() {
   const [budgetTier, setBudgetTier] =
     useState<QuizAnswers["budgetTier"]>("unknown");
   const [motivation, setMotivation] = useState<string | null>(null);
+  const [timelineWeeks, setTimelineWeeks] =
+    useState<QuizAnswers["timelineWeeks"] | null>(null);
 
   const toggle = (arr: string[], key: string) =>
     arr.includes(key) ? arr.filter((k) => k !== key) : [...arr, key];
@@ -252,30 +426,34 @@ export default function QuizPage() {
       case 1:
         return gender !== null;
       case 2:
-        return ageRange !== null;
+        return true; // mission interstitial — no input to validate
       case 3:
-        return focus.length > 0;
+        return ageRange !== null;
       case 4:
-        return goalRanking.length > 0;
+        return focus.length > 0;
       case 5:
-        return true; // slider always has a value
+        return goalRanking.length > 0;
       case 6:
-        return skinType !== "unknown";
+        return true; // slider always has a value
       case 7:
-        return routineLevel !== "unknown";
+        return skinType !== "unknown";
       case 8:
-        return bodyGoal !== "unknown";
+        return routineLevel !== "unknown";
       case 9:
+        return bodyGoal !== "unknown";
+      case 10:
         return (
           sleepHours !== null &&
           dietQuality !== null &&
           exerciseFreq !== null &&
           sunExposure !== "unknown"
         );
-      case 10:
-        return budgetTier !== "unknown";
       case 11:
+        return budgetTier !== "unknown";
+      case 12:
         return motivation !== null;
+      case 13:
+        return timelineWeeks !== null;
       default:
         return false;
     }
@@ -310,6 +488,7 @@ export default function QuizPage() {
       dietQuality: dietQuality!,
       exerciseFreq: exerciseFreq!,
       motivation: motivation!,
+      timelineWeeks: timelineWeeks!,
       ...(Number.isFinite(heightNum) && heightNum! > 0 ? { heightCm: heightNum } : {}),
       ...(Number.isFinite(weightNum) && weightNum! > 0 ? { weightKg: weightNum } : {}),
     };
@@ -361,19 +540,27 @@ export default function QuizPage() {
               title="Which best describes you?"
               sub="This tunes your reference ranges so your numbers mean something."
             />
-            <OptionCard
+            <GenderCard
               selected={gender === "male"}
               onSelect={() => setGender("male")}
+              img={IMAGES.genderMale}
+              imgShape="h-20 w-20 rounded-full"
+              imgAlt="Male model portrait"
               title="Male"
+              sub="Show me the best plan."
             />
-            <OptionCard
+            <GenderCard
               selected={gender === "female"}
               onSelect={() => setGender("female")}
+              img={IMAGES.genderFemale}
+              imgShape="h-20 w-16 rounded-2xl"
+              imgAlt="Female model portrait"
               title="Female"
+              sub="Personalize my glow-up."
             />
           </div>
         );
-      case 2:
+      case 3:
         return (
           <div className="space-y-4">
             <StepHeading title="Your age range" />
@@ -396,7 +583,7 @@ export default function QuizPage() {
             </div>
           </div>
         );
-      case 3:
+      case 4:
         return (
           <div className="space-y-4">
             <StepHeading
@@ -416,7 +603,7 @@ export default function QuizPage() {
             </div>
           </div>
         );
-      case 4: {
+      case 5: {
         const selectedFocus = FOCUS_OPTIONS.filter((f) => focus.includes(f.key));
         return (
           <div className="space-y-4">
@@ -461,7 +648,7 @@ export default function QuizPage() {
           </div>
         );
       }
-      case 5:
+      case 6:
         return (
           <div className="space-y-6">
             <StepHeading
@@ -504,7 +691,7 @@ export default function QuizPage() {
             </div>
           </div>
         );
-      case 6:
+      case 7:
         return (
           <div className="space-y-6">
             <StepHeading title="Your skin" sub="Your skin protocol is built on this." />
@@ -540,7 +727,7 @@ export default function QuizPage() {
             </div>
           </div>
         );
-      case 7:
+      case 8:
         return (
           <div className="space-y-3">
             <StepHeading
@@ -560,7 +747,7 @@ export default function QuizPage() {
             </div>
           </div>
         );
-      case 8:
+      case 9:
         return (
           <div className="space-y-6">
             <StepHeading
@@ -626,7 +813,7 @@ export default function QuizPage() {
             </p>
           </div>
         );
-      case 9:
+      case 10:
         return (
           <div className="space-y-6">
             <StepHeading
@@ -695,7 +882,7 @@ export default function QuizPage() {
             </div>
           </div>
         );
-      case 10:
+      case 11:
         return (
           <div className="space-y-3">
             <StepHeading
@@ -715,7 +902,7 @@ export default function QuizPage() {
             </div>
           </div>
         );
-      case 11:
+      case 12:
         return (
           <div className="space-y-3">
             <StepHeading
@@ -734,10 +921,38 @@ export default function QuizPage() {
             </div>
           </div>
         );
+      case 13:
+        return (
+          <div className="space-y-3">
+            <StepHeading
+              title="How soon do you want to see results?"
+              sub="Your projection and every checkpoint are paced to this horizon — realistic, not promised."
+            />
+            <div className="space-y-2.5">
+              {TIMELINE_OPTIONS.map((t) => (
+                <OptionCard
+                  key={t.weeks}
+                  selected={timelineWeeks === t.weeks}
+                  onSelect={() =>
+                    setTimelineWeeks(t.weeks as QuizAnswers["timelineWeeks"])
+                  }
+                  title={t.title}
+                  sub={t.sub}
+                />
+              ))}
+            </div>
+          </div>
+        );
       default:
         return null;
     }
   };
+
+  // Mission interstitial gets its own full-screen layout (theater, no
+  // card chrome); the standard layout resumes on the next step.
+  if (step === MISSION_STEP) {
+    return <MissionScreen step={step} onContinue={next} onBack={back} />;
+  }
 
   return (
     <div className="mx-auto max-w-xl px-4 py-8 sm:px-6 sm:py-12">

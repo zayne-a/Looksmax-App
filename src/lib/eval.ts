@@ -116,6 +116,7 @@ function quizBase(overrides: Partial<QuizAnswers>): QuizAnswers {
     dietQuality: "average",
     exerciseFreq: "1-2x",
     motivation: "look better",
+    timelineWeeks: 12,
     ...overrides,
   };
 }
