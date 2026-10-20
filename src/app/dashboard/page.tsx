@@ -9,15 +9,24 @@ import { useApp } from "@/lib/store";
 import JourneyRoadmap from "@/components/JourneyRoadmap";
 import WeeklyCheckin from "@/components/WeeklyCheckin";
 import CoachReview from "@/components/CoachReview";
-import { listCheckins, type Checkin } from "@/lib/account";
+import TodayHome from "@/components/TodayHome";
+import TrackCalendar from "@/components/TrackCalendar";
 import { supabaseConfigured } from "@/lib/supabase";
 import {
   deleteMySavedData,
+  listCheckins,
+  listDailyLogs,
   listPlans,
   listScans,
+  saveDailyLog,
+  type Checkin,
+  type DailyLog,
   type SavedPlan,
   type SavedScan,
 } from "@/lib/account";
+import { currentStreak, dayKey } from "@/lib/daily";
+import { computeAchievements } from "@/lib/achievements";
+import Achievements from "@/components/Achievements";
 
 function fmtDate(iso: string): string {
   try {
@@ -45,19 +54,22 @@ export default function DashboardPage() {
   const [scans, setScans] = useState<SavedScan[] | null>(null);
   const [plans, setPlans] = useState<SavedPlan[] | null>(null);
   const [checkins, setCheckins] = useState<Checkin[] | null>(null);
+  const [dailyLogs, setDailyLogs] = useState<DailyLog[]>([]);
   const [confirmingWipe, setConfirmingWipe] = useState(false);
   const [wiped, setWiped] = useState(false);
 
   const load = useCallback(async () => {
     if (!user) return;
-    const [s, p, c] = await Promise.all([
+    const [s, p, c, logs] = await Promise.all([
       listScans(50),
       listPlans(50),
       listCheckins(52),
+      listDailyLogs(92),
     ]);
     setScans(s);
     setPlans(p);
     setCheckins(c);
+    setDailyLogs(logs);
   }, [user]);
 
   useEffect(() => {
@@ -85,9 +97,30 @@ export default function DashboardPage() {
       setScans([]);
       setPlans([]);
       setCheckins([]);
+      setDailyLogs([]);
       setWiped(true);
     }
     setConfirmingWipe(false);
+  };
+
+  /** Today-home writes: merge into today's daily log and reflect it. */
+  const saveToday = async (
+    patch: Partial<{
+      answers: Record<string, string>;
+      habits: Record<string, boolean>;
+      water_ml: number;
+      calories: number | null;
+      weight_kg: number | null;
+    }>
+  ) => {
+    const row = await saveDailyLog(dayKey(), patch);
+    if (row) {
+      setDailyLogs((prev) =>
+        [row, ...prev.filter((l) => l.day !== row.day)].sort((a, b) =>
+          a.day < b.day ? 1 : -1
+        )
+      );
+    }
   };
 
   const onSignOut = async () => {
@@ -142,6 +175,25 @@ export default function DashboardPage() {
     latest?.overall_score != null && previous?.overall_score != null
       ? latest.overall_score - previous.overall_score
       : null;
+  const activeDaysSet = new Set([
+    ...dailyLogs.map((l) => l.day),
+    ...(checkins ?? []).map((c) => dayKey(new Date(c.created_at))),
+    ...(scans ?? []).map((s) => dayKey(new Date(s.created_at))),
+  ]);
+  const firstScan = scans?.[scans.length - 1];
+  const achievements = computeAchievements({
+    scans: scans?.length ?? 0,
+    plans: plans?.length ?? 0,
+    checkins: checkins?.length ?? 0,
+    loggedDays: dailyLogs.length,
+    streak: currentStreak(activeDaysSet),
+    scoreClimbed: Boolean(
+      latest?.overall_score != null &&
+        firstScan?.overall_score != null &&
+        firstScan !== latest &&
+        latest.overall_score > firstScan.overall_score
+    ),
+  });
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 sm:py-16">
@@ -195,6 +247,52 @@ export default function DashboardPage() {
         </Reveal>
       )}
 
+      {/* TODAY HOME — the subscriber's daily interface */}
+      {plans?.[0] &&
+        (isPro ? (
+          <Reveal delay={0.055} className="mt-10">
+            <TodayHome
+              plan={plans[0].plan}
+              quiz={
+                (plans[0].scan_id
+                  ? scans?.find((s) => s.id === plans[0].scan_id)?.quiz
+                  : null) ??
+                latest?.quiz ??
+                null
+              }
+              journeyStart={
+                [...(scans ?? []), ...(plans ?? [])]
+                  .map((x) => x.created_at)
+                  .sort()[0] ?? null
+              }
+              logs={dailyLogs}
+              activeDays={activeDaysSet}
+              onSaveToday={saveToday}
+            />
+          </Reveal>
+        ) : (
+          <Reveal delay={0.055} className="mt-10">
+            <Card>
+              <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-gold">
+                The Today home · Pro
+              </p>
+              <h2 className="font-display mt-2 text-2xl font-extrabold text-bone">
+                Your protocol, as a daily app — not a document
+              </h2>
+              <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted">
+                Subscribers open Ascend to a 🔥 streak, today&apos;s
+                protocol as a tappable checklist, the daily 3 questions,
+                water and calorie trackers set from their own plan, and a
+                calendar of every tracked day. That daily loop is where
+                the 12 weeks actually happen.
+              </p>
+              <Button href="/paywall" className="mt-4 px-7 py-3">
+                Start the journey
+              </Button>
+            </Card>
+          </Reveal>
+        ))}
+
       {/* WEEKLY LOOP — check-in, adaptive adjustments, progress scan */}
       <Reveal delay={0.06} className="mt-10">
         <WeeklyCheckin
@@ -220,6 +318,20 @@ export default function DashboardPage() {
           previousScore={previous?.overall_score ?? null}
           bodyGoal={(latest?.quiz?.bodyGoal as string | undefined) ?? null}
         />
+      </Reveal>
+
+      {/* RECORD CALENDAR — every tracked day */}
+      <Reveal delay={0.075} className="mt-6">
+        <TrackCalendar
+          logs={dailyLogs}
+          checkins={checkins ?? []}
+          scans={scans ?? []}
+        />
+      </Reveal>
+
+      {/* ACHIEVEMENTS — the badge shelf */}
+      <Reveal delay={0.08} className="mt-6">
+        <Achievements items={achievements} />
       </Reveal>
 
       {/* SCORE JOURNEY */}

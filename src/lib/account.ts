@@ -33,6 +33,25 @@ export interface Checkin {
   weight_trend: string;
 }
 
+export interface DailyLog {
+  id: string;
+  day: string; // YYYY-MM-DD (user-local)
+  answers: Record<string, string>;
+  habits: Record<string, boolean>;
+  water_ml: number;
+  calories: number | null;
+  weight_kg: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+}
+
 export interface SavedPlan {
   id: string;
   created_at: string;
@@ -168,6 +187,95 @@ export async function listCheckins(limit = 52): Promise<Checkin[]> {
   return data as Checkin[];
 }
 
+/** Merge a patch into today's (or a given day's) daily log, creating it
+ *  if needed. One row per user per day — the streak/calendar source. */
+export async function saveDailyLog(
+  day: string,
+  patch: Partial<{
+    answers: Record<string, string>;
+    habits: Record<string, boolean>;
+    water_ml: number;
+    calories: number | null;
+    weight_kg: number | null;
+  }>
+): Promise<DailyLog | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const userId = await currentUserId();
+  if (!userId) return null;
+  const { data: existing } = await sb
+    .from("daily_logs")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("day", day)
+    .maybeSingle();
+  const base = (existing as DailyLog | null) ?? {
+    answers: {},
+    habits: {},
+    water_ml: 0,
+    calories: null,
+    weight_kg: null,
+  };
+  const merged: Record<string, unknown> = {
+    user_id: userId,
+    day,
+    answers: { ...base.answers, ...(patch.answers ?? {}) },
+    habits: { ...base.habits, ...(patch.habits ?? {}) },
+    water_ml: patch.water_ml ?? base.water_ml,
+    calories: patch.calories !== undefined ? patch.calories : base.calories,
+    weight_kg: patch.weight_kg !== undefined ? patch.weight_kg : base.weight_kg,
+    updated_at: new Date().toISOString(),
+  };
+  const { data, error } = await sb
+    .from("daily_logs")
+    .upsert(merged, { onConflict: "user_id,day" })
+    .select("*")
+    .single();
+  if (error || !data) return null;
+  return data as DailyLog;
+}
+
+export async function listDailyLogs(limit = 92): Promise<DailyLog[]> {
+  const sb = getSupabase();
+  if (!sb) return [];
+  const userId = await currentUserId();
+  if (!userId) return [];
+  const { data, error } = await sb
+    .from("daily_logs")
+    .select("*")
+    .eq("user_id", userId)
+    .order("day", { ascending: false })
+    .limit(limit);
+  if (error || !data) return [];
+  return data as DailyLog[];
+}
+
+export async function saveChatMessage(
+  role: "user" | "assistant",
+  content: string
+): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) return;
+  const userId = await currentUserId();
+  if (!userId) return;
+  await sb.from("chat_messages").insert({ user_id: userId, role, content });
+}
+
+export async function listChatMessages(limit = 60): Promise<ChatMessage[]> {
+  const sb = getSupabase();
+  if (!sb) return [];
+  const userId = await currentUserId();
+  if (!userId) return [];
+  const { data, error } = await sb
+    .from("chat_messages")
+    .select("id, role, content, created_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error || !data) return [];
+  return (data as ChatMessage[]).reverse();
+}
+
 /** Privacy promise, working version: wipe the user's saved data. */
 export async function deleteMySavedData(): Promise<boolean> {
   const sb = getSupabase();
@@ -178,6 +286,10 @@ export async function deleteMySavedData(): Promise<boolean> {
   if (plans.error) return false;
   const checkins = await sb.from("checkins").delete().eq("user_id", userId);
   if (checkins.error) return false;
+  const logs = await sb.from("daily_logs").delete().eq("user_id", userId);
+  if (logs.error) return false;
+  const chats = await sb.from("chat_messages").delete().eq("user_id", userId);
+  if (chats.error) return false;
   const scans = await sb.from("scans").delete().eq("user_id", userId);
   return !scans.error;
 }

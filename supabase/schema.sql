@@ -49,10 +49,42 @@ create table if not exists public.checkins (
 create index if not exists checkins_user_created_idx
   on public.checkins (user_id, created_at desc);
 
+-- Daily logs: the subscriber home's heartbeat — one row per user per
+-- day (daily coach answers, habit checks, water, calories, weight).
+-- Powers the streak, the calendar, and the trackers.
+create table if not exists public.daily_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  day date not null,
+  answers jsonb not null default '{}'::jsonb,
+  habits jsonb not null default '{}'::jsonb,
+  water_ml int not null default 0,
+  calories int,
+  weight_kg numeric,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (user_id, day)
+);
+create index if not exists daily_logs_user_day_idx
+  on public.daily_logs (user_id, day desc);
+
+-- Coach chat history: gives the AI coach memory across days.
+create table if not exists public.chat_messages (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  role text not null,
+  content text not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists chat_messages_user_created_idx
+  on public.chat_messages (user_id, created_at desc);
+
 alter table public.profiles enable row level security;
 alter table public.scans enable row level security;
 alter table public.plans enable row level security;
 alter table public.checkins enable row level security;
+alter table public.daily_logs enable row level security;
+alter table public.chat_messages enable row level security;
 
 -- profiles: read/update own row (privileged columns protected below)
 drop policy if exists "profiles_select_own" on public.profiles;
@@ -71,6 +103,12 @@ create policy "plans_own" on public.plans
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 drop policy if exists "checkins_own" on public.checkins;
 create policy "checkins_own" on public.checkins
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "daily_logs_own" on public.daily_logs;
+create policy "daily_logs_own" on public.daily_logs
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "chat_messages_own" on public.chat_messages;
+create policy "chat_messages_own" on public.chat_messages
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 -- Auto-create the profile on signup; the admin email gets admin+premium.
