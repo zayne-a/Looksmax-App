@@ -209,9 +209,10 @@ function OptionCard({
   );
 }
 
-/** Gender step card: large horizontal card, model portrait on the left
+/** Gender step card: large horizontal card, big model portrait on the left
  *  (circular crop for male, rounded-rectangle for female), title + subline,
- *  gold treatment when selected. */
+ *  gold treatment when selected. Photo-led layout per the Umax reference
+ *  Zayne picked — portraits themselves are his supplied photos, locked. */
 function GenderCard({
   selected,
   onSelect,
@@ -235,9 +236,9 @@ function GenderCard({
       onClick={onSelect}
       whileTap={{ scale: 0.98 }}
       aria-pressed={selected}
-      className={`flex w-full items-center gap-4 rounded-3xl border p-4 text-left transition-all duration-200 sm:gap-5 sm:p-5 ${
+      className={`flex w-full items-center gap-5 rounded-[2rem] border p-5 text-left transition-all duration-200 sm:gap-6 sm:p-6 ${
         selected
-          ? "border-gold bg-gold/10 shadow-[0_0_36px_-8px_rgba(227,185,78,0.6)]"
+          ? "border-gold bg-gold/10 shadow-[0_0_44px_-8px_rgba(227,185,78,0.65)]"
           : "border-white/10 bg-ink-2 hover:border-gold/40 hover:bg-ink-3"
       }`}
     >
@@ -253,8 +254,10 @@ function GenderCard({
         />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-lg font-bold text-bone">{title}</span>
-        <span className="mt-0.5 block text-sm leading-snug text-muted">
+        <span className="block text-xl font-bold text-bone sm:text-2xl">
+          {title}
+        </span>
+        <span className="mt-1 block text-[15px] leading-snug text-muted">
           {sub}
         </span>
       </span>
@@ -535,7 +538,7 @@ export default function QuizPage() {
         );
       case 1:
         return (
-          <div className="space-y-3">
+          <div className="space-y-4">
             <StepHeading
               title="Which best describes you?"
               sub="This tunes your reference ranges so your numbers mean something."
@@ -544,7 +547,7 @@ export default function QuizPage() {
               selected={gender === "male"}
               onSelect={() => setGender("male")}
               img={IMAGES.genderMale}
-              imgShape="h-20 w-20 rounded-full"
+              imgShape="h-28 w-28 rounded-full sm:h-36 sm:w-36"
               imgAlt="Male model portrait"
               title="Male"
               sub="Show me the best plan."
@@ -553,7 +556,7 @@ export default function QuizPage() {
               selected={gender === "female"}
               onSelect={() => setGender("female")}
               img={IMAGES.genderFemale}
-              imgShape="h-20 w-16 rounded-2xl"
+              imgShape="h-28 w-24 rounded-[1.6rem] sm:h-36 sm:w-32"
               imgAlt="Female model portrait"
               title="Female"
               sub="Personalize my glow-up."
