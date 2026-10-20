@@ -1,4 +1,4 @@
-# The coach lives inside the app shell: the bottom AppNav renders here with Coach active, so moving between Today / Progress / Coach feels like one app, not separate pages.
+# The coach page no longer writes chat rows for API conversations — /api/coach persists both sides server-side (that is what makes its daily cap enforceable). The daily-questions summary message is still client-saved: it never passes through the API.
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -119,7 +119,8 @@ export default function CoachPage() {
       .slice(-10)
       .map((b) => ({ role: b.role, content: b.content }));
     setBubbles((prev) => [...prev, { role: "user", content: text }]);
-    await saveChatMessage("user", text);
+    // No client-side save: /api/coach persists both sides of the
+    // conversation server-side (that's what makes its daily cap real).
     try {
       const sb = getSupabase();
       const session = sb ? (await sb.auth.getSession()).data.session : null;
@@ -141,7 +142,7 @@ export default function CoachPage() {
           ...prev,
           { role: "assistant", content: data.reply as string },
         ]);
-        await saveChatMessage("assistant", data.reply);
+        // Reply already persisted by the API route.
       } else {
         setBubbles((prev) => [
           ...prev,

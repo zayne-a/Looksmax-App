@@ -1,3 +1,4 @@
+# AUDIT FIX: a phase reads "complete" only when its check-ins were actually done; a lapsed window with unmet check-ins stays "locked" — time passing alone earns nothing, per the file’s own rule.
 /**
  * The 12-week journey model (retention core).
  *
@@ -90,7 +91,12 @@ export function phaseState(
 ): PhaseState {
   if (week === null) return phase.n === 1 ? "active" : "locked";
   const phaseEnd = phase.unlockWeek + 3;
-  if (week > phaseEnd) return "complete";
+  // "Complete" must be earned, not aged into (audit fix): a phase whose
+  // check-ins were never done was never unlocked, so a lapsed window
+  // reads "locked", not "complete" — time passing alone earns nothing.
+  if (week > phaseEnd) {
+    return checkins >= phase.checkinsRequired ? "complete" : "locked";
+  }
   if (
     week >= phase.unlockWeek &&
     checkins >= phase.checkinsRequired

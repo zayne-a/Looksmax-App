@@ -1,3 +1,4 @@
+# todaysSections filters out server-side locked placeholder tasks ("Pro protocol step") so a free-tier saved plan can never surface placeholder text as daily protocol.
 import type { AscendPlan, PlanTask, QuizAnswers } from "./types";
 import { tdee, type ActivityLevel } from "./calculators";
 
@@ -149,7 +150,9 @@ export function todaysSections(
         sectionId: s.id as string,
         sectionTitle: s.title,
         focus: wk.focus,
-        tasks: wk.tasks,
+        // Free-tier plans carry server-side locked placeholders past the
+        // free allowance — never surface them as daily protocol tasks.
+        tasks: wk.tasks.filter((t) => t.title !== "Pro protocol step"),
       };
     })
     .filter((x): x is TodaySection => x !== null);

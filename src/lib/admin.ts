@@ -1,18 +1,14 @@
-// Owner test mode — v1 stand-in for real admin access.
-//
-// v1 has NO auth and no accounts, so there is no admin panel to log
-// into. Until v2 lands (auth + Stripe, server-side entitlement), the
-// owner unlocks the full Pro experience on their own device by typing
-// the admin email (or the owner code) into the paywall coupon box.
-// The flag lives in localStorage: device-local and cosmetic only — it
-// is NOT security, and v2 must never trust it. It exists so Zayne can
-// test the paid experience (full protocol, premium AI tier) for free.
-//
-// ADMIN_EMAIL is the canonical admin identity (Zayne, 2026-10-20):
-// it is granted premium features as admin. When v2 auth ships, the
-// server MUST grant admin + premium to any account whose verified
-// email matches ADMIN_EMAIL (same pattern as World Chad Ranking's
-// ADMIN_EMAILS), and this client-side stand-in gets deleted.
+# Header rewritten to v2 reality (audited 2026-10-20): owner test mode is a client-side cosmetic only; server entitlement is account-derived and the APIs ignore client assertions. Real premium testing = sign in with the admin account (signup trigger grants is_admin + is_premium).
+// Owner test mode — a CLIENT-SIDE COSMETIC only (v2 reality, audited
+// 2026-10-20). Accounts and server-side entitlement have shipped: the
+// signup trigger grants is_admin + is_premium to ADMIN_EMAIL, and the
+// plan/coach APIs derive entitlement from the account — they ignore
+// anything the client asserts. Typing the admin email or the owner
+// code into the paywall coupon box sets a localStorage flag that lifts
+// client-side veils on THIS device so the owner can eyeball the Pro
+// layout without signing in. It unlocks nothing on the server: for a
+// real premium test (AI curation, coach), sign in with the admin
+// account. Never treat this flag as security anywhere.
 
 export const ADMIN_EMAIL = "zayneasad7@gmail.com";
 export const OWNER_CODE = "ASCENDOWNER";

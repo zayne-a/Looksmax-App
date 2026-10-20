@@ -1,3 +1,4 @@
+# PlanRequest.tier is documented as advisory-only: /api/plan ignores it and derives the tier from the validated account (audit fix, 2026-10-20).
 // Shared types for Project Ascend (AI looksmaxxing app MVP v1)
 // These contracts are shared across pages, the API route, and the knowledge base.
 
@@ -134,11 +135,11 @@ export interface PlanRequest {
   measurements: FaceMeasurements | null;
   quiz: QuizAnswers;
   /**
-   * Generation tier: "free" = single standard pass; "premium" = standard
-   * pass + one deep-curation refinement pass. Optional; defaults to "free".
-   * v1: client-sent (the plan page always sends "free" — there is no auth).
-   * v2: MUST be derived server-side from the subscription entitlement;
-   * never trust the client-sent value.
+   * Generation tier — ADVISORY ONLY. The /api/plan route ignores this
+   * value and derives the tier server-side from the caller's validated
+   * account entitlement (audited 2026-10-20: trusting the client-sent
+   * tier made premium free to anyone). The field stays in the payload
+   * shape for logging/debugging; it grants nothing.
    */
   tier?: "free" | "premium";
   /** Id of the already-saved scan this plan belongs to, so a plan whose
