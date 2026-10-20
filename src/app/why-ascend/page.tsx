@@ -1,3 +1,4 @@
+# Claims corrected to match the shipped product (audit, 2026-10-20): weekly check-ins + Coach Review show "With account" in the Free column instead of Pro-only, since signed-in free users get them as shipped. The extra-scan comparison line keeps its wording and gains the * tying it to the store-listing footnote.
 import Link from "next/link";
 import { Button, Card, Eyebrow, SectionHeading } from "@/components/ui";
 import { Reveal } from "@/components/motion";
@@ -32,8 +33,8 @@ const FREE_VS_PRO: [string, string, string][] = [
   ["AI Coach with memory of your plan", "—", "✓"],
   ["Daily 3 questions + Today home", "—", "✓"],
   ["Streak, trackers & record calendar", "—", "✓"],
-  ["Weekly check-ins that adjust your plan", "—", "✓"],
-  ["Weekly Coach Review", "—", "✓"],
+  ["Weekly check-ins that adjust your plan", "With account", "✓"],
+  ["Weekly Coach Review", "With account", "✓"],
   ["Phases 2–3, generated from your progress", "—", "✓"],
 ];
 
@@ -144,8 +145,8 @@ export default function WorthItPage() {
             $29.99 a year is $0.58 a week.
           </p>
           <p className="mx-auto mt-3 max-w-lg text-sm leading-relaxed text-muted">
-            Less than the other app charges for a single extra scan — for a
-            coach, a protocol that adapts weekly, and a system that keeps
+            Less than the other app charges for a single extra scan* — for
+            a coach, a protocol that adapts weekly, and a system that keeps
             you honest for 12 weeks. Monthly and Yearly start with a 3-day
             free trial. Cancel anytime, in one tap, no traps.
           </p>

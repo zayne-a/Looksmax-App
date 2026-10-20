@@ -1,3 +1,4 @@
+# Privacy/Terms links now point at the real /privacy and /terms pages instead of "#" (audit fix).
 "use client";
 
 import Link from "next/link";
@@ -17,10 +18,10 @@ export default function Footer() {
           Not medical advice. For aesthetic guidance only.
         </p>
         <div className="mt-6 flex flex-wrap items-center gap-5 text-sm text-muted">
-          <Link href="#" className="transition hover:text-bone">
+          <Link href="/privacy" className="transition hover:text-bone">
             Privacy
           </Link>
-          <Link href="#" className="transition hover:text-bone">
+          <Link href="/terms" className="transition hover:text-bone">
             Terms
           </Link>
           <Link href="/paywall" className="transition hover:text-bone">

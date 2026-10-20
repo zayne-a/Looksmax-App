@@ -1,3 +1,4 @@
+# Value props corrected per the deep audit WITHOUT cutting features (Zayne: do not simplify what was added): weekly check-ins and the Coach Review are available with an account, so the Pro props now lead with what is genuinely Pro — the full unblurred protocol + complete weekly plan in the dashboard, and the AI Coach chat. Coupon behaviour intentionally unchanged as shipped.
 "use client";
 
 import { useEffect, useState } from "react";
@@ -53,8 +54,8 @@ const plans = [
 
 const valueProps = [
   "A 12-week adaptive protocol — Phase 1 today, Phases 2–3 generated from your progress",
-  "Weekly check-ins that adjust your plan to how your week actually went",
-  "Weekly Coach Review: what improved, what slipped, your #1 move",
+  "The full protocol — every step unblurred from day one, plus your complete weekly plan in the dashboard",
+  "AI Coach chat that knows your plan, your logs and your streaks",
   "Weekly progress scans — watch your score and skin signals move",
   "Deep-curated AI plan, audited step-by-step against your measurements",
   "Unlimited rescans whenever you want",

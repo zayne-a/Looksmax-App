@@ -1,3 +1,4 @@
+# Gate comment updated to v2 reality: /api/plan truncates free plans server-side, so the blur below veils placeholders, not shipped content.
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -473,12 +474,12 @@ function BuildingScreen({
 /* ------------------------------------------------------------------ */
 /* Protocol rendering + teaser gate                                    */
 /*                                                                     */
-/* v1: this gate is PRESENTATIONAL ONLY — there is no auth yet, so     */
-/* locked weeks are blurred client-side while their content still      */
-/* ships in the plan payload. v2: replace FREE_TASKS_PER_SECTION       */
-/* gating with a real entitlement check (active subscription derived   */
-/* server-side) and stop sending locked task content to                */
-/* non-subscribers at all.                                             */
+/* v2 (audited 2026-10-20): the gate is REAL, not presentational.      */
+/* /api/plan derives the tier from the caller's account server-side    */
+/* and truncates free plans before responding — past the free           */
+/* allowance, task content is replaced with locked placeholders on     */
+/* the server, so nothing real ships behind this blur. The split        */
+/* below only decides what renders visible vs veiled.                  */
 /* ------------------------------------------------------------------ */
 
 function LockIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
