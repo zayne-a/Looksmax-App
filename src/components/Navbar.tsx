@@ -6,6 +6,7 @@ const links = [
   { href: "/#how-it-works", label: "How it works" },
   { href: "/calculators", label: "Toolbox" },
   { href: "/coach", label: "Coach" },
+  { href: "/worth-it", label: "Why Ascend" },
   { href: "/paywall", label: "Pricing" },
 ];
 
