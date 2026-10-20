@@ -1,0 +1,98 @@
+// Shared types for Project Ascend (AI looksmaxxing app MVP v1)
+// These contracts are shared across pages, the API route, and the knowledge base.
+
+export type AgeRange = "18-24" | "25-34" | "35-44" | "45+";
+
+export interface QuizAnswers {
+  ratingStyle: "psl" | "standard";
+  gender: "male" | "female";
+  ageRange: "18-24" | "25-34" | "35-44" | "45+";
+  focus: string[]; // improvement areas, e.g. "skin", "jawline", "hairstyle"
+  goalRanking: string[]; // top goals ranked 1-3, drives plan ordering
+  selfRating: number; // 1-10
+  goals: string[]; // e.g. "clearer skin", "leaner face"
+  skinType: "oily" | "dry" | "combination" | "sensitive" | "normal" | "unknown";
+  skinConcerns: string[];
+  routineLevel: "none" | "basic" | "advanced" | "unknown"; // current skincare routine level
+  budgetTier: "budget" | "mid" | "premium" | "unknown"; // product budget tier
+  sunExposure: "outdoor" | "mixed" | "desk" | "unknown"; // daily sun/lifestyle exposure
+  bodyGoal: "cut" | "maintain" | "build" | "unknown";
+  heightCm?: number;
+  weightKg?: number;
+  waistCm?: number;
+  neckCm?: number;
+  sleepHours: string; // e.g. "<6", "6-7", "7-8", "8+"
+  dietQuality: string; // e.g. "poor", "average", "good"
+  exerciseFreq: string; // e.g. "never", "1-2x", "3-4x", "5+x"
+  motivation: string;
+}
+
+export interface SkinMetrics {
+  redness: number; // 0-100, higher = more redness
+  texture: number; // 0-100, higher = rougher texture
+  blemishCount: number; // estimated count
+  underEye: number; // 0-100, higher = darker under-eyes
+}
+
+export interface FaceMeasurements {
+  facialThirds: { upper: number; mid: number; lower: number }; // proportions summing to ~1
+  fifths: number[]; // 5 horizontal proportions summing to ~1
+  canthalTiltDeg: number; // degrees, positive = upturned
+  jawToCheekbone: number; // ratio
+  fwhr: number; // facial width-to-height ratio
+  symmetryScore: number; // 0-100
+  goldenRatioScore: number; // 0-100 composite vs ideal proportions
+  overallScore: number; // 0-100 deterministic composite (anchored, never LLM vibes)
+  faceShape: "oval" | "round" | "square" | "oblong" | "heart" | "diamond" | "unknown";
+  skin: SkinMetrics;
+  landmarksDetected: boolean;
+  notes: string[]; // e.g. warnings about photo quality
+}
+
+// ---- Plan JSON (Layer-3 output schema) ----
+
+export interface PlanTask {
+  title: string;
+  detail: string;
+  frequency: string; // e.g. "daily", "3x/week", "once"
+  whyYou: string; // cites the specific measurement/answer that triggered this task
+}
+
+export interface PlanWeek {
+  week: number;
+  focus: string;
+  tasks: PlanTask[];
+}
+
+export interface PlanSection {
+  id: "skin" | "diet" | "exercise" | "style";
+  title: string;
+  summary: string;
+  whyForYou: string; // tied to the user's actual numbers
+  weeks: PlanWeek[];
+}
+
+export interface PriorityFix {
+  title: string;
+  why: string;
+  impact: "high" | "medium" | "low";
+  effort: "low" | "medium" | "high";
+}
+
+export interface AscendPlan {
+  headline: string;
+  scoreSummary: string;
+  priorityFixes: PriorityFix[];
+  sections: PlanSection[];
+  disclaimers: string[];
+}
+
+export interface PlanRequest {
+  measurements: FaceMeasurements | null;
+  quiz: QuizAnswers;
+}
+
+export interface PlanResponse {
+  plan: AscendPlan;
+  source: "gemini" | "stub";
+}

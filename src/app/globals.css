@@ -1,0 +1,264 @@
+@import "tailwindcss";
+
+@theme {
+  /* ---- Ascend palette: near-black ink, champagne gold, warm bone ---- */
+  --color-ink: #0a0a0c;
+  --color-ink-2: #111113;
+  --color-ink-3: #1a1a1e;
+  --color-ink-4: #232329;
+  --color-gold: #e3b94e;
+  --color-gold-soft: #f2d488;
+  --color-gold-deep: #9a7a2e;
+  --color-bone: #f4f1e8;
+  --color-muted: #9b9ba4;
+
+  /* ---- Type pairing: Archivo display + Inter body ---- */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system,
+    sans-serif;
+  --font-display: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+
+  /* ---- Signature shadows ---- */
+  --shadow-glow-sm: 0 0 20px -6px rgba(227, 185, 78, 0.45);
+  --shadow-glow: 0 10px 40px -10px rgba(227, 185, 78, 0.5);
+  --shadow-card: 0 18px 50px -24px rgba(0, 0, 0, 0.8);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-ink);
+  color: var(--color-bone);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+::selection {
+  background: var(--color-gold);
+  color: #0a0a0c;
+}
+
+/* Slim, on-brand scrollbar */
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-ink);
+}
+::-webkit-scrollbar-thumb {
+  background: #2c2c33;
+  border-radius: 8px;
+  border: 2px solid var(--color-ink);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-gold-deep);
+}
+
+/* ---------- Signature utilities ---------- */
+
+/* Champagne-gold gradient text */
+.gold-text {
+  background: linear-gradient(100deg, #f6e0a0 5%, #e3b94e 52%, #c08f34 95%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Premium card: hairline gold border, top-light gradient, deep shadow */
+.card-premium {
+  border: 1px solid rgba(227, 185, 78, 0.14);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0) 42%),
+    var(--color-ink-2);
+  box-shadow: var(--shadow-card);
+}
+
+/* Card hover lift with gold edge glow */
+.lift {
+  transition:
+    transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    border-color 0.25s ease,
+    box-shadow 0.25s ease;
+}
+.lift:hover {
+  transform: translateY(-3px);
+  border-color: rgba(227, 185, 78, 0.45);
+  box-shadow:
+    var(--shadow-card),
+    0 0 28px -8px rgba(227, 185, 78, 0.35);
+}
+
+/* Primary CTA: champagne gradient, ink text, gold glow */
+.btn-gold {
+  background: linear-gradient(180deg, #f2d488 0%, #e3b94e 55%, #d1a43e 100%);
+  color: #0a0a0c;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    var(--shadow-glow-sm);
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.25s ease,
+    filter 0.2s ease;
+}
+.btn-gold:hover {
+  filter: brightness(1.06);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    var(--shadow-glow);
+}
+.btn-gold:active {
+  transform: scale(0.97);
+}
+
+/* Ghost CTA: hairline gold border */
+.btn-ghost {
+  border: 1px solid rgba(227, 185, 78, 0.32);
+  color: var(--color-gold-soft);
+  background: rgba(227, 185, 78, 0.04);
+  transition:
+    transform 0.15s ease,
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+.btn-ghost:hover {
+  border-color: rgba(227, 185, 78, 0.7);
+  background: rgba(227, 185, 78, 0.1);
+}
+.btn-ghost:active {
+  transform: scale(0.97);
+}
+
+/* Premium inputs */
+.input-premium {
+  width: 100%;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--color-ink-3);
+  padding: 0.8rem 1rem;
+  color: var(--color-bone);
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.input-premium::placeholder {
+  color: rgba(155, 155, 164, 0.5);
+}
+.input-premium:focus {
+  outline: none;
+  border-color: rgba(227, 185, 78, 0.65);
+  box-shadow: 0 0 0 3px rgba(227, 185, 78, 0.15);
+}
+
+/* Range slider */
+input[type="range"].slider-gold {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    var(--color-gold) 0%,
+    var(--color-gold) var(--fill, 50%),
+    rgba(255, 255, 255, 0.12) var(--fill, 50%)
+  );
+  outline: none;
+}
+input[type="range"].slider-gold::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 35% 30%, #f6e0a0, #e3b94e 70%);
+  border: 2px solid #0a0a0c;
+  box-shadow: var(--shadow-glow-sm);
+  cursor: pointer;
+}
+input[type="range"].slider-gold::-moz-range-thumb {
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 35% 30%, #f6e0a0, #e3b94e 70%);
+  border: 2px solid #0a0a0c;
+  box-shadow: var(--shadow-glow-sm);
+  cursor: pointer;
+}
+
+/* Skeleton shimmer */
+@keyframes shimmer {
+  0% {
+    background-position: -400px 0;
+  }
+  100% {
+    background-position: 400px 0;
+  }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.04) 25%,
+    rgba(227, 185, 78, 0.09) 50%,
+    rgba(255, 255, 255, 0.04) 75%
+  );
+  background-size: 800px 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+
+/* Soft pulsing dot for "live" states */
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.8);
+  }
+}
+.pulse-dot {
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+/* Thin gold progress fill (quiz / funnel) */
+.quiz-progress {
+  transition: width 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+  box-shadow: 0 0 12px rgba(227, 185, 78, 0.7);
+}
+
+/* Legacy step-enter animation (kept for non-motion fallbacks) */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.rise-in {
+  animation: rise-in 0.4s ease both;
+}
+
+/* Subtle film grain for hero / image treatments */
+.noise::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.06'/%3E%3C/svg%3E");
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
