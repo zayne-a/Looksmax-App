@@ -1,3 +1,4 @@
+# App shell: the dashboard is an app, not a page — a sticky app bar (view switcher + streak/Pro chips) over tabbed views: Today (daily system), Progress (check-in, review, calendar, photos, scans), Records (achievements, shelf, plans), More (account, journey, privacy). Bottom AppNav mirrors the tabs on mobile; /dashboard?tab= deep-links a view (used by the nav on other pages). All gating preserved: Pro sections render only for subscribers inside their tabs.
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
@@ -10,6 +11,7 @@ import JourneyRoadmap from "@/components/JourneyRoadmap";
 import WeeklyCheckin from "@/components/WeeklyCheckin";
 import CoachReview from "@/components/CoachReview";
 import TodayHome from "@/components/TodayHome";
+import AppNav, { type AppTab } from "@/components/AppNav";
 import TrackCalendar from "@/components/TrackCalendar";
 import MeasurementDay from "@/components/MeasurementDay";
 import ProgressPhotos from "@/components/ProgressPhotos";
@@ -67,6 +69,15 @@ export default function DashboardPage() {
   const [checkins, setCheckins] = useState<Checkin[] | null>(null);
   const [dailyLogs, setDailyLogs] = useState<DailyLog[]>([]);
   const [confirmingWipe, setConfirmingWipe] = useState(false);
+  const [tab, setTab] = useState<AppTab>("today");
+
+  // Deep links from the app nav on other pages: /dashboard?tab=progress
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get("tab");
+    if (t === "progress" || t === "records" || t === "more" || t === "today") {
+      setTab(t);
+    }
+  }, []);
   const [wiped, setWiped] = useState(false);
 
   const load = useCallback(async () => {
@@ -232,35 +243,48 @@ export default function DashboardPage() {
   });
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6 sm:py-16">
-      <Reveal>
-        <Eyebrow>Your account</Eyebrow>
-        <h1 className="font-display mt-3 break-all text-3xl font-extrabold tracking-tight sm:text-4xl">
-          {user.email}
-        </h1>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {profile?.is_admin && (
-            <span className="rounded-full border border-gold/50 bg-gold/15 px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.14em] text-gold-soft">
-              Admin
+    <div className="mx-auto max-w-4xl px-4 pb-28 pt-2 sm:px-6 sm:pb-12">
+      {/* APP BAR — the shell's status + view switcher */}
+      <div className="sticky top-0 z-30 -mx-4 border-b border-white/10 bg-[#0d0b08]/95 px-4 py-3 backdrop-blur-md sm:-mx-6 sm:px-6">
+        <div className="flex items-center justify-between gap-3">
+          <p className="font-display text-lg font-extrabold tracking-tight text-bone">
+            Ascend{" "}
+            <span className="text-gold">
+              · {tab === "today" ? "Today" : tab === "progress" ? "Progress" : tab === "records" ? "Records" : "More"}
             </span>
-          )}
-          {isPro ? (
-            <span className="rounded-full border border-gold/50 bg-gold/15 px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.14em] text-gold-soft">
-              Ascend Pro — active
+          </p>
+          <div className="flex items-center gap-2">
+            {streakNum > 0 && (
+              <span className="rounded-full border border-gold/40 bg-gold/10 px-3 py-1 text-xs font-extrabold text-gold-soft">
+                🔥 {streakNum}
+              </span>
+            )}
+            <span className={`rounded-full border px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.14em] ${isPro ? "border-gold/50 bg-gold/15 text-gold-soft" : "border-white/15 bg-white/5 text-muted"}`}>
+              {isPro ? "Pro" : "Free"}
             </span>
-          ) : (
-            <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.14em] text-muted">
-              Free plan
-            </span>
-          )}
-          {profile?.created_at && (
-            <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[11px] font-semibold text-muted">
-              Member since {fmtDate(profile.created_at)}
-            </span>
-          )}
+          </div>
         </div>
-      </Reveal>
+        <div className="mt-3 flex gap-1.5">
+          {(["today", "progress", "records", "more"] as AppTab[]).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`rounded-full px-4 py-2 text-sm font-bold capitalize transition ${tab === t ? "bg-gold text-ink" : "border border-white/12 text-muted hover:text-bone"}`}
+            >
+              {t}
+            </button>
+          ))}
+          <Link
+            href="/coach"
+            className="rounded-full border border-gold/40 bg-gold/10 px-4 py-2 text-sm font-bold text-gold-soft transition hover:bg-gold/20"
+          >
+            ✦ Coach
+          </Link>
+        </div>
+      </div>
 
+      {tab === "today" && (
+        <>
       {!isPro && (
         <Reveal delay={0.05} className="mt-8">
           <Card glow>
@@ -288,6 +312,8 @@ export default function DashboardPage() {
         (isPro ? (
           <Reveal delay={0.055} className="mt-10">
             <TodayHome
+              score={latest?.overall_score ?? null}
+              scoreDelta={latestDelta}
               plan={plans[0].plan}
               quiz={
                 (plans[0].scan_id
@@ -337,6 +363,11 @@ export default function DashboardPage() {
           </Reveal>
         ))}
 
+        </>
+      )}
+
+      {tab === "progress" && (
+        <>
       {/* WEEKLY LOOP — check-in, adaptive adjustments, progress scan */}
       <Reveal delay={0.06} className="mt-10">
         <WeeklyCheckin
@@ -378,13 +409,6 @@ export default function DashboardPage() {
         </Reveal>
       )}
 
-      {/* ACHIEVEMENTS — the badge shelf (subscriber interface) */}
-      {isPro && (
-        <Reveal delay={0.08} className="mt-6">
-          <Achievements items={achievements} />
-        </Reveal>
-      )}
-
       {/* MEASUREMENT DAY + PROGRESS PHOTOS + SHELF (subscriber) */}
       {isPro && (
         <>
@@ -394,13 +418,7 @@ export default function DashboardPage() {
           <Reveal delay={0.08} className="mt-6">
             <ProgressPhotos scans={scans ?? []} />
           </Reveal>
-          <Reveal delay={0.08} className="mt-6">
-            <MyShelf
-              plan={plans?.[0]?.plan ?? null}
-              quiz={latest?.quiz ?? null}
-              todayKey={todayKey}
-            />
-          </Reveal>
+          
         </>
       )}
 
@@ -505,6 +523,25 @@ export default function DashboardPage() {
         </div>
       </Reveal>
 
+        </>
+      )}
+
+      {tab === "records" && (
+        <>
+      {/* ACHIEVEMENTS — the badge shelf (subscriber interface) */}
+      {isPro && (
+        <Reveal delay={0.08} className="mt-6">
+          <Achievements items={achievements} />
+        </Reveal>
+      )}
+
+<Reveal delay={0.08} className="mt-6">
+            <MyShelf
+              plan={plans?.[0]?.plan ?? null}
+              quiz={latest?.quiz ?? null}
+              todayKey={todayKey}
+            />
+          </Reveal>
       {/* SAVED PLANS */}
       <Reveal delay={0.1} className="mt-10">
         <h2 className="font-display text-2xl font-extrabold text-bone">
@@ -559,6 +596,39 @@ export default function DashboardPage() {
                 </Card>
               );
             })
+          )}
+        </div>
+      </Reveal>
+
+        </>
+      )}
+
+      {tab === "more" && (
+        <>
+      <Reveal>
+        <Eyebrow>Your account</Eyebrow>
+        <h1 className="font-display mt-3 break-all text-3xl font-extrabold tracking-tight sm:text-4xl">
+          {user.email}
+        </h1>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {profile?.is_admin && (
+            <span className="rounded-full border border-gold/50 bg-gold/15 px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.14em] text-gold-soft">
+              Admin
+            </span>
+          )}
+          {isPro ? (
+            <span className="rounded-full border border-gold/50 bg-gold/15 px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.14em] text-gold-soft">
+              Ascend Pro — active
+            </span>
+          ) : (
+            <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.14em] text-muted">
+              Free plan
+            </span>
+          )}
+          {profile?.created_at && (
+            <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[11px] font-semibold text-muted">
+              Member since {fmtDate(profile.created_at)}
+            </span>
           )}
         </div>
       </Reveal>
@@ -618,6 +688,10 @@ export default function DashboardPage() {
           </p>
         </Card>
       </Reveal>
+        </>
+      )}
+
+      <AppNav active={tab} onNavigate={setTab} />
     </div>
   );
 }

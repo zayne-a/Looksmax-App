@@ -1,3 +1,4 @@
+# App-style status hero + tiles: score RING (SVG progress circle of the latest score, delta chip vs previous scan), week/stage line, streak and today-progress bar in one dense header. Calorie tile is MyFitnessPal-style: the big number is kcal REMAINING (goal - logged) with the Goal - Logged equation, a progress bar, the goal note, and protein/carb dials from the plan-derived targets.
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -25,6 +26,8 @@ import GuidedRoutine from "@/components/GuidedRoutine";
  * AI coach all read.
  */
 export default function TodayHome({
+  score,
+  scoreDelta,
   plan,
   quiz,
   journeyStart,
@@ -34,6 +37,8 @@ export default function TodayHome({
   freeze,
   onFreeze,
 }: {
+  score: number | null;
+  scoreDelta: number | null;
   plan: AscendPlan;
   quiz: QuizAnswers | null;
   journeyStart: string | null;
@@ -118,32 +123,70 @@ export default function TodayHome({
 
   return (
     <div className="space-y-6">
-      {/* STREAK STRIP */}
+      {/* STATUS HERO — score ring, streak, week: the app's home face */}
       <Card glow>
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <div
-              className={`flex h-14 w-14 items-center justify-center rounded-2xl border text-2xl ${
-                streak > 0
-                  ? "border-gold/50 bg-gold/15 shadow-[0_0_24px_-6px_rgba(227,185,78,0.7)]"
-                  : "border-white/10 bg-white/[0.03]"
-              }`}
-              aria-hidden
-            >
-              🔥
+        <div className="flex items-center gap-5">
+          <div className="relative h-[92px] w-[92px] shrink-0">
+            <svg viewBox="0 0 92 92" className="h-full w-full -rotate-90">
+              <circle cx="46" cy="46" r="40" fill="none" stroke="rgba(255,255,255,0.09)" strokeWidth="8" />
+              <circle
+                cx="46"
+                cy="46"
+                r="40"
+                fill="none"
+                stroke="#e3b94e"
+                strokeWidth="8"
+                strokeLinecap="round"
+                strokeDasharray={`${2 * Math.PI * 40}`}
+                strokeDashoffset={`${2 * Math.PI * 40 * (1 - (score ?? 0) / 100)}`}
+              />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span className="font-display text-[26px] font-extrabold leading-none text-bone">
+                {score !== null ? Math.round(score) : "—"}
+              </span>
+              <span className="mt-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-muted">
+                Score
+              </span>
             </div>
-            <div>
-              <p className="font-display text-2xl font-extrabold leading-none text-bone">
-                {streak} day{streak === 1 ? "" : "s"}
-                <span className="ml-2 text-sm font-bold text-gold-soft">
-                  streak
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="font-display text-xl font-extrabold leading-none text-bone">
+                Week {week} <span className="text-sm font-bold text-muted">of 12</span>
+              </p>
+              {scoreDelta !== null && scoreDelta !== 0 && (
+                <span
+                  className={`rounded-full px-2.5 py-0.5 text-[11px] font-extrabold ${
+                    scoreDelta > 0
+                      ? "bg-gold/15 text-gold-soft"
+                      : "bg-red-300/10 text-red-300"
+                  }`}
+                >
+                  {scoreDelta > 0 ? "▲ +" : "▼ "}
+                  {scoreDelta.toFixed(1)} vs last scan
                 </span>
-              </p>
-              <p className="mt-1 text-xs text-muted">
-                {streak > 0
-                  ? "Keep it alive: one check, one answer, or one scan today."
-                  : "Start today: tick one habit below and the fire lights."}
-              </p>
+              )}
+            </div>
+            <p className="mt-2 flex items-center gap-1.5 text-sm font-bold text-bone">
+              <span aria-hidden>🔥</span> {streak} day{streak === 1 ? "" : "s"} streak
+              <span className="font-normal text-muted">
+                · {doneTasks}/{totalTasks} of today&apos;s protocol done
+              </span>
+            </p>
+            <div className="mt-2.5 h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full rounded-full bg-gold transition-all"
+                style={{
+                  width: `${totalTasks ? (doneTasks / totalTasks) * 100 : 0}%`,
+                }}
+              />
+            </div>
+            <p className="mt-2 text-xs text-muted">
+              {streak > 0
+                ? "Keep it alive: one check, one answer, or one scan today."
+                : "Start today: tick one habit below and the fire lights."}
+            </p>
               {freeze.canFreeze && (
                 <button
                   onClick={onFreeze}
@@ -158,23 +201,6 @@ export default function TodayHome({
                   ❄ Streak freeze used this week
                 </p>
               )}
-            </div>
-          </div>
-          <div className="text-right">
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-gold">
-              Week {week} of 12
-            </p>
-            <p className="mt-1 text-xs text-muted">
-              {doneTasks}/{totalTasks} of today's protocol done
-            </p>
-            <div className="mt-2 h-1.5 w-36 overflow-hidden rounded-full bg-white/10">
-              <div
-                className="h-full rounded-full bg-gold transition-all"
-                style={{
-                  width: `${totalTasks ? (doneTasks / totalTasks) * 100 : 0}%`,
-                }}
-              />
-            </div>
           </div>
         </div>
       </Card>
@@ -363,23 +389,41 @@ export default function TodayHome({
 
         <Card>
           <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-gold">
-            Calories
+            Calories {targets ? (quiz?.bodyGoal === "cut" ? "· cutting" : quiz?.bodyGoal === "build" ? "· building" : "· maintaining") : ""}
           </p>
-          <p className="font-display mt-2 text-3xl font-extrabold text-bone">
-            {todayLog?.calories ?? "—"}
-            <span className="text-base text-muted">
-              {" "}
-              / {targets ? targets.targetKcal : "—"} kcal
-            </span>
-          </p>
-          <p className="mt-2 text-xs leading-relaxed text-muted">
-            {targets
-              ? targets.goalNote
-              : "Log a scan with your stats to set your personal target."}
-          </p>
-          {targets && (
-            <p className="mt-1 text-xs text-muted">
-              Protein {targets.proteinG}g · Carbs ~{targets.carbsG}g
+          {targets ? (
+            <>
+              <p className="font-display mt-2 text-[34px] font-extrabold leading-none text-bone">
+                {todayLog?.calories != null
+                  ? Math.max(0, targets.targetKcal - todayLog.calories).toLocaleString()
+                  : targets.targetKcal.toLocaleString()}
+                <span className="ml-1.5 text-sm font-bold text-muted">
+                  kcal {todayLog?.calories != null ? "remaining" : "goal"}
+                </span>
+              </p>
+              <p className="mt-2 text-xs tabular-nums text-muted">
+                Goal {targets.targetKcal.toLocaleString()}
+                {todayLog?.calories != null &&
+                  ` − Logged ${todayLog.calories.toLocaleString()}`}
+              </p>
+              <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-gold transition-all"
+                  style={{
+                    width: `${Math.min(100, ((todayLog?.calories ?? 0) / targets.targetKcal) * 100)}%`,
+                  }}
+                />
+              </div>
+              <p className="mt-2 text-xs leading-relaxed text-muted">
+                {targets.goalNote}
+              </p>
+              <p className="mt-1 text-xs font-semibold text-bone/80">
+                Protein {targets.proteinG}g · Carbs ~{targets.carbsG}g — your dials
+              </p>
+            </>
+          ) : (
+            <p className="mt-2 text-xs leading-relaxed text-muted">
+              Log a scan with your stats to set your personal target.
             </p>
           )}
           <div className="mt-3 flex gap-2">

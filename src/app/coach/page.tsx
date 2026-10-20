@@ -1,3 +1,4 @@
+# The coach lives inside the app shell: the bottom AppNav renders here with Coach active, so moving between Today / Progress / Coach feels like one app, not separate pages.
 "use client";
 
 import { useEffect, useRef, useState } from "react";
@@ -15,6 +16,7 @@ import {
   type ChatMessage,
 } from "@/lib/account";
 import { dayKey, questionsForDay, type DailyQuestion } from "@/lib/daily";
+import AppNav from "@/components/AppNav";
 import type { AscendPlan } from "@/lib/types";
 
 interface Bubble {
@@ -242,7 +244,7 @@ export default function CoachPage() {
   const nonNegotiables = plan?.foundations.nonNegotiables ?? [];
 
   return (
-    <div className="mx-auto flex min-h-[70vh] w-full max-w-3xl flex-col px-4 py-10 sm:px-6">
+    <div className="mx-auto flex min-h-[70vh] w-full max-w-3xl flex-col px-4 pb-28 pt-10 sm:px-6 sm:pb-10">
       <Reveal>
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -364,6 +366,7 @@ export default function CoachPage() {
         The coach works from your saved plan and logs. Softmaxxing guidance
         only — anything medical belongs with a professional in person.
       </p>
+      <AppNav active="coach" />
     </div>
   );
 }
