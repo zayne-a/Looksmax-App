@@ -22,6 +22,30 @@ export function shiftDay(key: string, delta: number): string {
   return dayKey(d);
 }
 
+/** Habit key that marks a streak-freeze day inside a daily log. */
+export const FREEZE_KEY = "__freeze";
+
+/**
+ * Streak freeze state: one protected rest day per rolling week.
+ * A freeze can save a streak only when exactly yesterday is missing
+ * and the day before it was active — it patches a single gap, it
+ * doesn't resurrect a dead streak.
+ */
+export function freezeState(
+  logs: { day: string; habits: Record<string, boolean> }[],
+  activeDays: Set<string>,
+  today: string = dayKey()
+): { canFreeze: boolean; gapDay: string | null; usedThisWeek: boolean } {
+  const usedThisWeek = logs.some(
+    (l) => l.habits?.[FREEZE_KEY] && l.day >= shiftDay(today, -6)
+  );
+  const yesterday = shiftDay(today, -1);
+  const dayBefore = shiftDay(today, -2);
+  const canFreeze =
+    !usedThisWeek && !activeDays.has(yesterday) && activeDays.has(dayBefore);
+  return { canFreeze, gapDay: canFreeze ? yesterday : null, usedThisWeek };
+}
+
 /**
  * Current streak: consecutive active days ending today — or yesterday
  * (the streak is still alive until today ends). Active = a daily log,

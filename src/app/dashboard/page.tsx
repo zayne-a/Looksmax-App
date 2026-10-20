@@ -24,7 +24,15 @@ import {
   type SavedPlan,
   type SavedScan,
 } from "@/lib/account";
-import { currentStreak, dayKey } from "@/lib/daily";
+import {
+  currentStreak,
+  dayKey,
+  freezeState,
+  FREEZE_KEY,
+  shiftDay,
+} from "@/lib/daily";
+import { journeyWeek } from "@/lib/journey";
+import { downloadMilestoneCard } from "@/lib/share-image";
 import { computeAchievements } from "@/lib/achievements";
 import Achievements from "@/components/Achievements";
 
@@ -103,8 +111,10 @@ export default function DashboardPage() {
     setConfirmingWipe(false);
   };
 
-  /** Today-home writes: merge into today's daily log and reflect it. */
-  const saveToday = async (
+  /** Daily-log writes (today from the Today home, yesterday for a
+   *  streak freeze): merge the patch into that day's row and reflect. */
+  const saveDay = async (
+    day: string,
     patch: Partial<{
       answers: Record<string, string>;
       habits: Record<string, boolean>;
@@ -113,7 +123,7 @@ export default function DashboardPage() {
       weight_kg: number | null;
     }>
   ) => {
-    const row = await saveDailyLog(dayKey(), patch);
+    const row = await saveDailyLog(day, patch);
     if (row) {
       setDailyLogs((prev) =>
         [row, ...prev.filter((l) => l.day !== row.day)].sort((a, b) =>
@@ -180,6 +190,29 @@ export default function DashboardPage() {
     ...(checkins ?? []).map((c) => dayKey(new Date(c.created_at))),
     ...(scans ?? []).map((s) => dayKey(new Date(s.created_at))),
   ]);
+  const journeyStartIso =
+    [...(scans ?? []), ...(plans ?? [])]
+      .map((x) => x.created_at)
+      .sort()[0] ?? null;
+  const weekNum = journeyWeek(journeyStartIso);
+  const streakNum = currentStreak(activeDaysSet);
+  // Clock reads in an effect only (Next prerender rule).
+  const [todayKey, setTodayKey] = useState<string | null>(null);
+  useEffect(() => {
+    setTodayKey(dayKey());
+  }, []);
+  const freeze = todayKey
+    ? freezeState(dailyLogs, activeDaysSet, todayKey)
+    : { canFreeze: false, gapDay: null, usedThisWeek: false };
+  const daysActive7 = todayKey
+    ? dailyLogs.filter((l) => l.day >= shiftDay(todayKey, -6)).length
+    : 0;
+  const milestoneHeadline =
+    latestDelta !== null && latestDelta > 0
+      ? `Score up ${latestDelta.toFixed(1)} — the protocol is working`
+      : streakNum >= 7
+        ? `${streakNum} days on fire`
+        : null;
   const firstScan = scans?.[scans.length - 1];
   const achievements = computeAchievements({
     scans: scans?.length ?? 0,
@@ -267,7 +300,15 @@ export default function DashboardPage() {
               }
               logs={dailyLogs}
               activeDays={activeDaysSet}
-              onSaveToday={saveToday}
+              onSaveDay={saveDay}
+              freeze={freeze}
+              onFreeze={() => {
+                if (freeze.gapDay) {
+                  void saveDay(freeze.gapDay, {
+                    habits: { [FREEZE_KEY]: true },
+                  });
+                }
+              }}
             />
           </Reveal>
         ) : (
@@ -317,6 +358,9 @@ export default function DashboardPage() {
           latestScore={latest?.overall_score ?? null}
           previousScore={previous?.overall_score ?? null}
           bodyGoal={(latest?.quiz?.bodyGoal as string | undefined) ?? null}
+          week={weekNum}
+          streak={streakNum}
+          daysActive={daysActive7}
         />
       </Reveal>
 
@@ -335,6 +379,42 @@ export default function DashboardPage() {
       {isPro && (
         <Reveal delay={0.08} className="mt-6">
           <Achievements items={achievements} />
+        </Reveal>
+      )}
+
+      {/* MILESTONE — celebration + shareable card (subscriber) */}
+      {isPro && milestoneHeadline && (
+        <Reveal delay={0.08} className="mt-6">
+          <Card glow>
+            <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-gold">
+                  Milestone
+                </p>
+                <h3 className="font-display mt-1.5 text-2xl font-extrabold text-bone">
+                  {milestoneHeadline}
+                </h3>
+                <p className="mt-1 max-w-md text-sm leading-relaxed text-muted">
+                  Moments like this are the proof the system works. Keep the
+                  card — future you will want the before/after.
+                </p>
+              </div>
+              <Button
+                onClick={() =>
+                  downloadMilestoneCard({
+                    headline: milestoneHeadline,
+                    score: latest?.overall_score ?? null,
+                    delta: latestDelta,
+                    streak: streakNum,
+                    week: weekNum,
+                  })
+                }
+                className="shrink-0 px-6 py-3"
+              >
+                Download milestone card
+              </Button>
+            </div>
+          </Card>
         </Reveal>
       )}
 

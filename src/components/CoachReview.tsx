@@ -1,8 +1,9 @@
 "use client";
 
-import { Card } from "@/components/ui";
+import { Button, Card } from "@/components/ui";
 import type { Checkin } from "@/lib/account";
 import { answersOf, buildCoachReview } from "@/lib/checkin";
+import { downloadWeeklyReport } from "@/lib/share-image";
 
 /**
  * The weekly Coach Review card: what improved, what slipped, and the
@@ -16,12 +17,18 @@ export default function CoachReview({
   latestScore,
   previousScore,
   bodyGoal,
+  week = null,
+  streak = 0,
+  daysActive = 0,
 }: {
   checkins: Checkin[];
   scoreDelta: number | null;
   latestScore: number | null;
   previousScore: number | null;
   bodyGoal: string | null;
+  week?: number | null;
+  streak?: number;
+  daysActive?: number;
 }) {
   const latest = checkins[0] ? answersOf(checkins[0]) : null;
   const previous = checkins[1] ? answersOf(checkins[1]) : null;
@@ -113,6 +120,33 @@ export default function CoachReview({
           {review.topMove.detail}
         </p>
       </div>
+
+      {hasData && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-muted">
+            {daysActive} active day{daysActive === 1 ? "" : "s"} this week
+            {streak > 0 ? ` · 🔥 ${streak}-day streak` : ""}
+            {week ? ` · Week ${week} of 12` : ""}
+          </p>
+          <Button
+            onClick={() =>
+              downloadWeeklyReport({
+                week,
+                improved: review.improved,
+                slipped: review.slipped,
+                topMoveTitle: review.topMove.title,
+                topMoveDetail: review.topMove.detail,
+                daysActive,
+                streak,
+              })
+            }
+            variant="ghost"
+            className="px-5 py-2.5 text-sm"
+          >
+            Download weekly report card
+          </Button>
+        </div>
+      )}
     </Card>
   );
 }

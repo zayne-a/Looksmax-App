@@ -153,6 +153,9 @@ export default function TrackCalendar({
             >
               <span className="font-semibold">{dayNum}</span>
               <span className="mt-0.5 flex h-3 items-center gap-0.5 text-[9px]">
+                {logByDay.get(key)?.habits?.["__freeze"] && (
+                  <span aria-label="streak freeze day">❄</span>
+                )}
                 {streakDays.has(key) && <span aria-label="streak day">🔥</span>}
                 {hasLog && <span className="text-gold">●</span>}
                 {hasScan && <span className="text-gold-soft">◆</span>}

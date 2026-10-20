@@ -28,14 +28,17 @@ export default function TodayHome({
   journeyStart,
   logs,
   activeDays,
-  onSaveToday,
+  onSaveDay,
+  freeze,
+  onFreeze,
 }: {
   plan: AscendPlan;
   quiz: QuizAnswers | null;
   journeyStart: string | null;
   logs: DailyLog[];
   activeDays: Set<string>;
-  onSaveToday: (
+  onSaveDay: (
+    day: string,
     patch: Partial<{
       answers: Record<string, string>;
       habits: Record<string, boolean>;
@@ -44,6 +47,8 @@ export default function TodayHome({
       weight_kg: number | null;
     }>
   ) => Promise<void>;
+  freeze: { canFreeze: boolean; gapDay: string | null; usedThisWeek: boolean };
+  onFreeze: () => void;
 }) {
   // "Today" is set in an effect: reading the clock during render
   // breaks Next's prerender of client components.
@@ -75,13 +80,23 @@ export default function TodayHome({
   const [calInput, setCalInput] = useState("");
   const [weightInput, setWeightInput] = useState("");
 
+  const saveToday = (
+    patch: Partial<{
+      answers: Record<string, string>;
+      habits: Record<string, boolean>;
+      water_ml: number;
+      calories: number | null;
+      weight_kg: number | null;
+    }>
+  ) => (today ? onSaveDay(today, patch) : Promise.resolve());
+
   const toggleTask = (sectionId: string, title: string) => {
     const key = taskKey(sectionId, title);
-    void onSaveToday({ habits: { [key]: !habits[key] } });
+    void saveToday({ habits: { [key]: !habits[key] } });
   };
 
   const answer = (id: string, value: string) => {
-    void onSaveToday({ answers: { [id]: value } });
+    void saveToday({ answers: { [id]: value } });
   };
 
   if (!today) return null;
@@ -118,6 +133,20 @@ export default function TodayHome({
                   ? "Keep it alive: one check, one answer, or one scan today."
                   : "Start today: tick one habit below and the fire lights."}
               </p>
+              {freeze.canFreeze && (
+                <button
+                  onClick={onFreeze}
+                  className="mt-2.5 rounded-full border border-sky-300/40 bg-sky-300/10 px-3.5 py-1.5 text-xs font-bold text-sky-200 transition hover:bg-sky-300/20"
+                >
+                  ❄ Save it with a streak freeze — yesterday counts as a
+                  rest day (1/week)
+                </button>
+              )}
+              {!freeze.canFreeze && freeze.usedThisWeek && (
+                <p className="mt-2 text-[11px] font-semibold text-sky-200/80">
+                  ❄ Streak freeze used this week
+                </p>
+              )}
             </div>
           </div>
           <div className="text-right">
@@ -284,7 +313,7 @@ export default function TodayHome({
           </p>
           <div className="mt-3 flex gap-2">
             <Button
-              onClick={() => void onSaveToday({ water_ml: water + 250 })}
+              onClick={() => void saveToday({ water_ml: water + 250 })}
               variant="ghost"
               className="px-4 py-2 text-sm"
             >
@@ -293,7 +322,7 @@ export default function TodayHome({
             {water > 0 && (
               <Button
                 onClick={() =>
-                  void onSaveToday({ water_ml: Math.max(0, water - 250) })
+                  void saveToday({ water_ml: Math.max(0, water - 250) })
                 }
                 variant="ghost"
                 className="px-4 py-2 text-sm"
@@ -337,7 +366,7 @@ export default function TodayHome({
               onClick={() => {
                 const v = parseInt(calInput, 10);
                 if (!Number.isNaN(v)) {
-                  void onSaveToday({ calories: v });
+                  void saveToday({ calories: v });
                   setCalInput("");
                 }
               }}
@@ -375,7 +404,7 @@ export default function TodayHome({
               onClick={() => {
                 const v = parseFloat(weightInput);
                 if (!Number.isNaN(v) && v > 20 && v < 400) {
-                  void onSaveToday({ weight_kg: v });
+                  void saveToday({ weight_kg: v });
                   setWeightInput("");
                 }
               }}

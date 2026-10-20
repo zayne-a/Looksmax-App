@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Button, Card, Eyebrow } from "@/components/ui";
 import {
   isOwnerCredential,
@@ -9,6 +10,7 @@ import {
 } from "@/lib/admin";
 import { Reveal, staggerParent, staggerChild } from "@/components/motion";
 import { motion } from "@/components/motion-client";
+import { useApp } from "@/lib/store";
 
 // Trial rule (Zayne, 2026-10-20): the 3-day free trial exists ONLY on
 // Monthly and Yearly. Weekly bills from day one — never advertise a
@@ -89,6 +91,8 @@ export default function PaywallPage() {
     setOwnerOn(false);
   };
 
+  const { plan } = useApp();
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6 sm:py-20">
       <div className="mx-auto max-w-2xl text-center">
@@ -107,6 +111,53 @@ export default function PaywallPage() {
           </p>
         </Reveal>
       </div>
+
+      {/* PERSONAL — built from their own scan, when we have it */}
+      {plan && (
+        <Reveal delay={0.04}>
+          <div className="mx-auto mt-10 max-w-2xl rounded-3xl border border-gold/30 bg-gold/[0.06] px-5 py-4 text-center">
+            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-gold">
+              Built from your scan
+            </p>
+            <p className="mt-1.5 font-display text-lg font-extrabold leading-snug text-bone">
+              {plan.headline}
+            </p>
+            {plan.priorityFixes.length > 0 && (
+              <div className="mt-3 flex flex-wrap justify-center gap-2">
+                {plan.priorityFixes.slice(0, 3).map((f) => (
+                  <span
+                    key={f.title}
+                    className="rounded-full border border-gold/35 bg-ink/40 px-3 py-1 text-xs font-semibold text-gold-soft"
+                  >
+                    {f.title}
+                  </span>
+                ))}
+              </div>
+            )}
+            <p className="mt-3 text-xs leading-relaxed text-muted">
+              Your Phase 1 is already generated. Pro starts the 12 weeks
+              today — and builds Phases 2–3 from your progress.
+            </p>
+          </div>
+        </Reveal>
+      )}
+
+      {/* ONE PRICE — the anti-upsell promise */}
+      <Reveal delay={0.05}>
+        <p className="mx-auto mt-8 max-w-xl text-center text-sm font-semibold leading-relaxed text-bone">
+          One price — everything included.{" "}
+          <span className="text-muted">
+            No paid re-scans. No &ldquo;supercharged&rdquo; upsells. No second
+            paywall for your &ldquo;true potential.&rdquo;{" "}
+          </span>
+          <Link
+            href="/why-ascend"
+            className="font-bold text-gold-soft underline underline-offset-4 hover:text-gold"
+          >
+            See the full comparison →
+          </Link>
+        </p>
+      </Reveal>
 
       {/* PLAN CARDS */}
       <motion.div
