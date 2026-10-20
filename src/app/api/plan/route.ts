@@ -1,3 +1,4 @@
+# AUDIT FIX (2026-10-20) — BLOCKER: tier is now server-derived ONLY; the client-sent tier is ignored, so premium requires a validated premium/admin account (tokenless/garbage-token requests are free). Free plans are truncated server-side by truncateForFree (first 3 tasks per section real, the rest locked placeholders) so locked protocol content never ships behind the client blur. aiPending now means exactly "a background swap was scheduled" for a real account.
 // POST /api/plan — generates a personalized AscendPlan.
 // Layer 3 (LLM orchestration): Gemini with strict JSON output, grounded in the
 // KB via matched excerpts. Validates schema + safety; falls back to the pure
@@ -830,6 +831,53 @@ async function entitlementForToken(
   }
 }
 
+/** Free-preview allowance: the first 3 tasks per protocol section ship
+ *  in full; everything past that is replaced with a locked placeholder
+ *  BEFORE the response leaves the server (audit fix, 2026-10-20 — the
+ *  earlier build shipped the full protocol and only blurred it in the
+ *  browser, so the "locked" content was readable in the network tab).
+ *  Mirrors FREE_TASKS_PER_SECTION on the plan page exactly: earliest
+ *  weeks first, budget spent per section. Placeholders keep the task
+ *  shape (and frequency) so the page renders the same full-size locked
+ *  layout — with nothing real behind the blur. */
+const FREE_TASKS_PER_SECTION = 3;
+
+function truncateForFree(plan: AscendPlan): AscendPlan {
+  return {
+    ...plan,
+    sections: plan.sections.map((section) => {
+      let budget = FREE_TASKS_PER_SECTION;
+      return {
+        ...section,
+        weeks: section.weeks.map((week) => {
+          if (budget <= 0) {
+            return {
+              ...week,
+              focus: "Pro protocol",
+              tasks: week.tasks.map((t) => ({
+                title: "Pro protocol step",
+                detail:
+                  "This step is part of the full Ascend Pro protocol.",
+                frequency: t.frequency,
+                whyYou: "",
+              })),
+            };
+          }
+          const shown = week.tasks.slice(0, budget);
+          const rest = week.tasks.slice(budget).map((t) => ({
+            title: "Pro protocol step",
+            detail: "This step is part of the full Ascend Pro protocol.",
+            frequency: t.frequency,
+            whyYou: "",
+          }));
+          budget -= shown.length;
+          return { ...week, tasks: [...shown, ...rest] };
+        }),
+      };
+    }),
+  };
+}
+
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     let body: unknown;
@@ -846,13 +894,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // Generation tier. Default: the client-sent value (logged-out flow;
-    // the plan page sends "free", or "premium" in owner test mode).
-    // With a valid Supabase session token the tier is DERIVED from the
-    // account's entitlement instead — admin/premium profiles always get
-    // premium, free accounts can never talk their way into it.
-    let tier: "free" | "premium" =
-      planReq.tier === "premium" ? "premium" : "free";
+    // Generation tier — SERVER-DERIVED ONLY (audit fix, 2026-10-20).
+    // The client-sent tier is ignored entirely: premium requires a
+    // validated Supabase session whose profile is premium or admin.
+    // Tokenless and invalid-token requests are free, full stop — the
+    // earlier build trusted the body's tier field, which made the
+    // premium AI pipeline (and the shared Gemini quota) free to anyone.
+    let tier: "free" | "premium" = "free";
     let uid: string | null = null;
     const authHeader = req.headers.get("authorization");
     if (authHeader?.startsWith("Bearer ")) {
@@ -866,9 +914,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // FREE tier: ZERO AI calls. The deterministic template engine is the
     // free product — protocol selection, every number, the projection and
     // the foundations are all computed from the user's own data, and
-    // non-subscribers never consume Gemini quota.
+    // non-subscribers never consume Gemini quota. Locked protocol content
+    // is truncated server-side (see truncateForFree) — it never ships.
     if (tier === "free") {
-      const plan = buildStubPlan(planReq.measurements ?? null, planReq.quiz);
+      const plan = truncateForFree(
+        buildStubPlan(planReq.measurements ?? null, planReq.quiz)
+      );
       logDiversity(plan);
       const res: PlanResponse = { plan, source: "stub", tier };
       return NextResponse.json(res);
@@ -936,7 +987,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         });
       }
     }
-    const deliverPending = scheduled || !uid;
+    // Premium now implies a validated account (uid is always set in
+    // this branch), so the pending state is exactly "a background swap
+    // was scheduled" — never an unbacked promise to an anonymous caller.
+    const deliverPending = scheduled;
     const res: PlanResponse = {
       plan: deliverPending ? pendingPlan : result.plan,
       source: "stub",

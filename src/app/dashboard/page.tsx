@@ -1,4 +1,4 @@
-# App shell: the dashboard is an app, not a page — a sticky app bar (view switcher + streak/Pro chips) over tabbed views: Today (daily system), Progress (check-in, review, calendar, photos, scans), Records (achievements, shelf, plans), More (account, journey, privacy). Bottom AppNav mirrors the tabs on mobile; /dashboard?tab= deep-links a view (used by the nav on other pages). All gating preserved: Pro sections render only for subscribers inside their tabs.
+# AUDIT FIXES (2026-10-20): todayKey hooks hoisted ABOVE the early returns (hook-count crash on cold load with a session). NEW: the WeeklyPlan view renders in the Today tab for subscribers — their full weekly plan alongside everything else, per Zayne. WeeklyCheckin/CoachReview intentionally stay ungated as shipped (Zayne: do not simplify what was added); the public claims were corrected instead.
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
@@ -11,6 +11,7 @@ import JourneyRoadmap from "@/components/JourneyRoadmap";
 import WeeklyCheckin from "@/components/WeeklyCheckin";
 import CoachReview from "@/components/CoachReview";
 import TodayHome from "@/components/TodayHome";
+import WeeklyPlan from "@/components/WeeklyPlan";
 import AppNav, { type AppTab } from "@/components/AppNav";
 import TrackCalendar from "@/components/TrackCalendar";
 import MeasurementDay from "@/components/MeasurementDay";
@@ -69,6 +70,14 @@ export default function DashboardPage() {
   const [checkins, setCheckins] = useState<Checkin[] | null>(null);
   const [dailyLogs, setDailyLogs] = useState<DailyLog[]>([]);
   const [confirmingWipe, setConfirmingWipe] = useState(false);
+  // Clock reads in an effect only (Next prerender rule). These hooks sit
+  // ABOVE the early returns below — hooks after a conditional return
+  // change the hook count between renders and crash a cold load of
+  // /dashboard with an existing session (audit fix, 2026-10-20).
+  const [todayKey, setTodayKey] = useState<string | null>(null);
+  useEffect(() => {
+    setTodayKey(dayKey());
+  }, []);
   const [tab, setTab] = useState<AppTab>("today");
 
   // Deep links from the app nav on other pages: /dashboard?tab=progress
@@ -210,11 +219,6 @@ export default function DashboardPage() {
       .sort()[0] ?? null;
   const weekNum = journeyWeek(journeyStartIso);
   const streakNum = currentStreak(activeDaysSet);
-  // Clock reads in an effect only (Next prerender rule).
-  const [todayKey, setTodayKey] = useState<string | null>(null);
-  useEffect(() => {
-    setTodayKey(dayKey());
-  }, []);
   const freeze = todayKey
     ? freezeState(dailyLogs, activeDaysSet, todayKey)
     : { canFreeze: false, gapDay: null, usedThisWeek: false };
@@ -362,6 +366,14 @@ export default function DashboardPage() {
             </Card>
           </Reveal>
         ))}
+
+      {/* WEEKLY PLAN — the subscriber's full week, here in the dashboard
+          alongside everything else (Zayne, 2026-10-20) */}
+      {isPro && plans?.[0] && (
+        <Reveal delay={0.06} className="mt-6">
+          <WeeklyPlan plan={plans[0].plan} journeyWeek={weekNum ?? 1} />
+        </Reveal>
+      )}
 
         </>
       )}

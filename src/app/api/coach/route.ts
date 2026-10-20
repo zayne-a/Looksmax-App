@@ -1,3 +1,4 @@
+# AUDIT FIXES (2026-10-20): (1) the route persists the user message and the assistant reply ITSELF — the 40/day cap counts server-written rows, so a direct API caller can no longer bypass it by never writing rows; (2) Bearer prefix is checked properly; (3) client history turns are capped at 2000 chars each; (4) the context line uses an exact check-in COUNT query instead of the recent-4 array length.
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -63,7 +64,8 @@ async function entitlementForToken(
 
 /** Compact snapshot of the user's own data — the coach's memory. */
 async function buildContext(admin: Admin, userId: string): Promise<string> {
-  const [planRes, scanRes, checkinRes, logRes] = await Promise.all([
+  const [planRes, scanRes, checkinRes, logRes, checkinCountRes] =
+    await Promise.all([
     admin
       .from("plans")
       .select("plan, created_at")
@@ -88,6 +90,12 @@ async function buildContext(admin: Admin, userId: string): Promise<string> {
       .eq("user_id", userId)
       .order("day", { ascending: false })
       .limit(7),
+    // Exact total for the "check-ins banked" line — the recent-4 query
+    // above feeds the detail, this count feeds the number (audit fix).
+    admin
+      .from("checkins")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId),
   ]);
 
   const lines: string[] = [];
@@ -129,7 +137,7 @@ async function buildContext(admin: Admin, userId: string): Promise<string> {
   if (checkins.length) {
     const c = checkins[0];
     lines.push(
-      `Latest weekly check-in: adherence ${c.adherence}, skin ${c.skin_reaction}, sleep ${c.sleep_quality}, weight trend ${c.weight_trend}. Total check-ins banked: ${checkins.length}+.`
+      `Latest weekly check-in: adherence ${c.adherence}, skin ${c.skin_reaction}, sleep ${c.sleep_quality}, weight trend ${c.weight_trend}. Total check-ins banked: ${checkinCountRes.count ?? checkins.length}.`
     );
   }
   const logs = logRes.data ?? [];
@@ -225,6 +233,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             typeof t.content === "string"
         )
         .slice(-10)
+        // Per-turn cap (audit fix): an unbounded client-supplied history
+        // could inflate every prompt; 2000 chars matches the new-message
+        // limit.
+        .map((t) => ({ role: t.role, content: t.content.slice(0, 2000) }))
     : [];
 
   const admin = serviceClient();
@@ -235,7 +247,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
   const authHeader = req.headers.get("authorization") ?? "";
-  const tok = authHeader.slice(7).trim()
+  const tok = authHeader.startsWith("Bearer ")
+    ? authHeader.slice(7).trim()
+    : "";
   if (!tok) {
     return NextResponse.json({ error: "Sign in required" }, { status: 401 });
   }
@@ -270,6 +284,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // The route persists the user message ITSELF (audit fix, 2026-10-20):
+  // the cap above counts these rows, so counting only works if the
+  // server writes them. Previously the client wrote its own rows and a
+  // direct API caller who never wrote any kept the count at 0 forever.
+  await admin
+    .from("chat_messages")
+    .insert({ user_id: ent.userId, role: "user", content: message });
+
   const keys = getApiKeys();
   if (keys.length === 0) {
     return NextResponse.json(
@@ -299,7 +321,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         turns,
         Math.min(12_000, remaining)
       );
-      if (reply) return NextResponse.json({ reply });
+      if (reply) {
+        // Persist the assistant reply server-side too — history is now
+        // fully server-written, so the client never writes chat rows
+        // for API conversations.
+        await admin
+          .from("chat_messages")
+          .insert({ user_id: ent.userId, role: "assistant", content: reply });
+        return NextResponse.json({ reply });
+      }
     }
   }
   return NextResponse.json(
