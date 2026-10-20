@@ -75,7 +75,7 @@ const faqs = [
   },
   {
     q: "Do I pay to see my results?",
-    a: "No. Your first scan — real measurements and your core score — is completely free, no card required. Ascend Pro unlocks the full week-by-week protocol, unlimited rescans, progress tracking, and the coach. Monthly and Yearly start with a 3-day free trial; Weekly bills from day one.",
+    a: "No. Your first scan — real measurements and your core score — is completely free, no card required. Ascend Pro starts your 12-week adaptive protocol: Phase 1 in full, weekly check-ins and progress scans, Phases 2–3 generated from your progress, and a weekly coach review. Monthly and Yearly start with a 3-day free trial; Weekly bills from day one.",
   },
   {
     q: "What is softmaxxing?",
@@ -307,7 +307,7 @@ export default function Home() {
                   {[
                     ["Your full first scan is free.", "Real measurements and scores before any paywall. No card. No invites."],
                     ["Unlimited scans.", "Rescan every week of your protocol and watch the numbers move. One flat price — no per-scan charges, ever."],
-                    ["One plan = everything.", "No stacked upsells, no second paywall for your “true potential.”"],
+                    ["One plan = the whole journey.", "No stacked upsells, no second paywall for your “true potential” — every phase, check-in and review is in the one plan."],
                     ["A protocol built from your numbers.", "Your jaw ratio, your skin signals, your goals — sequenced week by week, not copied from a poster."],
                     ["Measured on your phone.", "Your photo never leaves your device for measurement. Nothing to leak, sell, or train on."],
                     ["Cancel in one tap.", "Leave during the trial and you pay nothing. No maze, no begging support."],

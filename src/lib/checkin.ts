@@ -59,6 +59,16 @@ export const CHECKIN_QUESTIONS: {
   },
 ];
 
+/** Map a stored check-in row back to the answers shape. */
+export function answersOf(c: Checkin): CheckinAnswers {
+  return {
+    adherence: c.adherence as CheckinAnswers["adherence"],
+    skinReaction: c.skin_reaction as CheckinAnswers["skinReaction"],
+    sleepQuality: c.sleep_quality as CheckinAnswers["sleepQuality"],
+    weightTrend: c.weight_trend as CheckinAnswers["weightTrend"],
+  };
+}
+
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** A check-in is due when none exists for the current journey week
@@ -184,4 +194,107 @@ export function computeAdjustments(input: {
     });
   }
   return sorted;
+}
+
+// ---------- Coach Review ----------
+
+export interface CoachReview {
+  improved: string[];
+  slipped: string[];
+  topMove: { title: string; detail: string };
+}
+
+const ADHERENCE_LEVEL: Record<CheckinAnswers["adherence"], number> = {
+  barely: 0,
+  some: 1,
+  most: 2,
+};
+
+/**
+ * The weekly Coach Review: what improved, what slipped, and the single
+ * most important move — computed deterministically from the user's own
+ * check-ins and scan movement. Same inputs always give the same review;
+ * nothing here is AI-generated flattery.
+ */
+export function buildCoachReview(input: {
+  latest: CheckinAnswers | null;
+  previous: CheckinAnswers | null;
+  scoreDelta: number | null;
+  latestScore: number | null;
+  previousScore: number | null;
+  bodyGoal: string | null;
+}): CoachReview {
+  const { latest, previous, scoreDelta, latestScore, previousScore, bodyGoal } =
+    input;
+  const improved: string[] = [];
+  const slipped: string[] = [];
+
+  if (scoreDelta !== null && latestScore !== null && previousScore !== null) {
+    if (scoreDelta >= 1) {
+      improved.push(
+        `Score up ${scoreDelta.toFixed(1)} — ${previousScore.toFixed(0)} → ${latestScore.toFixed(0)} since your previous scan`
+      );
+    } else if (scoreDelta <= -1) {
+      slipped.push(
+        `Score dipped ${Math.abs(scoreDelta).toFixed(1)} — one scan is noise; the two-scan trend is the signal`
+      );
+    }
+  }
+
+  if (latest) {
+    if (
+      previous &&
+      ADHERENCE_LEVEL[latest.adherence] > ADHERENCE_LEVEL[previous.adherence]
+    ) {
+      improved.push("Adherence climbed versus last week — the habit is forming");
+    } else if (latest.adherence === "most") {
+      improved.push("Routine followed most days — consistency is doing its work");
+    } else if (latest.adherence === "barely") {
+      slipped.push("Adherence was barely this week — the routine got simplified in response");
+    }
+
+    if (latest.skinReaction === "calm") {
+      improved.push("Skin stayed calm — your actives are tolerating well");
+    } else if (latest.skinReaction === "worse") {
+      slipped.push("Breakouts worsened — a barrier-first week is already in your adjustments");
+    }
+
+    if (latest.sleepQuality === "great") {
+      improved.push("Sleep was great — recovery compounds everything else");
+    } else if (latest.sleepQuality === "poor") {
+      slipped.push("Sleep was poor — it taxes skin, training and appetite control at once");
+    }
+
+    const target =
+      bodyGoal === "cut" ? "down" : bodyGoal === "build" ? "up" : null;
+    if (target && latest.weightTrend === target) {
+      improved.push("Weight trend is on target for your goal");
+    } else if (
+      target &&
+      latest.weightTrend !== "same" &&
+      latest.weightTrend !== target
+    ) {
+      slipped.push("Weight moved against your goal — the calorie dial was adjusted ~150");
+    }
+  }
+
+  if (improved.length === 0 && latest) {
+    improved.push(
+      "A steady week — nothing regressed. In Phase 1, consolidation is progress."
+    );
+  }
+
+  let topMove: CoachReview["topMove"];
+  if (latest) {
+    const first = computeAdjustments({ answers: latest, scoreDelta, bodyGoal })[0];
+    topMove = { title: first.title, detail: first.detail };
+  } else {
+    topMove = {
+      title: "Bank your first check-in",
+      detail:
+        "Sixty seconds, four answers — it's what turns a static plan into a protocol that reacts to you, and it starts your phase-unlock count.",
+    };
+  }
+
+  return { improved: improved.slice(0, 3), slipped: slipped.slice(0, 3), topMove };
 }

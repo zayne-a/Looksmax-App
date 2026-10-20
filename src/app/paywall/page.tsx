@@ -50,14 +50,14 @@ const plans = [
 ];
 
 const valueProps = [
-  "Measured, not guessed — deterministic facial scores",
+  "A 12-week adaptive protocol — Phase 1 today, Phases 2–3 generated from your progress",
+  "Weekly check-ins that adjust your plan to how your week actually went",
+  "Weekly Coach Review: what improved, what slipped, your #1 move",
+  "Weekly progress scans — watch your score and skin signals move",
+  "Deep-curated AI plan, audited step-by-step against your measurements",
   "Unlimited rescans whenever you want",
-  "Real week-by-week skin, diet, exercise & style protocols",
-  "Progress tracking that shows what's improving",
-  "Real-face try-on (planned for v1)",
-  "A coach with memory of your measurements and goals",
+  "Measured, not guessed — deterministic facial scores",
   "Free toolbox: BMI, body-fat & facial-ratio calculators",
-  "Shareable scorecard for every milestone",
 ];
 
 export default function PaywallPage() {
@@ -100,9 +100,10 @@ export default function PaywallPage() {
             <span className="gold-text">3 days free.</span>
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-sm sm:text-base leading-relaxed text-muted">
-            Your first scan is already free. Pro unlocks the full protocol —
-            Monthly and Yearly start with 3 free days, pay nothing if it's
-            not for you.
+            Your first scan is already free. Pro starts your 12-week
+            adaptive protocol — Phase 1 in full today, then a plan that
+            adjusts every week and grows with you. Monthly and Yearly
+            start with 3 free days, pay nothing if it's not for you.
           </p>
         </Reveal>
       </div>
@@ -226,9 +227,9 @@ export default function PaywallPage() {
           </h3>
           <ol className="mt-4 space-y-3 text-sm text-muted list-none">
             {[
-              ["Day 0", "Start your trial. Unlock the full week-by-week plan, unlimited rescans, and progress tracking. No charge."],
+              ["Day 0", "Start your trial. Your 12-week protocol opens with Phase 1 in full, unlimited rescans, and weekly check-ins. No charge."],
               ["Day 3", "Trial ends. Your Monthly or Yearly plan begins — or cancel in one tap before it does, no charge either way."],
-              ["After", "Keep scanning, keep tracking, keep climbing. Cancel anytime."],
+              ["After", "Your plan adapts weekly; Phase 2 unlocks at week 5 and Phase 3 at week 9 — both generated from your check-ins and progress scans. Cancel anytime."],
             ].map(([day, text]) => (
               <li key={day} className="flex gap-3">
                 <span className="shrink-0 rounded-full border border-gold/40 bg-gold/10 px-3 py-1 text-xs font-extrabold text-gold-soft">
@@ -249,7 +250,7 @@ export default function PaywallPage() {
       <Reveal className="mt-6">
         <Card>
           <h3 className="font-display text-lg font-extrabold text-bone">
-            Everything Pro unlocks
+            What Pro runs for you
           </h3>
           <ul className="mt-4 grid gap-3 sm:grid-cols-2">
             {valueProps.map((v) => (

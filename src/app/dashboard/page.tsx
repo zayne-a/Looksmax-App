@@ -8,6 +8,7 @@ import { Reveal } from "@/components/motion";
 import { useApp } from "@/lib/store";
 import JourneyRoadmap from "@/components/JourneyRoadmap";
 import WeeklyCheckin from "@/components/WeeklyCheckin";
+import CoachReview from "@/components/CoachReview";
 import { listCheckins, type Checkin } from "@/lib/account";
 import { supabaseConfigured } from "@/lib/supabase";
 import {
@@ -207,6 +208,17 @@ export default function DashboardPage() {
           bodyGoal={(latest?.quiz?.bodyGoal as string | undefined) ?? null}
           latestScanAt={latest?.created_at ?? null}
           onSaved={(c) => setCheckins((prev) => [c, ...(prev ?? [])])}
+        />
+      </Reveal>
+
+      {/* COACH REVIEW — the weekly read-back of the loop's data */}
+      <Reveal delay={0.07} className="mt-6">
+        <CoachReview
+          checkins={checkins ?? []}
+          scoreDelta={latestDelta}
+          latestScore={latest?.overall_score ?? null}
+          previousScore={previous?.overall_score ?? null}
+          bodyGoal={(latest?.quiz?.bodyGoal as string | undefined) ?? null}
         />
       </Reveal>
 

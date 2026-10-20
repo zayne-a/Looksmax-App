@@ -664,9 +664,9 @@ function UnlockCard({ total }: { total: number }) {
           re-measure you as you improve.
         </p>
         <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-gold-soft">
-          Subscribers also get the deep-curated plan: your blueprint
-          regenerated with our full curation pass — deeper, tighter, and
-          checked step-by-step against your goals.
+          Subscribers also get the deep-curated plan — and the journey
+          doesn&rsquo;t end at Phase 1: Phases 2 and 3 unlock as you check
+          in weekly, generated from your progress scans and responses.
         </p>
         <div className="mt-5">
           <Button href="/paywall" className="px-8 py-3.5">
@@ -1560,7 +1560,7 @@ export default function PlanPage() {
           <p className="text-sm font-bold leading-snug text-bone">
             Your protocol is ready — unlock it
             <span className="block text-xs font-semibold text-gold-soft">
-              Every step unblurred, deep-curated for your goals
+              Phase 1 unblurred today — Phases 2–3 unlock with your weekly check-ins
             </span>
           </p>
           <Button href="/paywall" className="shrink-0 px-4 py-2.5 text-sm">
