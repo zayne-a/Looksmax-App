@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { useApp } from "@/lib/store";
+import { isOwnerTestMode, setOwnerTestMode } from "@/lib/admin";
 import type {
   AscendPlan,
   FaceMeasurements,
@@ -581,7 +582,9 @@ function UnlockCard({ total }: { total: number }) {
             Unlock my protocol
           </Button>
         </div>
-        <p className="mt-3 text-xs text-muted">Free for 3 days · Cancel anytime</p>
+        <p className="mt-3 text-xs text-muted">
+          3-day free trial on Monthly &amp; Yearly · Cancel anytime
+        </p>
       </Card>
     </div>
   );
@@ -863,6 +866,14 @@ export default function PlanPage() {
   const planRef = useRef(plan);
   planRef.current = plan;
 
+  // Owner test mode (lib/admin.ts): lifts the teaser veil and requests
+  // the premium tier. Read on mount; toggled from the paywall code or
+  // the banner on this page.
+  const [ownerMode, setOwnerMode] = useState(false);
+  useEffect(() => {
+    setOwnerMode(isOwnerTestMode());
+  }, []);
+
   const loadPlan = useCallback(async () => {
     if (!quiz) return;
     setPlanLoading(true);
@@ -874,10 +885,12 @@ export default function PlanPage() {
         body: JSON.stringify({
           measurements,
           quiz,
-          // v1 has no auth, so the plan page always requests the free tier.
-          // v2 derives the tier server-side from the subscription
-          // entitlement — the client value is never trusted there.
-          tier: "free",
+          // v1 has no auth: free tier by default; owner test mode (the
+          // paywall code, see lib/admin.ts) requests the premium tier so
+          // Zayne can test the paid experience. v2 derives the tier
+          // server-side from the subscription entitlement — the client
+          // value is never trusted there.
+          tier: isOwnerTestMode() ? "premium" : "free",
         } satisfies PlanRequest),
       });
       if (!res.ok) {
@@ -898,6 +911,20 @@ export default function PlanPage() {
       setPlanLoading(false);
     }
   }, [quiz, measurements, setPlan, setPlanLoading, setPlanError]);
+
+  // Owner banner action: rebuild the plan through the premium path.
+  // Clearing the stored plan re-fires the mount fetch below, and
+  // loadPlan reads the owner flag at call time — so this lands as a
+  // premium request without a second code path.
+  const regeneratePremium = useCallback(() => {
+    fetchStarted.current = false;
+    setPlan(null);
+  }, [setPlan]);
+
+  const exitOwnerMode = useCallback(() => {
+    setOwnerTestMode(false);
+    setOwnerMode(false);
+  }, []);
 
   useEffect(() => {
     if (!quiz || plan || planLoading || planError) return;
@@ -1057,6 +1084,33 @@ export default function PlanPage() {
         </Reveal>
       )}
 
+      {ownerMode && (
+        <Reveal className="mb-8">
+          <div className="flex flex-col gap-3 rounded-2xl border border-gold/50 bg-gold/10 p-4 sm:flex-row sm:items-center sm:p-5">
+            <p className="flex-1 text-sm leading-relaxed text-gold-soft">
+              <span className="font-bold">Owner test mode is ON</span> — the
+              full protocol is open and new plans generate on the premium
+              AI tier, free. Only visible on this device.
+            </p>
+            <div className="flex shrink-0 gap-2">
+              <Button
+                onClick={regeneratePremium}
+                className="px-4 py-2.5 text-sm"
+              >
+                Regenerate premium plan
+              </Button>
+              <Button
+                onClick={exitOwnerMode}
+                variant="ghost"
+                className="px-4 py-2.5 text-sm"
+              >
+                Turn off
+              </Button>
+            </div>
+          </div>
+        </Reveal>
+      )}
+
       {/* HEADLINE + SCORE */}
       <div className="text-center">
         <Reveal>
@@ -1088,7 +1142,7 @@ export default function PlanPage() {
             align="left"
             eyebrow="Your potential"
             title="Your glow-up preview"
-            sub="Drag the divider. The right side is an illustrative enhancement of your photo — your protocol is how you get there."
+            sub="Drag the divider. The right side is your potential, visualised — clearer skin, stronger light, sharper presence. Your protocol is how you get there."
           />
           <BeforeAfter
             beforeSrc={frontPhoto}
@@ -1177,10 +1231,16 @@ export default function PlanPage() {
           align="left"
           eyebrow="The work"
           title="Your protocol — Phase 1"
-          sub="Weeks 1–4 of your 12-week protocol: face, skin, body, sleep, water, presence — sequenced week by week. The first 3 steps of each pillar are open; the rest sits under the veil."
+          sub={
+            ownerMode
+              ? "Weeks 1–4 of your 12-week protocol: face, skin, body, sleep, water, presence — sequenced week by week. Owner test mode: every step is open."
+              : "Weeks 1–4 of your 12-week protocol: face, skin, body, sleep, water, presence — sequenced week by week. The first 3 steps of each pillar are open; the rest sits under the veil."
+          }
         />
         {plan.sections.map((section, si) => {
-          const { visible, locked } = splitSection(section);
+          const { visible, locked } = ownerMode
+            ? { visible: section.weeks, locked: [] as PlanWeek[] }
+            : splitSection(section);
           return (
           <Reveal key={section.id} delay={Math.min(si * 0.06, 0.2)}>
             <Card>
@@ -1197,9 +1257,15 @@ export default function PlanPage() {
                 <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[11px] font-semibold text-muted">
                   {sectionTaskCount(section)} steps
                 </span>
-                <span className="rounded-full border border-gold/30 bg-gold/10 px-2.5 py-0.5 text-[11px] font-semibold text-gold-soft">
-                  First {FREE_TASKS_PER_SECTION} free
-                </span>
+                {ownerMode ? (
+                  <span className="rounded-full border border-gold/30 bg-gold/10 px-2.5 py-0.5 text-[11px] font-semibold text-gold-soft">
+                    Owner test — all steps open
+                  </span>
+                ) : (
+                  <span className="rounded-full border border-gold/30 bg-gold/10 px-2.5 py-0.5 text-[11px] font-semibold text-gold-soft">
+                    First {FREE_TASKS_PER_SECTION} free
+                  </span>
+                )}
               </div>
               <p className="mt-3.5 border-l-2 border-gold pl-3 text-[15px] font-semibold leading-snug text-bone">
                 {section.summary}
@@ -1220,7 +1286,7 @@ export default function PlanPage() {
               </div>
               {locked.length > 0 && <LockedWeeks weeks={locked} />}
             </Card>
-            {si === firstLockedSectionIdx && (
+            {si === firstLockedSectionIdx && !ownerMode && (
               <UnlockCard total={totalTasks} />
             )}
           </Reveal>
@@ -1250,15 +1316,19 @@ export default function PlanPage() {
             <Button href="/scan" variant="ghost" className="px-6 py-3 text-sm">
               {measurements ? "Rescan my face" : "Add a face scan"}
             </Button>
-            <Button href="/paywall" className="px-6 py-3 text-sm">
-              Unlock your full plan
-            </Button>
+            {!ownerMode && (
+              <Button href="/paywall" className="px-6 py-3 text-sm">
+                Unlock your full plan
+              </Button>
+            )}
           </div>
         </footer>
       </Reveal>
 
       {/* Sticky unlock bar — sells both halves of the subscription: every
-          step unblurred AND the deep-curated regeneration of the plan. */}
+          step unblurred AND the deep-curated regeneration of the plan.
+          Hidden in owner test mode (nothing left to unlock). */}
+      {!ownerMode && (
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-gold/25 bg-ink/85 backdrop-blur-md">
         <div
           className="mx-auto flex max-w-4xl items-center justify-between gap-3 px-4 py-3 sm:px-6"
@@ -1275,6 +1345,7 @@ export default function PlanPage() {
           </Button>
         </div>
       </div>
+      )}
     </motion.div>
   );
 }

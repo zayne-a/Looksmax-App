@@ -1,7 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button, Card, Eyebrow } from "@/components/ui";
+import {
+  isOwnerCredential,
+  isOwnerTestMode,
+  setOwnerTestMode,
+} from "@/lib/admin";
 import { Reveal, staggerParent, staggerChild } from "@/components/motion";
 import { motion } from "@/components/motion-client";
 
@@ -60,8 +65,28 @@ export default function PaywallPage() {
   const [couponApplied, setCouponApplied] = useState(false);
   const [comingSoon, setComingSoon] = useState<string | null>(null);
 
+  // Owner test mode (lib/admin.ts): the coupon box doubles as the
+  // owner's unlock — entering the admin email (or owner code) turns
+  // this device into a full-Pro test device instead of applying a
+  // discount.
+  const [ownerOn, setOwnerOn] = useState(false);
+  useEffect(() => {
+    setOwnerOn(isOwnerTestMode());
+  }, []);
+
   const applyCoupon = () => {
+    if (isOwnerCredential(coupon)) {
+      setOwnerTestMode(true);
+      setOwnerOn(true);
+      setCoupon("");
+      return;
+    }
     if (coupon.trim().length > 0) setCouponApplied(true);
+  };
+
+  const exitOwnerMode = () => {
+    setOwnerTestMode(false);
+    setOwnerOn(false);
   };
 
   return (
@@ -131,17 +156,41 @@ export default function PaywallPage() {
         ))}
       </motion.div>
 
-      {/* COUPON */}
+      {/* COUPON (+ owner unlock) */}
       <Reveal className="mt-6">
         <Card>
-          <h3 className="font-display text-lg font-extrabold text-bone">
-            Have a creator code?
-          </h3>
-          <p className="mt-1 text-sm text-muted">
-            Our micro-influencer partners get you 20% off. Ask yours for a
-            code.
-          </p>
-          {couponApplied ? (
+          {ownerOn ? (
+            <>
+              <h3 className="font-display text-lg font-extrabold text-bone">
+                Owner test mode is ON
+              </h3>
+              <p className="mt-1 text-sm leading-relaxed text-muted">
+                Admin access is active on this device: the plan page shows
+                the full protocol with every step open, and new plans
+                generate on the premium AI tier — free, no subscription.
+                Use the banner on the plan page to regenerate a premium
+                plan, or turn test mode off here.
+              </p>
+              <div className="mt-4">
+                <Button
+                  onClick={exitOwnerMode}
+                  variant="ghost"
+                  className="px-8"
+                >
+                  Turn off owner test mode
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <h3 className="font-display text-lg font-extrabold text-bone">
+                Have a creator code?
+              </h3>
+              <p className="mt-1 text-sm text-muted">
+                Our micro-influencer partners get you 20% off. Ask yours
+                for a code.
+              </p>
+              {couponApplied ? (
             <motion.p
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
@@ -163,6 +212,8 @@ export default function PaywallPage() {
                 Apply
               </Button>
             </div>
+              )}
+            </>
           )}
         </Card>
       </Reveal>

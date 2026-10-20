@@ -297,6 +297,72 @@ export function BeforeAfter({
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState(50);
   const dragging = useRef(false);
+  const interacted = useRef(false);
+  const [hinting, setHinting] = useState(true);
+
+  /* Intro sweep: the first time the slider scrolls into view, glide the
+     divider 50 → 80 → 30 → 58 so the Today/Potential difference is
+     impossible to miss and users learn it drags. Cancelled the moment
+     they grab it; skipped for reduced-motion users. */
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+      setHinting(false);
+      return;
+    }
+    const KEYS: Array<[number, number]> = [
+      [0, 50],
+      [0.9, 80],
+      [2.0, 30],
+      [2.7, 58],
+    ];
+    const TOTAL = 2.7;
+    const easeInOut = (t: number) =>
+      t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    const sample = (t: number) => {
+      for (let i = 1; i < KEYS.length; i++) {
+        if (t <= KEYS[i][0]) {
+          const [t0, p0] = KEYS[i - 1];
+          const [t1, p1] = KEYS[i];
+          return p0 + (p1 - p0) * easeInOut((t - t0) / (t1 - t0));
+        }
+      }
+      return KEYS[KEYS.length - 1][1];
+    };
+    let raf = 0;
+    let start = 0;
+    let fired = false;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0].isIntersecting || fired) return;
+        fired = true;
+        io.disconnect();
+        const tick = (now: number) => {
+          if (interacted.current) {
+            setHinting(false);
+            return;
+          }
+          if (!start) start = now;
+          const t = (now - start) / 1000;
+          if (t >= TOTAL) {
+            setPos(58);
+            setHinting(false);
+            return;
+          }
+          setPos(sample(t));
+          raf = requestAnimationFrame(tick);
+        };
+        raf = requestAnimationFrame(tick);
+      },
+      { threshold: 0.45 },
+    );
+    io.observe(el);
+    return () => {
+      io.disconnect();
+      cancelAnimationFrame(raf);
+    };
+  }, []);
 
   const update = (clientX: number) => {
     const el = ref.current;
@@ -307,6 +373,8 @@ export function BeforeAfter({
   };
 
   const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    interacted.current = true;
+    setHinting(false);
     dragging.current = true;
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     update(e.clientX);
@@ -338,26 +406,65 @@ export function BeforeAfter({
           if (e.key === "ArrowRight") setPos((p) => Math.min(96, p + 4));
         }}
       >
-        {/* After (enhanced) — full-bleed base layer */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={afterSrc}
-          alt="Enhanced preview"
-          draggable={false}
-          className="absolute inset-0 h-full w-full object-cover"
-          style={{
-            filter:
-              "brightness(1.05) contrast(1.06) saturate(1.1) sepia(0.08)",
-          }}
-        />
-        {/* Before — clipped to the left of the divider */}
+        {/* After (Potential) — full-bleed retouch stack. A single filter
+            was invisible (Zayne, 2026-10-20: "potential looks same"), so
+            the potential side is now a real retouch: richer grade, a
+            blurred soft-light layer that smooths skin texture, warm
+            studio glow from above, and a gentle vignette that pushes
+            focus onto the face. Still the user's own photo — no morph,
+            no fake geometry — framed by the illustrative-only caption. */}
+        <div aria-hidden className="absolute inset-0 isolate">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={afterSrc}
+            alt=""
+            draggable={false}
+            className="absolute inset-0 h-full w-full object-cover"
+            style={{
+              filter:
+                "brightness(1.08) contrast(1.09) saturate(1.16) sepia(0.05)",
+            }}
+          />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={afterSrc}
+            alt=""
+            draggable={false}
+            className="absolute inset-0 h-full w-full object-cover"
+            style={{
+              filter: "blur(6px) brightness(1.05)",
+              mixBlendMode: "soft-light",
+              opacity: 0.65,
+            }}
+          />
+          <div
+            className="absolute inset-0"
+            style={{
+              background:
+                "radial-gradient(120% 90% at 50% 16%, rgba(255,205,110,0.22), transparent 55%)",
+              mixBlendMode: "soft-light",
+            }}
+          />
+          <div
+            className="absolute inset-0"
+            style={{
+              background:
+                "radial-gradient(95% 95% at 50% 42%, transparent 58%, rgba(0,0,0,0.30) 100%)",
+            }}
+          />
+        </div>
+        {/* Before (Today) — clipped left of the divider, graded slightly
+            flat/dull so the contrast with Potential reads instantly. */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={beforeSrc}
           alt="Original photo"
           draggable={false}
           className="absolute inset-0 h-full w-full object-cover"
-          style={{ clipPath: `inset(0 ${100 - pos}% 0 0)` }}
+          style={{
+            clipPath: `inset(0 ${100 - pos}% 0 0)`,
+            filter: "brightness(0.95) contrast(0.96) saturate(0.88)",
+          }}
         />
         {/* Divider */}
         <div
@@ -366,8 +473,14 @@ export function BeforeAfter({
           style={{ left: `${pos}%` }}
         >
           <div className="absolute inset-y-0 -translate-x-1/2 w-[2px] bg-gold shadow-[0_0_12px_rgba(227,185,78,0.8)]" />
-          <div className="absolute top-1/2 -translate-x-1/2 -translate-y-1/2 flex h-11 w-11 items-center justify-center rounded-full bg-gold text-ink shadow-[0_0_20px_rgba(227,185,78,0.7)]">
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden>
+          <div className="absolute top-1/2 flex h-11 w-11 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-gold text-ink shadow-[0_0_20px_rgba(227,185,78,0.7)]">
+            {hinting && (
+              <span
+                aria-hidden
+                className="absolute inset-0 animate-ping rounded-full bg-gold/40"
+              />
+            )}
+            <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden className="relative">
               <path
                 d="M6 3.5L2.5 9L6 14.5M12 3.5L15.5 9L12 14.5"
                 stroke="currentColor"
