@@ -7,6 +7,8 @@ import { useApp } from "@/lib/store";
 import { isOwnerTestMode, setOwnerTestMode } from "@/lib/admin";
 import { getSupabase } from "@/lib/supabase";
 import { savePlan } from "@/lib/account";
+import JourneyRoadmap from "@/components/JourneyRoadmap";
+import { getOrStartJourneyStart } from "@/lib/journey";
 import type {
   AscendPlan,
   FaceMeasurements,
@@ -972,6 +974,13 @@ export default function PlanPage() {
     setOwnerMode(isOwnerTestMode());
   }, []);
 
+  // Journey start (device-local; the dashboard uses the account's first
+  // saved scan/plan for signed-in users). Set on mount to avoid SSR skew.
+  const [journeyStart, setJourneyStart] = useState<string | null>(null);
+  useEffect(() => {
+    setJourneyStart(getOrStartJourneyStart());
+  }, []);
+
   const loadPlan = useCallback(async () => {
     if (!quiz) return;
     setPlanLoading(true);
@@ -1491,6 +1500,13 @@ export default function PlanPage() {
           </Reveal>
           );
         })}
+      </section>
+
+      {/* JOURNEY — the 12-week arc: Phase 1 in hand; Phases 2–3 are
+          earned through weekly check-ins + progress scans, then
+          generated from the user's own response data. */}
+      <section className="mt-14">
+        <JourneyRoadmap startedAt={journeyStart} checkins={0} />
       </section>
 
       {/* DISCLAIMERS + CTA */}

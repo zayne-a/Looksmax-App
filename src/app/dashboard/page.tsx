@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button, Card, Eyebrow } from "@/components/ui";
 import { Reveal } from "@/components/motion";
 import { useApp } from "@/lib/store";
+import JourneyRoadmap from "@/components/JourneyRoadmap";
 import { supabaseConfigured } from "@/lib/supabase";
 import {
   deleteMySavedData,
@@ -305,6 +306,18 @@ export default function DashboardPage() {
             })
           )}
         </div>
+      </Reveal>
+
+      {/* JOURNEY — starts at the account's first saved scan/plan */}
+      <Reveal delay={0.1} className="mt-12">
+        <JourneyRoadmap
+          startedAt={
+            [...(scans ?? []), ...(plans ?? [])]
+              .map((x) => x.created_at)
+              .sort()[0] ?? null
+          }
+          checkins={0}
+        />
       </Reveal>
 
       {/* ACCOUNT ACTIONS */}
