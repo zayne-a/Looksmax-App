@@ -1155,10 +1155,22 @@ function advancedSkinSection(quiz: QuizAnswers, s: SkinSignals): PlanSection {
           `${whyRoutine(quiz)} — progression is earned by tolerance, not scheduled.`
         ),
         task(
-          "Gua sha depuff ritual in the AM",
-          "5 minutes of light upward gua sha strokes along jawline, cheekbones, and brow after moisturizer.",
+          "Morning debloat ritual",
+          "Cold water splash or an ice cube in a thin cloth for 30-60 seconds, then 5 minutes of light gua sha strokes — centre of the face outward along jawline, cheekbones, and brow, then down the sides of the neck — after moisturizer. This moves temporary water only: visible for hours, not permanent.",
           "daily",
-          `${whyGoal1(quiz)} — the depuff ritual adds visible sharpness for your maintenance goal.`
+          `${whyGoal1(quiz)} — the morning debloat ritual adds visible sharpness for your maintenance goal.`
+        ),
+        task(
+          "Sodium check at dinner, potassium in the day",
+          "Restaurant food, sauces, and instant noodles load sodium that shows up as a puffy face by morning. Keep dinner sodium moderate, and get potassium in daily (banana, coconut water, yogurt, leafy greens) — it's the counterweight that keeps fluid balance level.",
+          "daily",
+          `${whyGoal1(quiz)} — less water held overnight means the debloat ritual starts ahead, not behind.`
+        ),
+        task(
+          "Sleep head-up for a leaner morning face",
+          "Sleep with your head slightly elevated (an extra pillow works) and protect the full night's sleep — lying flat pools fluid in the face, and a short night shows up as puff no morning ritual fully undoes.",
+          "daily",
+          `${whySleep(quiz)} — tonight's sleep position and length decide tomorrow morning's face.`
         ),
         task(
           "Audit: at most one active per evening",
@@ -1555,16 +1567,18 @@ function buildStyleSection(
             : "because deliberate facial hair reads intentional."
         ),
         task(
-          "Tongue posture habit",
-          tongue ? `${tongue.detail} ${tongue.caution}` : "Rest the tongue on the roof of the mouth with lips closed as a daily habit.",
+          "Mewing (tongue posture)",
+          tongue
+            ? `${tongue.detail} Include the back third of the tongue, suctioned up — not just the tip — and keep teeth lightly together, never clenched. ${tongue.caution}`
+            : "Rest the whole tongue flat against the roof of the mouth — back third included — with lips sealed, teeth lightly together (never clenched), breathing through the nose. Presented as a habit, not a promised outcome — no posture exercise reshapes bone in adults.",
           "daily",
-          "because tongue posture shapes the jawline read over time."
+          "because mewing is simply correct tongue resting posture — a free daily habit worth making your default, with honest expectations."
         ),
         task(
-          "Morning depuff before photos",
-          "Ice and 5 minutes of upward facial massage before any photo or event — temporary but visible.",
+          "Morning debloat before photos",
+          "Ice and 5 minutes of upward facial massage before any photo or event — this debloats: it moves temporary water, so it's visible for hours, not permanent.",
           "as needed",
-          "because depuffing sharpens photos — as needed before events."
+          "because debloating sharpens photos — as needed before events."
         ),
       ]),
       week(3, "Glasses and grooming audit", [
