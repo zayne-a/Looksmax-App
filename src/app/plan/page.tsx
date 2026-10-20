@@ -6,7 +6,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useApp } from "@/lib/store";
 import { isOwnerTestMode, setOwnerTestMode } from "@/lib/admin";
 import { getSupabase } from "@/lib/supabase";
-import { savePlan } from "@/lib/account";
+import { listCheckins, savePlan } from "@/lib/account";
 import JourneyRoadmap from "@/components/JourneyRoadmap";
 import { getOrStartJourneyStart } from "@/lib/journey";
 import type {
@@ -981,6 +981,14 @@ export default function PlanPage() {
     setJourneyStart(getOrStartJourneyStart());
   }, []);
 
+  // Real check-in count for the journey gates (account holders; the
+  // dashboard is where check-ins are made).
+  const [checkinCount, setCheckinCount] = useState(0);
+  useEffect(() => {
+    if (!user) return;
+    void listCheckins(52).then((cs) => setCheckinCount(cs.length));
+  }, [user]);
+
   const loadPlan = useCallback(async () => {
     if (!quiz) return;
     setPlanLoading(true);
@@ -1506,7 +1514,7 @@ export default function PlanPage() {
           earned through weekly check-ins + progress scans, then
           generated from the user's own response data. */}
       <section className="mt-14">
-        <JourneyRoadmap startedAt={journeyStart} checkins={0} />
+        <JourneyRoadmap startedAt={journeyStart} checkins={checkinCount} />
       </section>
 
       {/* DISCLAIMERS + CTA */}

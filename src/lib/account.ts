@@ -23,6 +23,16 @@ export interface SavedScan {
   quiz: QuizAnswers | null;
 }
 
+export interface Checkin {
+  id: string;
+  created_at: string;
+  week: number;
+  adherence: string;
+  skin_reaction: string;
+  sleep_quality: string;
+  weight_trend: string;
+}
+
 export interface SavedPlan {
   id: string;
   created_at: string;
@@ -122,7 +132,43 @@ export async function listPlans(limit = 24): Promise<SavedPlan[]> {
   return data as SavedPlan[];
 }
 
-/** Privacy promise, working version: wipe the user's saved scans+plans. */
+/** Persist a weekly check-in. Returns the row id. */
+export async function saveCheckin(input: {
+  week: number;
+  adherence: string;
+  skin_reaction: string;
+  sleep_quality: string;
+  weight_trend: string;
+}): Promise<string | null> {
+  const sb = getSupabase();
+  if (!sb) return null;
+  const userId = await currentUserId();
+  if (!userId) return null;
+  const { data, error } = await sb
+    .from("checkins")
+    .insert({ user_id: userId, ...input })
+    .select("id")
+    .single();
+  if (error || !data) return null;
+  return (data as { id: string }).id;
+}
+
+export async function listCheckins(limit = 52): Promise<Checkin[]> {
+  const sb = getSupabase();
+  if (!sb) return [];
+  const userId = await currentUserId();
+  if (!userId) return [];
+  const { data, error } = await sb
+    .from("checkins")
+    .select("id, created_at, week, adherence, skin_reaction, sleep_quality, weight_trend")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error || !data) return [];
+  return data as Checkin[];
+}
+
+/** Privacy promise, working version: wipe the user's saved data. */
 export async function deleteMySavedData(): Promise<boolean> {
   const sb = getSupabase();
   if (!sb) return false;
@@ -130,6 +176,8 @@ export async function deleteMySavedData(): Promise<boolean> {
   if (!userId) return false;
   const plans = await sb.from("plans").delete().eq("user_id", userId);
   if (plans.error) return false;
+  const checkins = await sb.from("checkins").delete().eq("user_id", userId);
+  if (checkins.error) return false;
   const scans = await sb.from("scans").delete().eq("user_id", userId);
   return !scans.error;
 }

@@ -7,6 +7,8 @@ import { Button, Card, Eyebrow } from "@/components/ui";
 import { Reveal } from "@/components/motion";
 import { useApp } from "@/lib/store";
 import JourneyRoadmap from "@/components/JourneyRoadmap";
+import WeeklyCheckin from "@/components/WeeklyCheckin";
+import { listCheckins, type Checkin } from "@/lib/account";
 import { supabaseConfigured } from "@/lib/supabase";
 import {
   deleteMySavedData,
@@ -41,14 +43,20 @@ export default function DashboardPage() {
   } = useApp();
   const [scans, setScans] = useState<SavedScan[] | null>(null);
   const [plans, setPlans] = useState<SavedPlan[] | null>(null);
+  const [checkins, setCheckins] = useState<Checkin[] | null>(null);
   const [confirmingWipe, setConfirmingWipe] = useState(false);
   const [wiped, setWiped] = useState(false);
 
   const load = useCallback(async () => {
     if (!user) return;
-    const [s, p] = await Promise.all([listScans(50), listPlans(50)]);
+    const [s, p, c] = await Promise.all([
+      listScans(50),
+      listPlans(50),
+      listCheckins(52),
+    ]);
     setScans(s);
     setPlans(p);
+    setCheckins(c);
   }, [user]);
 
   useEffect(() => {
@@ -75,6 +83,7 @@ export default function DashboardPage() {
     if (ok) {
       setScans([]);
       setPlans([]);
+      setCheckins([]);
       setWiped(true);
     }
     setConfirmingWipe(false);
@@ -184,6 +193,22 @@ export default function DashboardPage() {
           </Card>
         </Reveal>
       )}
+
+      {/* WEEKLY LOOP — check-in, adaptive adjustments, progress scan */}
+      <Reveal delay={0.06} className="mt-10">
+        <WeeklyCheckin
+          checkins={checkins ?? []}
+          journeyStart={
+            [...(scans ?? []), ...(plans ?? [])]
+              .map((x) => x.created_at)
+              .sort()[0] ?? null
+          }
+          scoreDelta={latestDelta}
+          bodyGoal={(latest?.quiz?.bodyGoal as string | undefined) ?? null}
+          latestScanAt={latest?.created_at ?? null}
+          onSaved={(c) => setCheckins((prev) => [c, ...(prev ?? [])])}
+        />
+      </Reveal>
 
       {/* SCORE JOURNEY */}
       <Reveal delay={0.08} className="mt-10">
@@ -316,7 +341,7 @@ export default function DashboardPage() {
               .map((x) => x.created_at)
               .sort()[0] ?? null
           }
-          checkins={0}
+          checkins={checkins?.length ?? 0}
         />
       </Reveal>
 

@@ -34,9 +34,25 @@ create table if not exists public.plans (
 create index if not exists plans_user_created_idx
   on public.plans (user_id, created_at desc);
 
+-- Weekly check-ins: the retention loop. One row per weekly check-in;
+-- the answers drive the adaptive adjustments + phase unlock counts.
+create table if not exists public.checkins (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  week int not null,
+  adherence text not null,
+  skin_reaction text not null,
+  sleep_quality text not null,
+  weight_trend text not null
+);
+create index if not exists checkins_user_created_idx
+  on public.checkins (user_id, created_at desc);
+
 alter table public.profiles enable row level security;
 alter table public.scans enable row level security;
 alter table public.plans enable row level security;
+alter table public.checkins enable row level security;
 
 -- profiles: read/update own row (privileged columns protected below)
 drop policy if exists "profiles_select_own" on public.profiles;
@@ -52,6 +68,9 @@ create policy "scans_own" on public.scans
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 drop policy if exists "plans_own" on public.plans;
 create policy "plans_own" on public.plans
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+drop policy if exists "checkins_own" on public.checkins;
+create policy "checkins_own" on public.checkins
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 -- Auto-create the profile on signup; the admin email gets admin+premium.
