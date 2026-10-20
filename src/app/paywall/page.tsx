@@ -5,6 +5,9 @@ import { Button, Card, Eyebrow } from "@/components/ui";
 import { Reveal, staggerParent, staggerChild } from "@/components/motion";
 import { motion } from "@/components/motion-client";
 
+// Trial rule (Zayne, 2026-10-20): the 3-day free trial exists ONLY on
+// Monthly and Yearly. Weekly bills from day one — never advertise a
+// trial on it, in card copy, buttons, or anywhere else.
 const plans = [
   {
     id: "weekly",
@@ -12,7 +15,8 @@ const plans = [
     price: "$1.99",
     per: "/week",
     note: "Half the price of the rating apps",
-    sub: "starts after your 3-day free trial",
+    sub: "no free trial — billed from day one",
+    trial: false,
     highlight: false,
     best: false,
   },
@@ -23,6 +27,7 @@ const plans = [
     per: "/month",
     note: "just $1.15/week",
     sub: "starts after your 3-day free trial",
+    trial: true,
     highlight: false,
     best: false,
   },
@@ -33,6 +38,7 @@ const plans = [
     per: "/year",
     note: "just $0.58/week — commit to the climb",
     sub: "starts after your 3-day free trial",
+    trial: true,
     highlight: true,
     best: true,
   },
@@ -70,7 +76,8 @@ export default function PaywallPage() {
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-sm sm:text-base leading-relaxed text-muted">
             Your first scan is already free. Pro unlocks the full protocol —
-            try everything for 3 days, pay nothing if it's not for you.
+            Monthly and Yearly start with 3 free days, pay nothing if it's
+            not for you.
           </p>
         </Reveal>
       </div>
@@ -115,7 +122,9 @@ export default function PaywallPage() {
               >
                 {comingSoon === p.id
                   ? "Payments coming soon"
-                  : `Start 3-day trial — ${p.name}`}
+                  : p.trial
+                    ? `Start 3-day free trial — ${p.name}`
+                    : `Start ${p.name} — ${p.price}${p.per}`}
               </Button>
             </Card>
           </motion.div>
@@ -162,12 +171,12 @@ export default function PaywallPage() {
       <Reveal className="mt-6">
         <Card>
           <h3 className="font-display text-lg font-extrabold text-bone">
-            How your 3-day trial works
+            How the 3-day trial works — Monthly &amp; Yearly
           </h3>
           <ol className="mt-4 space-y-3 text-sm text-muted list-none">
             {[
               ["Day 0", "Start your trial. Unlock the full week-by-week plan, unlimited rescans, and progress tracking. No charge."],
-              ["Day 3", "Trial ends. Stay on your chosen plan or cancel in one tap — no charge either way if you leave."],
+              ["Day 3", "Trial ends. Your Monthly or Yearly plan begins — or cancel in one tap before it does, no charge either way."],
               ["After", "Keep scanning, keep tracking, keep climbing. Cancel anytime."],
             ].map(([day, text]) => (
               <li key={day} className="flex gap-3">
@@ -178,6 +187,10 @@ export default function PaywallPage() {
               </li>
             ))}
           </ol>
+          <p className="mt-4 text-xs leading-relaxed text-muted/80">
+            Weekly has no trial — it bills $1.99 from day one. The trial is
+            a Monthly and Yearly perk.
+          </p>
         </Card>
       </Reveal>
 

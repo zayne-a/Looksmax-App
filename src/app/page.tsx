@@ -75,7 +75,7 @@ const faqs = [
   },
   {
     q: "Do I pay to see my results?",
-    a: "No. Your first scan — real measurements and your core score — is completely free, no card required. Ascend Pro unlocks the full week-by-week protocol, unlimited rescans, progress tracking, and the coach, starting with a 3-day free trial.",
+    a: "No. Your first scan — real measurements and your core score — is completely free, no card required. Ascend Pro unlocks the full week-by-week protocol, unlimited rescans, progress tracking, and the coach. Monthly and Yearly start with a 3-day free trial; Weekly bills from day one.",
   },
   {
     q: "What is softmaxxing?",
@@ -392,8 +392,9 @@ export default function Home() {
               <span className="text-2xl font-bold text-muted">/week</span>
             </p>
             <p className="mx-auto mt-4 max-w-xl text-sm sm:text-base leading-relaxed text-muted">
-              Half the price of the rating apps. Start with a 3-day free
-              trial — and your first scan is free forever, no card required.
+              Half the price of the rating apps. Monthly and Yearly start
+              with a 3-day free trial — and your first scan is free forever,
+              no card required.
             </p>
             <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
               <Button href="/paywall" className="w-full sm:w-auto px-9 py-3.5">
