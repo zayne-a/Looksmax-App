@@ -1,4 +1,4 @@
-# The Guides library content (new, 2026-10-20, Zayne): 14 general advice guides in 5 categories — the clear, curated general layer that sits alongside the personalised plans, so subscribers never have to dig through fluff research online. One honest structure per guide (intro, protocol, mistakes, bottom line), softmaxxing-only, no miracle claims, prescription territory always "see a dermatologist". SECTION_GUIDES maps plan pillars to guides for the plan page’s "Go deeper" links.
+// The Guides library content (new, 2026-10-20, Zayne): 14 general advice guides in 5 categories — the clear, curated general layer that sits alongside the personalised plans, so subscribers never have to dig through fluff research online. One honest structure per guide (intro, protocol, mistakes, bottom line), softmaxxing-only, no miracle claims, prescription territory always "see a dermatologist". SECTION_GUIDES maps plan pillars to guides for the plan page’s "Go deeper" links.
 /**
  * The Guides library — Ascend's general advice, curated in one place.
  *
@@ -371,6 +371,120 @@ export const GUIDES: Guide[] = [
       "Lean out gradually if that's your goal, sleep well, manage salt and water, stand tall. Your jaw is mostly a lifestyle photograph — change the lifestyle.",
   },
   {
+    slug: "mewing-guide",
+    title: "Mewing, Explained Honestly",
+    category: "Face & Posture",
+    blurb:
+      "Mewing is tongue posture: the whole tongue resting on the palate, lips sealed, nose breathing. Here's the correct form, how to make it a habit, and what it can and can't do.",
+    readMins: 5,
+    intro:
+      "Mewing is the internet's name for something unglamorous: correct tongue resting posture. The whole tongue resting against the roof of the mouth, lips sealed, breathing through the nose. It went viral attached to claims of remodelled jaws — and buried under the hype is a genuinely good habit. This guide separates the two.",
+    sections: [
+      {
+        heading: "What mewing actually is",
+        paragraphs: [
+          "The name comes from British orthodontists John and Mike Mew and their 'orthotropics' ideas about how oral posture shapes growing faces. In children, whose bones are still growing, resting posture is a real clinical conversation. In adults, the skull is done growing — and there is no credible evidence that tongue posture remodels adult bone.",
+          "What remains true at any age: your tongue, lips and breathing sit in some position for the roughly 23 hours a day you're not eating or talking. Mewing is simply making that default position the correct one — tongue up, lips closed, air through the nose — instead of a hanging-open, mouth-breathing default. Treat it as posture hygiene, like sitting straight, not as a treatment.",
+        ],
+      },
+      {
+        heading: "Correct form, step by step",
+        steps: [
+          "Seal your lips gently — closed, no straining. If you cannot breathe comfortably with your lips closed, that's a nose problem to solve first, not a discipline problem (see the red flags below).",
+          "Teeth lightly together or a hair apart — never clenched. Clenching is a jaw-pain habit, not mewing.",
+          "Rest the tongue tip on the ridge just behind your front teeth — not pushing against the teeth themselves.",
+          "Now the part everyone skips: the middle and back third. Say a soft 'nnn' sound, or swallow and hold at the top of the swallow — your whole tongue suctions up against the palate. That suction hold, back third included, is the posture.",
+          "Breathe slowly through your nose. Once the seal is right, the tongue stays up with almost no effort — you should never be shoving it into place with force.",
+          "Run the check whenever you notice: tongue up, lips sealed, nose breathing. That's the entire technique.",
+        ],
+      },
+      {
+        heading: "Building the habit",
+        steps: [
+          "Attach the check to things you already do: every swallow, every glass of water, every time you unlock your phone or sit down to work.",
+          "Start with waking hours. Night-time posture follows automatically once your nose breathing is clear and the daytime default is set.",
+          "Expect your tongue to feel oddly tired in week one — it's an untrained resting pattern, not a workout. Mild awareness is fine; pain is not (see red flags).",
+          "Give it two to three weeks of cueing before judging. Habits of posture change on that timescale, not overnight.",
+        ],
+      },
+      {
+        heading: "What to honestly expect",
+        paragraphs: [
+          "The defensible wins: nasal breathing is the body's normal pattern — mouth breathing dries the mouth and teeth and fragments sleep. A tongue-up, lips-closed default also reads better: a mouth hanging open softens the under-jaw line in photos and in person, and a closed, resting jaw simply looks more composed. These are small, real, same-day effects of posture.",
+          "What not to expect: new bone, a moved jaw, or a transformation timeline. Anyone selling you a 90-day jaw reconstruction from tongue posture is selling. If your bite or jaw genuinely needs structural change, that's orthodontics — a professional conversation, not a habit.",
+        ],
+      },
+      {
+        heading: "Red flags — see a professional",
+        steps: [
+          "Jaw pain, clicking, locking, or headaches from clenching: see a dentist — that's TMJ territory, and more tongue force is the opposite of help.",
+          "You chronically cannot breathe through your nose: see a doctor or ENT. Congestion, allergies or a deviated septum are medical problems with medical fixes.",
+          "Loud snoring, gasping, or waking unrefreshed: get assessed for sleep apnea by a sleep professional. This is a health condition, not a looks problem — and mouth tape is not a treatment for it.",
+          "Your bite is changing, teeth are shifting, or your jaw sits visibly asymmetrically: an orthodontist, not an internet protocol.",
+          "Never tape your mouth shut if you cannot breathe freely through your nose. Fix the breathing first.",
+        ],
+      },
+    ],
+    mistakes: [
+      "Resting only the tongue tip on the palate — without the back third suctioned up, it isn't the posture.",
+      "Clenching your teeth or pressing the tongue up hard — force is how you get jaw pain, not results.",
+      "Expecting bone change as an adult, then quitting 'because it didn't work' — the habit was never a treatment; judge it as posture.",
+      "Mouth-taping over a blocked nose or possible sleep apnea — fix the airway first, with a professional.",
+    ],
+    bottomLine:
+      "Tongue up, lips sealed, nose breathing — as a default posture, not a workout or a promise. It's free, it's anatomically normal, and it's worth having. Just don't let anyone sell it to you as surgery.",
+  },
+  {
+    slug: "debloat-guide",
+    title: "Debloat: The Morning Face Protocol",
+    category: "Face & Posture",
+    blurb:
+      "Morning facial puffiness is water, not fat — held by salt, poor sleep, alcohol and a flat pillow. The protocol that moves it in 10 minutes, the night-before prevention, and what actually makes leanness last.",
+    readMins: 5,
+    intro:
+      "The puffy face in the morning mirror is almost never fat that arrived overnight — it's water. Sodium, a short night, alcohol, allergies and lying flat all push fluid into facial tissue, and thin facial skin shows every bit of it. That makes morning puffiness the most fixable thing in this whole library: movable in minutes, preventable the night before. Here's the full protocol — and the honest line between temporary water and actual facial fat.",
+    sections: [
+      {
+        heading: "Why your face holds water",
+        paragraphs: [
+          "Your body treats fluid balance as chemistry: sodium pulls water into tissue, so a salty dinner is quite literally stored in your face by morning. Lying flat for eight hours removes gravity's help, so fluid that would drain downward pools in the face and around the eyes instead. Alcohol dehydrates you, the body rebounds by holding water the next day, and poor sleep alone measurably increases facial puffiness. Allergies and sinus congestion add local swelling on top. None of this is fat — which is exactly why it can change by lunchtime.",
+        ],
+      },
+      {
+        heading: "The morning debloat protocol (10 minutes)",
+        steps: [
+          "Cold first: splash cold water over your face for 30–60 seconds, or glide an ice cube wrapped in a thin cloth over your cheeks, jawline and under-eyes. Cold calms the puff fast.",
+          "Gua sha or your knuckles, light pressure only, over moisturiser so the tool glides: sweep from the centre of the face outward — along the jawline toward the ears, under the cheekbones outward, brow outward — then sweep down the sides of the neck. Five minutes. Every stroke travels toward drainage, never random directions.",
+          "Move. A short walk or any morning movement — your muscles are the pump that moves lymph; lying still keeps fluid parked in your face.",
+          "Drink water steadily (your plan sets your number) and get potassium in at breakfast — a banana, coconut water, yoghurt, leafy greens. Potassium is the counterweight to sodium in fluid balance.",
+        ],
+      },
+      {
+        heading: "The night-before prevention",
+        steps: [
+          "Watch dinner sodium. Restaurant meals, sauces, pickles, instant noodles and processed snacks are the usual culprits behind a puffy morning — moderate them, especially before photos or events.",
+          "Raise your head slightly: an extra pillow or a raised head of the bed stops fluid pooling in your face overnight.",
+          "Finish alcohol early, or skip it the night before a day that matters — it's the single biggest next-morning puff driver.",
+          "Protect the full 7–9 hours of sleep. A short night shows up as puff and under-eye darkness no morning ritual fully undoes.",
+        ],
+      },
+      {
+        heading: "Water vs fat — the honest split",
+        paragraphs: [
+          "Everything above moves temporary water; the effect lasts hours, which is all a photo, an event or a workday needs. But a face that still looks soft on a well-slept, low-salt, hydrated morning isn't holding water — that's body fat, and it changes over months through overall fat loss, not mornings. The jawline guide covers that lever properly. Use debloat as the same-day tool it is; don't chase it as a leanness strategy, and never reach for diuretics or dehydration tricks — they're dangerous, they rebound worse, and they're exactly the kind of shortcut this app doesn't do.",
+        ],
+      },
+    ],
+    mistakes: [
+      "Diuretics, 'water pills' or deliberate dehydration to look lean — dangerous, short-lived, and the rebound puff is worse than the original.",
+      "Pressing hard with the gua sha tool — bruising is not drainage. Lymph moves with light pressure; force just irritates skin.",
+      "Skipping water to 'avoid puffiness' — erratic intake makes the body hold onto more water, not less.",
+      "Judging your real face at 7 a.m. after a salty, short night — that's water and sleep debt talking, not your face.",
+    ],
+    bottomLine:
+      "Cold, gua sha, movement, potassium — and a smarter night before. Debloat moves water for the day; body fat sets the baseline. Your plan uses both, in that order of honesty.",
+  },
+  {
     slug: "posture-and-presence",
     title: "Posture & Presence: The Same-Day Upgrade",
     category: "Face & Posture",
@@ -705,8 +819,14 @@ export function getGuide(slug: string): Guide | null {
 
 /** Guides related to a plan section — used for "read the guide" links. */
 export const SECTION_GUIDES: Record<string, string[]> = {
-  skin: ["skincare-routine-basics", "acne-and-breakouts", "sunscreen-guide"],
+  skin: ["skincare-routine-basics", "acne-and-breakouts", "sunscreen-guide", "debloat-guide"],
   diet: ["nutrition-for-skin-and-body", "sleep-for-looks"],
   exercise: ["gym-starter-guide", "posture-and-presence"],
-  style: ["grooming-checklist", "style-and-fit-basics", "hairstyle-by-face-shape"],
+  style: [
+    "grooming-checklist",
+    "style-and-fit-basics",
+    "hairstyle-by-face-shape",
+    "mewing-guide",
+    "debloat-guide",
+  ],
 };
