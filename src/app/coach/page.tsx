@@ -33,8 +33,9 @@ export default function CoachPage() {
   const [sending, setSending] = useState(false);
   const [plan, setPlan] = useState<AscendPlan | null>(null);
 
-  // Daily ritual state
-  const [questions] = useState<DailyQuestion[]>(() => questionsForDay());
+  // Daily ritual state. Questions load in the effect below: computing
+  // them during render reads the clock, which breaks Next prerendering.
+  const [questions, setQuestions] = useState<DailyQuestion[]>([]);
   const [ritualStep, setRitualStep] = useState<number | null>(null);
   const [ritualAnswers, setRitualAnswers] = useState<Record<string, string>>({});
 
@@ -60,9 +61,11 @@ export default function CoachPage() {
         history.map((m: ChatMessage) => ({ role: m.role, content: m.content }))
       );
       setPlan(plans[0]?.plan ?? null);
+      const qs = questionsForDay();
+      setQuestions(qs);
       const todayLog = logs.find((l) => l.day === dayKey());
       const existing = todayLog?.answers ?? {};
-      const missing = questions.filter((q) => !existing[q.id]);
+      const missing = qs.filter((q) => !existing[q.id]);
       if (isPro && missing.length > 0) {
         setRitualStep(0);
         setRitualAnswers(existing);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Button, Card } from "@/components/ui";
 import type { AscendPlan, QuizAnswers } from "@/lib/types";
@@ -45,10 +45,15 @@ export default function TodayHome({
     }>
   ) => Promise<void>;
 }) {
-  const today = dayKey();
-  const todayLog = logs.find((l) => l.day === today) ?? null;
+  // "Today" is set in an effect: reading the clock during render
+  // breaks Next's prerender of client components.
+  const [today, setToday] = useState<string | null>(null);
+  useEffect(() => {
+    setToday(dayKey());
+  }, []);
+  const todayLog = today ? (logs.find((l) => l.day === today) ?? null) : null;
   const week = journeyWeek(journeyStart) ?? 1;
-  const streak = currentStreak(activeDays, today);
+  const streak = today ? currentStreak(activeDays, today) : 0;
   const sections = useMemo(() => todaysSections(plan, week), [plan, week]);
   const targets = useMemo(
     () => personalTargets(quiz, plan.foundations.hydration.dailyMl),
@@ -63,7 +68,7 @@ export default function TodayHome({
     0
   );
 
-  const questions = questionsForDay(today);
+  const questions = today ? questionsForDay(today) : [];
   const answers = todayLog?.answers ?? {};
   const answeredAll = questions.every((q) => answers[q.id]);
 
@@ -78,6 +83,8 @@ export default function TodayHome({
   const answer = (id: string, value: string) => {
     void onSaveToday({ answers: { [id]: value } });
   };
+
+  if (!today) return null;
 
   const water = todayLog?.water_ml ?? 0;
   const waterGoal = targets?.waterMl ?? 2500;

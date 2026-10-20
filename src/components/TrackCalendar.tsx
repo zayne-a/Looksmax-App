@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card } from "@/components/ui";
 import type { Checkin, DailyLog, SavedScan } from "@/lib/account";
 import { currentStreak, dayKey, DAILY_QUESTION_SETS } from "@/lib/daily";
@@ -28,9 +28,16 @@ export default function TrackCalendar({
   checkins: Checkin[];
   scans: SavedScan[];
 }) {
-  const today = dayKey();
+  // Clock reads happen in an effect — render-time `new Date()` breaks
+  // Next's prerender of client components.
+  const [today, setToday] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
-  const [selected, setSelected] = useState<string>(today);
+  const [selected, setSelected] = useState<string>("");
+  useEffect(() => {
+    const t = dayKey();
+    setToday(t);
+    setSelected((prev) => prev || t);
+  }, []);
 
   const { logByDay, checkinDays, scanByDay, activeDays, streakDays } =
     useMemo(() => {
@@ -49,8 +56,8 @@ export default function TrackCalendar({
         ...scanByDay.keys(),
       ]);
       const streakDays = new Set<string>();
-      let streak = currentStreak(activeDays, today);
-      let cursor = activeDays.has(today) ? today : null;
+      let streak = today ? currentStreak(activeDays, today) : 0;
+      let cursor = today && activeDays.has(today) ? today : null;
       if (!cursor && streak > 0) {
         // streak ended yesterday
         const y = new Date();
@@ -66,6 +73,8 @@ export default function TrackCalendar({
       }
       return { logByDay, checkinDays, scanByDay, activeDays, streakDays };
     }, [logs, checkins, scans, today]);
+
+  if (!today) return null;
 
   const view = new Date();
   view.setDate(1);
