@@ -14,6 +14,8 @@ import {
   todaysSections,
 } from "@/lib/daily";
 import { journeyWeek } from "@/lib/journey";
+import { buildRoutine } from "@/lib/routine";
+import GuidedRoutine from "@/components/GuidedRoutine";
 
 /**
  * The subscriber's daily home: streak, today's protocol as an
@@ -79,6 +81,7 @@ export default function TodayHome({
 
   const [calInput, setCalInput] = useState("");
   const [weightInput, setWeightInput] = useState("");
+  const [routineKind, setRoutineKind] = useState<"am" | "pm" | null>(null);
 
   const saveToday = (
     patch: Partial<{
@@ -100,6 +103,14 @@ export default function TodayHome({
   };
 
   if (!today) return null;
+
+  const completeRoutine = () => {
+    const skin = sections.find((s) => s.sectionId === "skin");
+    if (!skin) return;
+    const patch: Record<string, boolean> = {};
+    for (const t of skin.tasks) patch[taskKey(skin.sectionId, t.title)] = true;
+    void saveToday({ habits: patch });
+  };
 
   const water = todayLog?.water_ml ?? 0;
   const waterGoal = targets?.waterMl ?? 2500;
@@ -182,6 +193,23 @@ export default function TodayHome({
           <p className="text-xs text-muted">
             From your saved plan — tick as you do them
           </p>
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            onClick={() => setRoutineKind("am")}
+            className="rounded-full border border-gold/40 bg-gold/10 px-5 py-2.5 text-sm font-bold text-gold-soft transition hover:bg-gold/20"
+          >
+            ▶ Guided AM routine
+          </button>
+          <button
+            onClick={() => setRoutineKind("pm")}
+            className="rounded-full border border-white/15 bg-white/[0.03] px-5 py-2.5 text-sm font-bold text-bone transition hover:border-gold/40"
+          >
+            ▶ Guided PM routine
+          </button>
+          <span className="self-center text-xs text-muted">
+            Step-by-step, with the wait times that make actives work
+          </span>
         </div>
         <div className="mt-5 grid gap-5 md:grid-cols-2">
           {sections.map((s) => (
@@ -416,6 +444,15 @@ export default function TodayHome({
           </div>
         </Card>
       </div>
+
+      {routineKind && (
+        <GuidedRoutine
+          kind={routineKind}
+          steps={buildRoutine(plan, quiz, routineKind, week)}
+          onClose={() => setRoutineKind(null)}
+          onComplete={completeRoutine}
+        />
+      )}
     </div>
   );
 }

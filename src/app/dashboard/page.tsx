@@ -11,6 +11,9 @@ import WeeklyCheckin from "@/components/WeeklyCheckin";
 import CoachReview from "@/components/CoachReview";
 import TodayHome from "@/components/TodayHome";
 import TrackCalendar from "@/components/TrackCalendar";
+import MeasurementDay from "@/components/MeasurementDay";
+import ProgressPhotos from "@/components/ProgressPhotos";
+import MyShelf from "@/components/MyShelf";
 import { supabaseConfigured } from "@/lib/supabase";
 import {
   deleteMySavedData,
@@ -380,6 +383,25 @@ export default function DashboardPage() {
         <Reveal delay={0.08} className="mt-6">
           <Achievements items={achievements} />
         </Reveal>
+      )}
+
+      {/* MEASUREMENT DAY + PROGRESS PHOTOS + SHELF (subscriber) */}
+      {isPro && (
+        <>
+          <Reveal delay={0.08} className="mt-6">
+            <MeasurementDay scans={scans ?? []} todayKey={todayKey} />
+          </Reveal>
+          <Reveal delay={0.08} className="mt-6">
+            <ProgressPhotos scans={scans ?? []} />
+          </Reveal>
+          <Reveal delay={0.08} className="mt-6">
+            <MyShelf
+              plan={plans?.[0]?.plan ?? null}
+              quiz={latest?.quiz ?? null}
+              todayKey={todayKey}
+            />
+          </Reveal>
+        </>
       )}
 
       {/* MILESTONE — celebration + shareable card (subscriber) */}
