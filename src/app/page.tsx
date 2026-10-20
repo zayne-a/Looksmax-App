@@ -40,7 +40,7 @@ const differentiators = [
   },
   {
     title: "Real week-by-week protocols",
-    text: "Skin, diet, exercise, and style broken into tasks with frequencies — not a generic list of tips.",
+    text: "Skin, diet, exercise, and style broken into tasks with frequencies — mewing and debloat protocols included, with honest expectations — not a generic list of tips.",
   },
   {
     title: "Progress you can prove",
@@ -79,7 +79,7 @@ const faqs = [
   },
   {
     q: "What is softmaxxing?",
-    a: "Softmaxxing is the discipline of maximizing your appearance through non-surgical levers: skin, body composition, hairstyle, grooming, posture, and style. Ascend turns that loose internet concept into measured ratios and a structured protocol you can actually follow.",
+    a: "Softmaxxing is the discipline of maximizing your appearance through non-surgical levers: skin, body composition, hairstyle, grooming, posture, tongue posture (mewing), and style. Ascend turns that loose internet concept into measured ratios and a structured protocol you can actually follow.",
   },
   {
     q: "Can this replace a doctor or dermatologist?",

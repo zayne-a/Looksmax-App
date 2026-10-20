@@ -1,4 +1,4 @@
-# Claims corrected to match the shipped product (audit, 2026-10-20): weekly check-ins + Coach Review show "With account" in the Free column instead of Pro-only, since signed-in free users get them as shipped. The extra-scan comparison line keeps its wording and gains the * tying it to the store-listing footnote.
+// Claims corrected to match the shipped product (audit, 2026-10-20): weekly check-ins + Coach Review show "With account" in the Free column instead of Pro-only, since signed-in free users get them as shipped. The extra-scan comparison line keeps its wording and gains the * tying it to the store-listing footnote.
 import Link from "next/link";
 import { Button, Card, Eyebrow, SectionHeading } from "@/components/ui";
 import { Reveal } from "@/components/motion";
@@ -13,7 +13,7 @@ import { Reveal } from "@/components/motion";
 const VS_UMAX: [string, string, string][] = [
   ["Your first scan", "Free — full measurements + score, no card", "Results locked behind a subscription*"],
   ["Re-scans as you progress", "Unlimited, included", "Extra scans are an extra purchase*"],
-  ["What you actually get", "A 12-week adaptive protocol (skin, diet, exercise, style)", "One-off ratings + per-trait tips"],
+  ["What you actually get", "A 12-week adaptive protocol (skin, diet, exercise, style) — mewing and debloat protocols included", "One-off ratings + per-trait tips"],
   ["A plan that adapts", "Weekly check-ins change your plan; Phases 2–3 are generated from your progress", "—"],
   ["Daily system", "Today's checklist, water & calorie trackers set from your plan, streak, calendar", "—"],
   ["AI coach", "Knows your plan and your logs; asks you 3 questions a day", "—"],
