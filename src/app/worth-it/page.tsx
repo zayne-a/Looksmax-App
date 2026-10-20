@@ -1,6 +1,6 @@
 import Link from "next/link";
-import { Button, Card, Eyebrow } from "@/components/ui";
-import { Reveal, SectionHead } from "@/components/motion";
+import { Button, Card, Eyebrow, SectionHeading } from "@/components/ui";
+import { Reveal } from "@/components/motion";
 
 /**
  * The public "what makes it worth it" page: an honest, checkable
@@ -95,7 +95,7 @@ export default function WorthItPage() {
       </Reveal>
 
       <Reveal delay={0.05} className="mt-14">
-        <SectionHead
+        <SectionHeading
           eyebrow="Head to head"
           title="Ascend Pro vs the leading rating app"
         />
@@ -112,7 +112,7 @@ export default function WorthItPage() {
       </Reveal>
 
       <Reveal delay={0.05} className="mt-14">
-        <SectionHead
+        <SectionHeading
           eyebrow="A week inside Pro"
           title="What your subscription actually runs"
         />
@@ -132,7 +132,7 @@ export default function WorthItPage() {
       </Reveal>
 
       <Reveal delay={0.05} className="mt-14">
-        <SectionHead eyebrow="No surprises" title="Free vs Pro, line by line" />
+        <SectionHeading eyebrow="No surprises" title="Free vs Pro, line by line" />
         <div className="mt-6">
           <CompareTable head={["", "Free", "Ascend Pro"]} rows={FREE_VS_PRO} />
         </div>
