@@ -1,8 +1,10 @@
 // POST /api/plan — generates a personalized AscendPlan.
 // Layer 3 (LLM orchestration): Gemini with strict JSON output, grounded in the
 // KB via matched excerpts. Validates schema + safety; falls back to the pure
-// template stub plan on any failure. The API key is read from env only and is
-// never logged or echoed.
+// template stub plan on any failure. API keys are read from env only (a pool
+// via GEMINI_API_KEYS, or a single GEMINI_API_KEY) and are never logged or
+// echoed. Keys that hit quota/rate limits cool down for 60s while the pool
+// fails over to the next key.
 
 import { NextRequest, NextResponse } from "next/server";
 import type {
@@ -16,6 +18,58 @@ import { extractProductTypes, topTriggerSources } from "@/lib/eval";
 
 const PRIMARY_MODEL = "gemini-3.8-flash";
 const FALLBACK_MODEL = "gemini-3.6-flash";
+
+// ---------- Gemini key pool with failover ----------
+//
+// Keys come from GEMINI_API_KEYS (comma-separated pool). If that is
+// unset/empty, a lone GEMINI_API_KEY is used as a one-key pool. A key that
+// returns HTTP 429 / 503 or a RESOURCE_EXHAUSTED error cools down for
+// KEY_COOLDOWN_MS and the request fails over to the next key; each request
+// starts from a rotating offset so quota burn spreads across the pool.
+// Only key INDEXES are ever logged — never key material.
+
+const KEY_COOLDOWN_MS = 60_000;
+
+/** keyIndex → cooldown-until (epoch ms). Module-level: persists across
+ *  requests in a warm serverless instance. */
+const keyCooldowns = new Map<number, number>();
+
+/** Round-robin cursor: consecutive requests start from different keys. */
+let keyCursor = 0;
+
+function getApiKeys(): string[] {
+  const pool = (process.env.GEMINI_API_KEYS ?? "")
+    .split(",")
+    .map((k) => k.trim())
+    .filter((k) => k.length > 0);
+  if (pool.length > 0) return pool;
+  const single = process.env.GEMINI_API_KEY?.trim();
+  return single ? [single] : [];
+}
+
+function isKeyCoolingDown(index: number, now: number): boolean {
+  const until = keyCooldowns.get(index);
+  return until !== undefined && until > now;
+}
+
+/**
+ * Key indexes in the order this request should try them: round-robin from
+ * the cursor, skipping keys in cooldown — unless EVERY key is cooling down,
+ * in which case all keys are returned in rotation order (try anyway).
+ */
+function orderedKeyIndexes(count: number, now: number): number[] {
+  const start = keyCursor % count;
+  keyCursor += 1;
+  const rotated = Array.from({ length: count }, (_, i) => (start + i) % count);
+  const available = rotated.filter((i) => !isKeyCoolingDown(i, now));
+  return available.length > 0 ? available : rotated;
+}
+
+/** Quota / rate-limit signals: HTTP 429, HTTP 503, or a RESOURCE_EXHAUSTED body. */
+function isQuotaError(status: number, body: string): boolean {
+  if (status === 429 || status === 503) return true;
+  return body.includes("RESOURCE_EXHAUSTED");
+}
 
 // Any mention of an EXCLUDED compound fails the safety filter.
 const EXCLUDED_TERMS = [
@@ -292,13 +346,19 @@ function extractText(data: unknown): string | null {
   return typeof text === "string" ? text : null;
 }
 
-async function generateWithGemini(
-  apiKey: string,
-  req: PlanRequest
-): Promise<{ plan: AscendPlan; source: "gemini" | "stub" }> {
-  const kbExcerpts = getRelevantKbExcerpts(req.measurements, req.quiz);
-  const userMessage = buildUserMessage(req, kbExcerpts);
+type KeyAttempt =
+  | { ok: true; plan: AscendPlan }
+  | { ok: false; quota: boolean; error: string };
 
+/**
+ * Try one key across the model chain (primary → fallback). A quota/rate-limit
+ * response abandons the key immediately (both models share its quota); other
+ * failures fall through to the next model as before.
+ */
+async function tryKeyWithModels(
+  apiKey: string,
+  userMessage: string
+): Promise<KeyAttempt> {
   const models = [PRIMARY_MODEL, FALLBACK_MODEL];
   let lastError = "unknown error";
 
@@ -306,6 +366,15 @@ async function generateWithGemini(
     try {
       const res = await callGemini(model, apiKey, SYSTEM_PROMPT, userMessage);
       if (!res.ok) {
+        // Peek at the body only to detect quota exhaustion; never log it.
+        const body = await res.text().catch(() => "");
+        if (isQuotaError(res.status, body)) {
+          return {
+            ok: false,
+            quota: true,
+            error: `${model} returned HTTP ${res.status} (quota/rate limit)`,
+          };
+        }
         lastError = `${model} returned HTTP ${res.status}`;
         console.warn(`[plan] ${lastError}; trying next model`);
         continue;
@@ -335,14 +404,41 @@ async function generateWithGemini(
         console.warn(`[plan] ${lastError}; trying next model`);
         continue;
       }
-      return { plan: parsed, source: "gemini" };
+      return { ok: true, plan: parsed };
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
       console.warn(`[plan] ${model} call failed: ${lastError}`);
     }
   }
 
-  console.warn(`[plan] all Gemini models failed (${lastError}); using stub plan`);
+  return { ok: false, quota: false, error: lastError };
+}
+
+async function generateWithGemini(
+  req: PlanRequest
+): Promise<{ plan: AscendPlan; source: "gemini" | "stub" }> {
+  const kbExcerpts = getRelevantKbExcerpts(req.measurements, req.quiz);
+  const userMessage = buildUserMessage(req, kbExcerpts);
+
+  const keys = getApiKeys();
+  const order = orderedKeyIndexes(keys.length, Date.now());
+  let lastError = "unknown error";
+
+  for (const keyIndex of order) {
+    const attempt = await tryKeyWithModels(keys[keyIndex], userMessage);
+    if (attempt.ok) return { plan: attempt.plan, source: "gemini" };
+    lastError = attempt.error;
+    if (attempt.quota) {
+      keyCooldowns.set(keyIndex, Date.now() + KEY_COOLDOWN_MS);
+      console.warn(
+        `[plan] key #${keyIndex + 1} hit quota/rate limit; cooling down ${KEY_COOLDOWN_MS / 1000}s, failing over to next key`
+      );
+    }
+  }
+
+  console.warn(
+    `[plan] all Gemini keys/models failed (${lastError}); using stub plan`
+  );
   return { plan: buildStubPlan(req.measurements, req.quiz), source: "stub" };
 }
 
@@ -371,15 +467,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
+    if (getApiKeys().length === 0) {
       const plan = buildStubPlan(planReq.measurements ?? null, planReq.quiz);
       logDiversity(plan);
       const res: PlanResponse = { plan, source: "stub" };
       return NextResponse.json(res);
     }
 
-    const result = await generateWithGemini(apiKey, planReq);
+    const result = await generateWithGemini(planReq);
     logDiversity(result.plan);
     const res: PlanResponse = { plan: result.plan, source: result.source };
     return NextResponse.json(res);

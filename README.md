@@ -22,16 +22,20 @@ Production check:
 npm run build && npm start
 ```
 
-## Gemini API key (free tier works for dev)
+## Gemini API keys (free tier works for dev)
 
 1. Get a free key at https://aistudio.google.com/apikey (no card required).
 2. Create `.env.local` in the project root (gitignored — **never commit it**):
    ```
-   GEMINI_API_KEY=your_key_here
+   GEMINI_API_KEYS=key_one,key_two,key_three
    ```
+   `GEMINI_API_KEYS` is a comma-separated **pool** of keys. If it is
+   unset/empty, the route falls back to a single key from `GEMINI_API_KEY=...`.
 3. Restart the dev server. `/api/plan` uses `gemini-3.8-flash` (fallback
-   `gemini-3.6-flash`). Without a key, the route returns a realistic
-   template-built stub plan so the UI is fully demoable.
+   `gemini-3.6-flash`). Failover: requests rotate across the pool, and a key
+   that hits a quota/rate-limit error (HTTP 429/503, `RESOURCE_EXHAUSTED`)
+   cools down for 60s while the next key takes over; if every key fails, the
+   route returns a realistic template-built stub plan so the UI stays demoable.
 
 > **Production warning:** free-tier inputs may be used by Google for model training.
 > Run production face-adjacent traffic on the paid tier / Vertex AI with
