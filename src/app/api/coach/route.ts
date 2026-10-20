@@ -282,11 +282,23 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const system = `${SYSTEM_PROMPT}\n\nTHEIR DATA:\n${context || "No plan or logs yet — encourage them to run their first scan and generate their protocol, then come back."}`;
   const turns: ChatTurn[] = [...history, { role: "user", content: message }];
 
+  // Hard overall deadline: without one, a provider outage makes every
+  // key burn its full attempt timeout and Vercel cuts the request off
+  // with a 504 before the graceful 503 below can be returned.
+  const deadline = Date.now() + 45_000;
   const start = Math.floor(Math.random() * keys.length);
   for (let i = 0; i < keys.length; i++) {
     const k = keys[(start + i) % keys.length];
     for (const model of [PRIMARY_MODEL, FALLBACK_MODEL]) {
-      const reply = await callCoach(k, model, system, turns, 15_000);
+      const remaining = deadline - Date.now();
+      if (remaining < 2_000) break;
+      const reply = await callCoach(
+        k,
+        model,
+        system,
+        turns,
+        Math.min(12_000, remaining)
+      );
       if (reply) return NextResponse.json({ reply });
     }
   }
