@@ -326,6 +326,223 @@ export function analyzeSkin(canvas: HTMLCanvasElement): SkinMetrics {
 }
 
 // ---------------------------------------------------------------------------
+// evaluatePhotoQuality — the hard GATE in front of measurement.
+// Deterministic, on-device. An image that fails never reaches
+// computeMeasurements / analyzeSkin. One specific reason per rejection.
+// Thresholds are deliberately lenient: catch genuinely unusable photos
+// (dark, blown out, blurry, tiny, off-centre, no face), don't nag good
+// ones taken in normal indoor light.
+// ---------------------------------------------------------------------------
+
+export type PhotoQualityCode =
+  | "no-face"
+  | "too-small"
+  | "off-centre"
+  | "too-dark"
+  | "blown-out"
+  | "blurry";
+
+export interface PhotoQualityGateResult {
+  ok: boolean;
+  code: PhotoQualityCode | null;
+  reason: string | null;
+  metrics: {
+    faceWidthRatio: number;
+    faceHeightRatio: number;
+    centerOffsetX: number;
+    centerOffsetY: number;
+    meanLuminance: number;
+    highlightRatio: number;
+    sharpness: number;
+  };
+}
+
+export const PHOTO_GATE_THRESHOLDS = {
+  /** Face bounding box must span at least this share of frame width/height. */
+  minFaceWidthRatio: 0.24,
+  minFaceHeightRatio: 0.3,
+  /** Face centre may sit at most this far (normalised) from frame centre. */
+  maxCenterOffset: 0.16,
+  /** Mean luminance (0–255) of the face region below this = too dark. */
+  minMeanLuminance: 45,
+  /** Blown out: mean above this AND more than `maxHighlightRatio` of face
+   *  pixels clipped at near-white. The mean is over the whole face region
+   *  (hair and beard included), so 140 already implies the skin itself is
+   *  broadly near clipping. */
+  blownMeanLuminance: 140,
+  maxHighlightRatio: 0.3,
+  /** Laplacian variance of the face region below this = blurry. */
+  minSharpness: 60,
+};
+
+const ZERO_GATE_METRICS = {
+  faceWidthRatio: 0,
+  faceHeightRatio: 0,
+  centerOffsetX: 0,
+  centerOffsetY: 0,
+  meanLuminance: 0,
+  highlightRatio: 0,
+  sharpness: 0,
+};
+
+export function evaluatePhotoQuality(
+  landmarks: Landmark[] | null,
+  canvas: HTMLCanvasElement
+): PhotoQualityGateResult {
+  const T = PHOTO_GATE_THRESHOLDS;
+  const fail = (
+    code: PhotoQualityCode,
+    reason: string,
+    metrics: PhotoQualityGateResult["metrics"]
+  ): PhotoQualityGateResult => ({ ok: false, code, reason, metrics });
+
+  if (!landmarks || landmarks.length === 0) {
+    return fail(
+      "no-face",
+      "No face found — centre your face in the guide and try again.",
+      { ...ZERO_GATE_METRICS }
+    );
+  }
+
+  // ---- face size + position from the landmark bounding box ----
+  let minX = 1;
+  let maxX = 0;
+  let minY = 1;
+  let maxY = 0;
+  for (const p of landmarks) {
+    if (p.x < minX) minX = p.x;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.y > maxY) maxY = p.y;
+  }
+  const faceWidthRatio = maxX - minX;
+  const faceHeightRatio = maxY - minY;
+  const centerOffsetX = Math.abs((minX + maxX) / 2 - 0.5);
+  const centerOffsetY = Math.abs((minY + maxY) / 2 - 0.5);
+
+  const metrics = {
+    faceWidthRatio,
+    faceHeightRatio,
+    centerOffsetX,
+    centerOffsetY,
+    meanLuminance: 0,
+    highlightRatio: 0,
+    sharpness: 0,
+  };
+
+  if (
+    faceWidthRatio < T.minFaceWidthRatio ||
+    faceHeightRatio < T.minFaceHeightRatio
+  ) {
+    return fail(
+      "too-small",
+      "Too far away — move closer so your face fills the guide.",
+      metrics
+    );
+  }
+  if (centerOffsetX > T.maxCenterOffset || centerOffsetY > T.maxCenterOffset) {
+    return fail(
+      "off-centre",
+      "Face off-centre — line your face up in the guide.",
+      metrics
+    );
+  }
+
+  // ---- lighting + sharpness from the face region's pixels ----
+  try {
+    const pad = 0.04;
+    const rx0 = clamp(minX - pad, 0, 1);
+    const ry0 = clamp(minY - pad, 0, 1);
+    const rx1 = clamp(maxX + pad, 0, 1);
+    const ry1 = clamp(maxY + pad, 0, 1);
+    const srcW = Math.max(2, Math.round((rx1 - rx0) * canvas.width));
+    const srcH = Math.max(2, Math.round((ry1 - ry0) * canvas.height));
+    const scale = Math.min(1, 256 / Math.max(srcW, srcH));
+    const w = Math.max(8, Math.round(srcW * scale));
+    const h = Math.max(8, Math.round(srcH * scale));
+    const tmp = document.createElement("canvas");
+    tmp.width = w;
+    tmp.height = h;
+    const ctx = tmp.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return { ok: true, code: null, reason: null, metrics };
+    ctx.drawImage(
+      canvas,
+      rx0 * canvas.width,
+      ry0 * canvas.height,
+      srcW,
+      srcH,
+      0,
+      0,
+      w,
+      h
+    );
+    const data = ctx.getImageData(0, 0, w, h).data;
+    const gray = new Float32Array(w * h);
+    let sum = 0;
+    let clipped = 0;
+    for (let i = 0; i < w * h; i++) {
+      const lum =
+        0.299 * data[i * 4] + 0.587 * data[i * 4 + 1] + 0.114 * data[i * 4 + 2];
+      gray[i] = lum;
+      sum += lum;
+      if (lum >= 250) clipped += 1;
+    }
+    metrics.meanLuminance = sum / (w * h);
+    metrics.highlightRatio = clipped / (w * h);
+
+    // Laplacian variance (4-neighbour) over interior pixels.
+    let lapSum = 0;
+    let lapSq = 0;
+    let lapN = 0;
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const i = y * w + x;
+        const lap =
+          4 * gray[i] - gray[i - 1] - gray[i + 1] - gray[i - w] - gray[i + w];
+        lapSum += lap;
+        lapSq += lap * lap;
+        lapN += 1;
+      }
+    }
+    if (lapN > 0) {
+      const mean = lapSum / lapN;
+      metrics.sharpness = Math.max(0, lapSq / lapN - mean * mean);
+    }
+  } catch {
+    // Pixel checks are best-effort; geometry already passed. Never block
+    // a geometrically good photo on a canvas read failure.
+    return { ok: true, code: null, reason: null, metrics };
+  }
+
+  if (metrics.meanLuminance < T.minMeanLuminance) {
+    return fail(
+      "too-dark",
+      "Too dark — face a light source and try again.",
+      metrics
+    );
+  }
+  if (
+    metrics.meanLuminance > T.blownMeanLuminance &&
+    metrics.highlightRatio > T.maxHighlightRatio
+  ) {
+    return fail(
+      "blown-out",
+      "Too bright — the light is washing your face out. Soften it and try again.",
+      metrics
+    );
+  }
+  if (metrics.sharpness < T.minSharpness) {
+    return fail(
+      "blurry",
+      "That was blurry — hold steady and try again.",
+      metrics
+    );
+  }
+
+  return { ok: true, code: null, reason: null, metrics };
+}
+
+// ---------------------------------------------------------------------------
 // checkPhotoQuality
 // ---------------------------------------------------------------------------
 
