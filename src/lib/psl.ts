@@ -130,6 +130,72 @@ export function regionScores(m: FaceMeasurements): RegionScore[] {
   ];
 }
 
+export interface MiscScore {
+  label: string;
+  /** 0–10, one decimal. */
+  score: number;
+  note: string;
+}
+
+/** The second results deck ("Miscellaneous" in the reference app) —
+ *  six more reads, every one computed from measurements we actually
+ *  take. Nothing here is a borrowed label over an unmeasured trait:
+ *  no neck width, no bone mass — we don't measure those, so they
+ *  don't appear. */
+export function miscScores(m: FaceMeasurements): MiscScore[] {
+  const s = m.skin;
+  const skinQuality =
+    100 -
+    (clamp(s.redness, 0, 100) * 0.3 +
+      clamp(s.texture, 0, 100) * 0.3 +
+      clamp(s.underEye, 0, 100) * 0.2 +
+      clamp(s.blemishCount * 4, 0, 100) * 0.2);
+  const fifthsDev =
+    m.fifths.reduce((acc, f) => acc + Math.abs(f - 0.2), 0) / m.fifths.length;
+  const eyeSpacing = clamp(100 - (fifthsDev / 0.08) * 100, 0, 100);
+  const thirdsDev =
+    (Math.abs(m.facialThirds.upper - 1 / 3) +
+      Math.abs(m.facialThirds.mid - 1 / 3) +
+      Math.abs(m.facialThirds.lower - 1 / 3)) /
+    3;
+  const proportions = clamp(100 - (thirdsDev / 0.1) * 100, 0, 100);
+  const jaw = closeness(m.jawToCheekbone, 0.84, 0.95, 0.25);
+
+  const to10 = (v: number) => round1(clamp(v / 10, 0, 10));
+  return [
+    {
+      label: "Skin",
+      score: to10(skinQuality),
+      note: "Redness, texture, under-eye and blemishes, combined. The fastest-moving number you own.",
+    },
+    {
+      label: "Harmony",
+      score: to10(m.goldenRatioScore),
+      note: "How closely your proportions track the classical ratios, as one composite.",
+    },
+    {
+      label: "Symmetry",
+      score: to10(m.symmetryScore),
+      note: "Left-right mirror match across 478 landmarks. Sleep, posture and camera angle all move it.",
+    },
+    {
+      label: "Jawline",
+      score: to10(jaw),
+      note: "Jaw width against cheekbone width — leanness changes how hard this reads.",
+    },
+    {
+      label: "Eye Spacing",
+      score: to10(eyeSpacing),
+      note: "Your horizontal fifths against the one-eye-width ideal the community measures by.",
+    },
+    {
+      label: "Proportions",
+      score: to10(proportions),
+      note: "How evenly your face splits into its three thirds. Structure — read honestly, trained around.",
+    },
+  ];
+}
+
 /** The ascend countdown: our programme is 12 weeks = 84 days. The
  *  finish date and days-left derive from the journey start, exactly
  *  like the mechanism this mirrors — never a random date. */
