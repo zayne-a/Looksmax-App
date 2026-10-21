@@ -8,6 +8,8 @@ import { Button, Card, Eyebrow } from "@/components/ui";
 import { Reveal } from "@/components/motion";
 import { useApp } from "@/lib/store";
 import JourneyRoadmap from "@/components/JourneyRoadmap";
+import ProtocolLibrary from "@/components/ProtocolLibrary";
+import ScanHistory from "@/components/ScanHistory";
 import ProtocolRoadmap from "@/components/ProtocolRoadmap";
 import { roadmapSpanWeeks } from "@/lib/roadmap";
 import WeeklyCheckin from "@/components/WeeklyCheckin";
@@ -545,8 +547,15 @@ export default function DashboardPage() {
           <Reveal delay={0.08} className="mt-6">
             <ProgressPhotos scans={scans ?? []} />
           </Reveal>
-          
+
         </>
+      )}
+
+      {/* SCAN HISTORY — every scan + rescan with photo and full read */}
+      {(scans?.length ?? 0) > 0 && (
+        <Reveal delay={0.08} className="mt-6">
+          <ScanHistory scans={scans ?? []} />
+        </Reveal>
       )}
 
       {/* MILESTONE — celebration + shareable card (subscriber) */}
@@ -770,6 +779,11 @@ export default function DashboardPage() {
           }
           checkins={checkins?.length ?? 0}
         />
+      </Reveal>
+
+      {/* FULL PROTOCOL LIBRARY — every step, in full (Zayne, 2026-10-21) */}
+      <Reveal delay={0.11} className="mt-12">
+        <ProtocolLibrary plan={plans?.[0]?.plan ?? null} isPro={isPro} />
       </Reveal>
 
       {/* ACCOUNT ACTIONS */}

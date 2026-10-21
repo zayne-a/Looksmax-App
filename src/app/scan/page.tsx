@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { useApp } from "@/lib/store";
 import { saveScan } from "@/lib/account";
+import { saveScanPhoto } from "@/lib/scan-photos";
 import {
   analyzeSkin,
   checkPhotoQuality,
@@ -217,12 +218,15 @@ function CameraCapture({
         if (!cancelled && aliveRef.current) setStatus("live");
       } catch (e) {
         if (cancelled || !aliveRef.current) return;
-        const denied =
-          e instanceof DOMException && e.name === "NotAllowedError";
+        const name = e instanceof DOMException ? e.name : "";
         onUnavailable(
-          denied
+          name === "NotAllowedError"
             ? "Camera access was blocked — upload a photo instead, or allow the camera and try again."
-            : "Live camera isn't available here — upload a photo instead."
+            : name === "NotReadableError" || name === "AbortError"
+              ? "Your camera is busy in another app or tab — close it there and try again, or upload a photo instead."
+              : name === "NotFoundError" || name === "OverconstrainedError"
+                ? "No front camera was found on this device — upload a photo instead."
+                : "Live camera isn't available here — upload a photo instead."
         );
       }
     };
@@ -422,13 +426,19 @@ function CameraCapture({
 
 export default function ScanPage() {
   const router = useRouter();
-  const { quiz, setMeasurements, setFrontPhoto, setSavedScanId } = useApp();
+  const { quiz, setMeasurements, setFrontPhoto, setSavedScanId, frontPhoto } =
+    useApp();
 
   // Persist the finished scan to the user's account when logged in
   // (no-op logged out). The row id lets the plan page link its plan.
+  // The scan's photo is saved alongside it ON THIS DEVICE ONLY (never
+  // uploaded) so the scan history shows the face behind each score.
   const persistScan = (m: FaceMeasurements) => {
     void saveScan(m, quiz).then((id) => {
-      if (id) setSavedScanId(id);
+      if (id) {
+        setSavedScanId(id);
+        if (frontPhoto) void saveScanPhoto(id, frontPhoto);
+      }
     });
   };
 
@@ -713,13 +723,13 @@ export default function ScanPage() {
       setMeasurements(measurements);
       persistScan(measurements);
       router.push("/plan");
-    } catch (e) {
-      // Graceful fallback: never leave the user stuck.
+    } catch {
+      // Graceful fallback: never leave the user stuck, and never show
+      // raw exception text (audit fix 2026-10-21 — WASM/model errors
+      // leaked internal wording to users here).
       setPhase("failed");
       setError(
-        e instanceof Error && e.message
-          ? `On-device measurement couldn't load (${e.message}) — you can continue with a quiz-only plan.`
-          : "On-device measurement couldn't load — you can continue with a quiz-only plan."
+        "On-device measurement couldn't load on this browser — you can continue with a quiz-only plan, or try again on Chrome/Safari."
       );
     }
   };
