@@ -3,6 +3,7 @@ import { Archivo, Inter } from "next/font/google";
 import "./globals.css";
 import { AppProvider } from "@/lib/store";
 import SiteChrome from "@/components/SiteChrome";
+import SupportChat from "@/components/SupportChat";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -33,6 +34,7 @@ export default function RootLayout({
       <body>
         <AppProvider>
           <SiteChrome>{children}</SiteChrome>
+          <SupportChat />
         </AppProvider>
       </body>
     </html>
