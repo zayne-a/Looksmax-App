@@ -103,6 +103,20 @@ export async function saveScan(
   return (data as { id: string }).id;
 }
 
+/** How many plan rows exist for one scan (own rows only, via RLS).
+ *  The first is the original plan; every row beyond it is a plan
+ *  change. Powers the "changes left" counter (Zayne: max 2 changes). */
+export async function countPlansForScan(scanId: string): Promise<number> {
+  const sb = getSupabase();
+  if (!sb) return 0;
+  const { count, error } = await sb
+    .from("plans")
+    .select("id", { count: "exact", head: true })
+    .eq("scan_id", scanId);
+  if (error || count == null) return 0;
+  return count;
+}
+
 /** Persist a generated plan for the logged-in user. Returns the row id. */
 export async function savePlan(
   plan: AscendPlan,
@@ -134,7 +148,36 @@ export async function listScans(limit = 24): Promise<SavedScan[]> {
     .order("created_at", { ascending: false })
     .limit(limit);
   if (error || !data) return [];
-  return data as SavedScan[];
+  return (data as SavedScan[]).map((s) => ({
+    ...s,
+    measurements: normaliseMeasurements(s.measurements),
+  }));
+}
+
+/** Fill any missing sub-objects on a saved measurements row so one
+ *  partial/legacy row can never white-screen a page (found 2026-10-21:
+ *  a stub row without `skin` crashed /plan on `m.skin.redness`).
+ *  Complete rows pass through untouched. A row that was never really
+ *  measured keeps landmarksDetected falsy, so reads treat it as
+ *  quiz-only. */
+export function normaliseMeasurements(
+  raw: FaceMeasurements | null | undefined
+): FaceMeasurements {
+  const m = (raw ?? {}) as Partial<FaceMeasurements>;
+  return {
+    facialThirds: m.facialThirds ?? { upper: 1 / 3, mid: 1 / 3, lower: 1 / 3 },
+    fifths: m.fifths ?? [0.2, 0.2, 0.2, 0.2, 0.2],
+    canthalTiltDeg: m.canthalTiltDeg ?? 0,
+    jawToCheekbone: m.jawToCheekbone ?? 0,
+    fwhr: m.fwhr ?? 0,
+    symmetryScore: m.symmetryScore ?? 0,
+    goldenRatioScore: m.goldenRatioScore ?? 0,
+    overallScore: m.overallScore ?? 0,
+    faceShape: m.faceShape ?? "unknown",
+    skin: m.skin ?? { redness: 0, texture: 0, blemishCount: 0, underEye: 0 },
+    landmarksDetected: m.landmarksDetected ?? false,
+    notes: m.notes ?? [],
+  };
 }
 
 export async function listPlans(limit = 24): Promise<SavedPlan[]> {
@@ -298,6 +341,7 @@ export async function deleteMySavedData(): Promise<boolean> {
   // a wipe that left them behind would not be the privacy promise.
   try {
     localStorage.removeItem("ascend_progress_photos");
+    localStorage.removeItem("ascend_scan_photos");
     localStorage.removeItem("ascend_shelf");
     localStorage.removeItem("ascend_journey_start");
   } catch {

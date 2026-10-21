@@ -999,6 +999,37 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
     }
 
+    // PLAN CHANGES (Zayne, 2026-10-21): users may change a built plan,
+    // at most TWICE. A change arrives flagged changeOfPlan with the
+    // scan id; the caller's saved plan rows for that scan are counted
+    // server-side (original + changes) and the third change is refused.
+    // A fresh scan starts a fresh plan with a fresh allowance.
+    if (planReq.changeOfPlan) {
+      if (!uid || !planReq.scanId) {
+        return NextResponse.json(
+          { error: "Plan changes need a signed-in account and a saved scan." },
+          { status: 403 }
+        );
+      }
+      const gateAdmin = serviceClient();
+      if (gateAdmin) {
+        const { count } = await gateAdmin
+          .from("plans")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", uid)
+          .eq("scan_id", planReq.scanId);
+        if ((count ?? 0) >= 3) {
+          return NextResponse.json(
+            {
+              error:
+                "You've used both changes for this plan — a fresh scan starts a new plan with 2 changes.",
+            },
+            { status: 403 }
+          );
+        }
+      }
+    }
+
     // FREE tier: ZERO AI calls. The deterministic template engine is the
     // free product — protocol selection, every number, the projection and
     // the foundations are all computed from the user's own data, and

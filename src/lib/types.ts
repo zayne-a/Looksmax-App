@@ -151,6 +151,11 @@ export interface PlanRequest {
   /** Id of the already-saved scan this plan belongs to, so a plan whose
    *  AI generation finishes in the background can be filed correctly. */
   scanId?: string | null;
+  /** True when this generation is a user-requested CHANGE to an
+   *  existing plan for the same scan (Zayne, 2026-10-21: users may
+   *  change a built plan, at most twice). The route enforces the cap
+   *  server-side by counting the caller's plan rows for the scan. */
+  changeOfPlan?: boolean;
 }
 
 export interface PlanResponse {
