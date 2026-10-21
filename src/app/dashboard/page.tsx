@@ -26,11 +26,13 @@ import MyShelf from "@/components/MyShelf";
 import { supabaseConfigured } from "@/lib/supabase";
 import {
   deleteMySavedData,
+  fetchActivePlanId,
   listCheckins,
   listDailyLogs,
   listPlans,
   listScans,
   saveDailyLog,
+  setActivePlanId,
   type Checkin,
   type DailyLog,
   type SavedPlan,
@@ -73,6 +75,9 @@ export default function DashboardPage() {
   } = useApp();
   const [scans, setScans] = useState<SavedScan[] | null>(null);
   const [plans, setPlans] = useState<SavedPlan[] | null>(null);
+  // Plan version history: the reverted-to plan version id, or null
+  // when the active plan simply follows the latest (default).
+  const [activePlanIdPref, setActivePlanIdPref] = useState<string | null>(null);
   const [checkins, setCheckins] = useState<Checkin[] | null>(null);
   const [dailyLogs, setDailyLogs] = useState<DailyLog[]>([]);
   const [confirmingWipe, setConfirmingWipe] = useState(false);
@@ -97,16 +102,18 @@ export default function DashboardPage() {
 
   const load = useCallback(async () => {
     if (!user) return;
-    const [s, p, c, logs] = await Promise.all([
+    const [s, p, c, logs, pref] = await Promise.all([
       listScans(50),
       listPlans(50),
       listCheckins(52),
       listDailyLogs(92),
+      fetchActivePlanId(),
     ]);
     setScans(s);
     setPlans(p);
     setCheckins(c);
     setDailyLogs(logs);
+    setActivePlanIdPref(pref);
   }, [user]);
 
   useEffect(() => {
@@ -135,9 +142,18 @@ export default function DashboardPage() {
       setPlans([]);
       setCheckins([]);
       setDailyLogs([]);
+      setActivePlanIdPref(null);
       setWiped(true);
     }
     setConfirmingWipe(false);
+  };
+
+  // Revert to a saved plan version: re-selects that version as the
+  // active plan everywhere. No row is created, changed or deleted,
+  // and nothing is regenerated — zero AI cost.
+  const onRevert = async (saved: SavedPlan) => {
+    const ok = await setActivePlanId(saved.id);
+    if (ok) setActivePlanIdPref(saved.id);
   };
 
   /** Daily-log writes (today from the Today home, yesterday for a
@@ -208,6 +224,31 @@ export default function DashboardPage() {
   }
 
   const isPro = Boolean(profile?.is_premium || profile?.is_admin);
+  // The active plan: the version the user reverted to, when that
+  // version is among the loaded plans — otherwise the latest plan,
+  // exactly as before. Users who never revert never set a preference,
+  // so this is plans[0] for them, unchanged.
+  const activePlan =
+    (activePlanIdPref
+      ? plans?.find((p) => p.id === activePlanIdPref)
+      : undefined) ?? plans?.[0];
+  // Version groups for Records: plans sharing a scan are versions of
+  // one plan (the original + its changes). Groups keep first-appearance
+  // order — newest activity first, exactly as the flat list sorted —
+  // while versions inside a group run oldest → newest so the history
+  // reads in order. Plans without a linked scan are their own group.
+  const planGroups: { key: string; versions: SavedPlan[] }[] = [];
+  for (const p of plans ?? []) {
+    const key = p.scan_id ?? `unlinked-${p.id}`;
+    const g = planGroups.find((x) => x.key === key);
+    if (g) g.versions.push(p);
+    else planGroups.push({ key, versions: [p] });
+  }
+  for (const g of planGroups) {
+    g.versions = [...g.versions].sort((a, b) =>
+      a.created_at < b.created_at ? -1 : 1
+    );
+  }
   const latest = scans?.[0];
   const previous = scans?.[1];
   const latestDelta =
@@ -227,14 +268,14 @@ export default function DashboardPage() {
   // The roadmap spans the weeks the user chose in their quiz
   // (resolved through the same quiz the Today home reads).
   const roadmapQuiz =
-    (plans?.[0]?.scan_id
-      ? scans?.find((s) => s.id === plans[0].scan_id)?.quiz
+    (activePlan?.scan_id
+      ? scans?.find((s) => s.id === activePlan.scan_id)?.quiz
       : null) ??
     latest?.quiz ??
     null;
   const timelineSpan = roadmapSpanWeeks(
     roadmapQuiz?.timelineWeeks,
-    plans?.[0]?.plan.projection.horizonWeeks
+    activePlan?.plan.projection.horizonWeeks
   );
   const streakNum = currentStreak(activeDaysSet);
   const freeze = todayKey
@@ -330,16 +371,16 @@ export default function DashboardPage() {
       )}
 
       {/* TODAY HOME — the subscriber's daily interface */}
-      {plans?.[0] &&
+      {activePlan &&
         (isPro ? (
           <Reveal delay={0.055} className="mt-10">
             <TodayHome
               score={latest?.overall_score ?? null}
               scoreDelta={latestDelta}
-              plan={plans[0].plan}
+              plan={activePlan.plan}
               quiz={
-                (plans[0].scan_id
-                  ? scans?.find((s) => s.id === plans[0].scan_id)?.quiz
+                (activePlan.scan_id
+                  ? scans?.find((s) => s.id === activePlan.scan_id)?.quiz
                   : null) ??
                 latest?.quiz ??
                 null
@@ -387,9 +428,9 @@ export default function DashboardPage() {
 
       {/* WEEKLY PLAN — the subscriber's full week, here in the dashboard
           alongside everything else (Zayne, 2026-10-20) */}
-      {isPro && plans?.[0] && (
+      {isPro && activePlan && (
         <Reveal delay={0.06} className="mt-6">
-          <WeeklyPlan plan={plans[0].plan} journeyWeek={weekNum ?? 1} />
+          <WeeklyPlan plan={activePlan.plan} journeyWeek={weekNum ?? 1} />
         </Reveal>
       )}
 
@@ -397,10 +438,10 @@ export default function DashboardPage() {
           one week open at a time (Zayne, 2026-10-21). Subscribers see
           the live roadmap; free users get the locked teaser, never
           roadmap data. */}
-      {isPro && plans?.[0] ? (
+      {isPro && activePlan ? (
         <Reveal delay={0.065} className="mt-6">
           <ProtocolRoadmap
-            plan={plans[0].plan}
+            plan={activePlan.plan}
             journeyStart={journeyStartIso}
             logs={dailyLogs}
             activeDays={activeDaysSet}
@@ -673,17 +714,23 @@ export default function DashboardPage() {
 
 <Reveal delay={0.08} className="mt-6">
             <MyShelf
-              plan={plans?.[0]?.plan ?? null}
+              plan={activePlan?.plan ?? null}
               quiz={latest?.quiz ?? null}
               todayKey={todayKey}
             />
           </Reveal>
-      {/* SAVED PLANS */}
+      {/* SAVED PLANS — version history: every version kept, and any
+          version can be made the active plan again (revert) */}
       <Reveal delay={0.1} className="mt-10">
         <h2 className="font-display text-2xl font-extrabold text-bone">
           Your plans
         </h2>
-        <div className="mt-4 space-y-3">
+        <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted">
+          Every version of your plan is kept here — the original and each
+          change. Reverting makes a saved version your active plan again:
+          nothing is deleted, and nothing is regenerated.
+        </p>
+        <div className="mt-4 space-y-6">
           {plans === null ? (
             <p className="text-sm text-muted">Loading your plans…</p>
           ) : plans.length === 0 ? (
@@ -694,42 +741,85 @@ export default function DashboardPage() {
               </p>
             </Card>
           ) : (
-            plans.map((p) => {
-              const linked = p.scan_id
-                ? (scans ?? []).find((s) => s.id === p.scan_id)
+            planGroups.map((g) => {
+              const groupScan = g.versions[0]?.scan_id
+                ? (scans ?? []).find((s) => s.id === g.versions[0].scan_id)
                 : undefined;
               return (
-                <Card
-                  key={p.id}
-                  className="flex flex-wrap items-center justify-between gap-4"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate font-display text-lg font-extrabold text-bone">
-                      {p.plan.headline || "Your Ascend plan"}
+                <div key={g.key}>
+                  {g.versions.length > 1 && (
+                    <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.22em] text-gold">
+                      Version history
+                      {groupScan
+                        ? ` · scan of ${fmtDate(groupScan.created_at)}`
+                        : ""}
                     </p>
-                    <p className="text-xs text-muted">
-                      {fmtDate(p.created_at)} ·{" "}
-                      {p.tier === "premium" ? "Deep-curated (Pro)" : "Standard"}
-                      {p.plan.aiPending && (
-                        <span className="ml-2 inline-block rounded-full border border-gold/40 bg-gold/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gold-soft">
-                          AI personalisation in progress
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                  {linked?.quiz ? (
-                    <Button
-                      onClick={() => openPlan(p)}
-                      className="shrink-0 px-6 py-2.5 text-sm"
-                    >
-                      Open plan
-                    </Button>
-                  ) : (
-                    <span className="text-xs text-muted">
-                      Reopen via a new scan
-                    </span>
                   )}
-                </Card>
+                  <div className="space-y-3">
+                    {g.versions.map((p, vi) => {
+                      const linked = p.scan_id
+                        ? (scans ?? []).find((s) => s.id === p.scan_id)
+                        : undefined;
+                      const isActive = p.id === activePlan?.id;
+                      return (
+                        <Card
+                          key={p.id}
+                          className="flex flex-wrap items-center justify-between gap-4"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate font-display text-lg font-extrabold text-bone">
+                              {p.plan.headline || "Your Ascend plan"}
+                            </p>
+                            <p className="text-xs text-muted">
+                              {fmtDate(p.created_at)} ·{" "}
+                              {p.tier === "premium"
+                                ? "Deep-curated (Pro)"
+                                : "Standard"}
+                              {p.plan.aiPending && (
+                                <span className="ml-2 inline-block rounded-full border border-gold/40 bg-gold/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gold-soft">
+                                  AI personalisation in progress
+                                </span>
+                              )}
+                            </p>
+                            <p className="mt-1.5 flex flex-wrap gap-1.5">
+                              <span className="inline-block rounded-full border border-white/12 bg-white/5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-muted">
+                                {vi === 0 ? "Original" : `Change ${vi}`}
+                              </span>
+                              {isActive && (
+                                <span className="inline-block rounded-full border border-gold/50 bg-gold/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-gold-soft">
+                                  Active plan
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 flex-wrap items-center gap-2">
+                            {!isActive && (
+                              <Button
+                                onClick={() => void onRevert(p)}
+                                variant="ghost"
+                                className="px-5 py-2.5 text-sm"
+                              >
+                                Revert to this version
+                              </Button>
+                            )}
+                            {linked?.quiz ? (
+                              <Button
+                                onClick={() => openPlan(p)}
+                                className="px-6 py-2.5 text-sm"
+                              >
+                                Open plan
+                              </Button>
+                            ) : (
+                              <span className="text-xs text-muted">
+                                Reopen via a new scan
+                              </span>
+                            )}
+                          </div>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </div>
               );
             })
           )}
@@ -783,7 +873,7 @@ export default function DashboardPage() {
 
       {/* FULL PROTOCOL LIBRARY — every step, in full (Zayne, 2026-10-21) */}
       <Reveal delay={0.11} className="mt-12">
-        <ProtocolLibrary plan={plans?.[0]?.plan ?? null} isPro={isPro} />
+        <ProtocolLibrary plan={activePlan?.plan ?? null} isPro={isPro} />
       </Reveal>
 
       {/* ACCOUNT ACTIONS */}

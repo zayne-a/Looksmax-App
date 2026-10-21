@@ -196,6 +196,84 @@ export async function listPlans(limit = 24): Promise<SavedPlan[]> {
   return data as SavedPlan[];
 }
 
+/* ---- Active plan version (plan history / revert, 2026-10-21) ----
+ * Every generated plan is its own row in `plans`; the "active" plan
+ * is the latest by created_at UNLESS the user reverted to an earlier
+ * version. The choice persists in profiles.active_plan_id (migration
+ * supabase/migrations/2026-10-21-active-plan-id.sql). Until that
+ * migration is applied the column doesn't exist and every query here
+ * errors — the preference then falls back to device-local storage so
+ * revert still works end-to-end on this device. All functions are
+ * best-effort: any failure resolves to "follow the latest plan",
+ * which is the pre-revert behaviour. */
+
+const ACTIVE_PLAN_LS_KEY = "ascend_active_plan_id";
+
+function localActivePlanId(): string | null {
+  try {
+    return localStorage.getItem(ACTIVE_PLAN_LS_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function setLocalActivePlanId(planId: string | null): boolean {
+  try {
+    if (planId) localStorage.setItem(ACTIVE_PLAN_LS_KEY, planId);
+    else localStorage.removeItem(ACTIVE_PLAN_LS_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The user's reverted-to plan version id, or null = latest plan. */
+export async function fetchActivePlanId(): Promise<string | null> {
+  const sb = getSupabase();
+  if (sb) {
+    const userId = await currentUserId();
+    if (userId) {
+      const { data, error } = await sb
+        .from("profiles")
+        .select("active_plan_id")
+        .eq("id", userId)
+        .single();
+      if (!error && data) {
+        const dbValue = (data as { active_plan_id?: string | null })
+          .active_plan_id;
+        // A device-local choice made before the migration landed is
+        // still honoured until a DB value exists.
+        return dbValue ?? localActivePlanId();
+      }
+      // Column missing (pre-migration) or read failed → local fallback.
+    }
+  }
+  return localActivePlanId();
+}
+
+/** Persist the active plan version (null = follow the latest plan).
+ *  Returns true when the choice was stored somewhere durable
+ *  (account row, or this device until the migration lands). */
+export async function setActivePlanId(planId: string | null): Promise<boolean> {
+  const sb = getSupabase();
+  if (sb) {
+    const userId = await currentUserId();
+    if (userId) {
+      const { error } = await sb
+        .from("profiles")
+        .update({ active_plan_id: planId })
+        .eq("id", userId);
+      if (!error) {
+        setLocalActivePlanId(planId);
+        return true;
+      }
+      // Pre-migration: the update errors on the unknown column —
+      // fall through to the device-local store.
+    }
+  }
+  return setLocalActivePlanId(planId);
+}
+
 /** Persist a weekly check-in. Returns the row id. */
 export async function saveCheckin(input: {
   week: number;
@@ -345,6 +423,7 @@ export async function deleteMySavedData(): Promise<boolean> {
     localStorage.removeItem("ascend_scan_photos");
     localStorage.removeItem("ascend_shelf");
     localStorage.removeItem("ascend_journey_start");
+    localStorage.removeItem(ACTIVE_PLAN_LS_KEY);
   } catch {
     /* storage unavailable — server data is already gone */
   }
