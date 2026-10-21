@@ -88,37 +88,34 @@ export default function SupportChat() {
         <button
           onClick={() => setOpen(true)}
           aria-label="Chat with Max, the Mewmax support guide"
-          className="fixed bottom-5 right-5 z-50 flex items-center gap-2.5 rounded-full border border-gold/40 bg-ink/95 py-2 pl-2 pr-4 shadow-[0_12px_36px_rgba(0,0,0,0.55)] backdrop-blur transition hover:border-gold"
+          title="Chat with Max"
+          className="fixed bottom-5 right-5 z-50 block h-14 w-14 rounded-full border border-gold/40 bg-ink/95 shadow-[0_12px_36px_rgba(0,0,0,0.55)] backdrop-blur transition hover:border-gold"
         >
-          <span className="relative block h-10 w-10 overflow-hidden rounded-full">
+          <span className="block h-full w-full overflow-hidden rounded-full">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={SUPPORT_AVATAR}
               alt="Max"
               className="h-full w-full object-cover"
             />
-            <span className="absolute bottom-0.5 right-0.5 h-2.5 w-2.5 rounded-full border-2 border-ink bg-emerald-400" />
           </span>
-          <span className="text-left leading-tight">
-            <span className="block text-sm font-bold text-bone">Max</span>
-            <span className="block text-[11px] text-muted">
-              Mewmax guide · ask me anything
-            </span>
-          </span>
+          <span className="absolute bottom-0.5 right-0.5 z-10 h-3.5 w-3.5 rounded-full border-2 border-ink bg-emerald-400" />
         </button>
       )}
 
       {open && (
         <div className="fixed bottom-4 right-4 z-50 flex h-[min(560px,calc(100dvh-2rem))] w-[min(380px,calc(100vw-2rem))] flex-col overflow-hidden rounded-3xl border border-white/10 bg-ink shadow-[0_24px_60px_rgba(0,0,0,0.6)]">
           <div className="flex items-center gap-3 border-b border-white/10 px-4 py-3">
-            <span className="relative block h-10 w-10 shrink-0 overflow-hidden rounded-full">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={SUPPORT_AVATAR}
-                alt="Max"
-                className="h-full w-full object-cover"
-              />
-              <span className="absolute bottom-0.5 right-0.5 h-2.5 w-2.5 rounded-full border-2 border-ink bg-emerald-400" />
+            <span className="relative block h-10 w-10 shrink-0">
+              <span className="block h-full w-full overflow-hidden rounded-full">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={SUPPORT_AVATAR}
+                  alt="Max"
+                  className="h-full w-full object-cover"
+                />
+              </span>
+              <span className="absolute bottom-0 right-0 z-10 h-2.5 w-2.5 rounded-full border-2 border-ink bg-emerald-400" />
             </span>
             <div className="min-w-0 flex-1 leading-tight">
               <p className="text-sm font-bold text-bone">Max</p>
