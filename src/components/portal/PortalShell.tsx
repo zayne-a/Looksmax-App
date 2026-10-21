@@ -174,16 +174,26 @@ function LoginWall() {
     }
     setBusy(true);
     setError(null);
-    const { error: oauthError } = await sb.auth.signInWithOAuth({
+    // Preflight with skipBrowserRedirect: while the Discord provider
+    // is still being enabled, GoTrue answers with an error instead of
+    // a URL — surface the friendly state here rather than landing the
+    // creator on Supabase's raw error page. Once the provider is on,
+    // the same call returns the authorize URL and we navigate to it.
+    const { data, error: oauthError } = await sb.auth.signInWithOAuth({
       provider: "discord",
-      options: { redirectTo: `${window.location.origin}/portal` },
+      options: {
+        redirectTo: `${window.location.origin}/portal`,
+        skipBrowserRedirect: true,
+      },
     });
-    if (oauthError) {
+    if (oauthError || !data?.url) {
       setBusy(false);
       setError(
         "Discord login isn't switched on yet — we're enabling it right now. Try again in a little while."
       );
+      return;
     }
+    window.location.assign(data.url);
   };
 
   return (
