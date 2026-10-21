@@ -15,6 +15,7 @@ import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { getSupabase } from "@/lib/supabase";
 import {
   captureRefFromUrl,
+  discordIdentity,
   ensureCreatorProfile,
   type CreatorProfile,
 } from "@/lib/portal";
@@ -42,7 +43,7 @@ export function usePortal(): PortalContextValue {
   return ctx;
 }
 
-type Gate = "loading" | "wall" | "ready" | "profile-error";
+type Gate = "loading" | "wall" | "ready" | "profile-error" | "discord-required";
 
 const NAV: { href: string; label: string; icon: ReactNode }[] = [
   {
@@ -208,8 +209,11 @@ function LoginWall() {
       options: { redirectTo: `${window.location.origin}/portal` },
     });
     if (oauthError) {
+      // The settings check above already cleared the provider as
+      // enabled, so this is a transient OAuth failure, not a
+      // switched-off provider — say so.
       setBusy(false);
-      notEnabled();
+      setError("Discord sign-in hiccuped — please try again.");
     }
   };
 
@@ -268,6 +272,18 @@ export default function PortalShell({ children }: { children: ReactNode }) {
       setGate("wall");
       return;
     }
+    if (!discordIdentity(user).discordId) {
+      // Signed in, but not with Discord (e.g. an email app account —
+      // the Supabase session is shared with the main app). The
+      // portal is Discord-only, like the reference: never mint a
+      // creator profile for a non-Discord identity, and never show
+      // portal chrome claiming a Discord connection that isn't
+      // there. Offer the switch instead.
+      bootstrappedFor.current = user.id;
+      setCtx(null);
+      setGate("discord-required");
+      return;
+    }
     if (bootstrappedFor.current === user.id && ctx) {
       setGate("ready");
       return;
@@ -308,6 +324,22 @@ export default function PortalShell({ children }: { children: ReactNode }) {
     setGate("wall");
   };
 
+  const continueWithDiscord = async () => {
+    const sb = getSupabase();
+    if (!sb) return;
+    // The session is shared with the main app, so switching to
+    // Discord means ending the email session in this browser first
+    // (the account itself and its data are untouched).
+    await sb.auth.signOut();
+    bootstrappedFor.current = null;
+    setCtx(null);
+    const { error: oauthError } = await sb.auth.signInWithOAuth({
+      provider: "discord",
+      options: { redirectTo: `${window.location.origin}/portal` },
+    });
+    if (oauthError) setGate("wall");
+  };
+
   if (gate === "loading") {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -318,24 +350,73 @@ export default function PortalShell({ children }: { children: ReactNode }) {
 
   if (gate === "wall") return <LoginWall />;
 
+  if (gate === "discord-required") {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center px-4 text-center">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/icon.png"
+          alt="Mewmax"
+          width={72}
+          height={72}
+          className="rounded-2xl"
+        />
+        <h1 className="mt-6 font-display text-2xl font-extrabold text-bone">
+          The Creator Portal signs in with Discord
+        </h1>
+        <p className="mt-3 max-w-md text-sm leading-relaxed text-muted">
+          You&apos;re signed in with email right now. Creators enter the
+          portal with Discord — verification and payout notices live
+          there. Continuing signs this browser out of your email session
+          (your Mewmax account and its data are untouched) and opens
+          Discord sign-in.
+        </p>
+        <button
+          type="button"
+          onClick={continueWithDiscord}
+          className="mt-6 inline-flex items-center gap-2.5 rounded-full bg-[#5865F2] px-7 py-3 text-sm font-bold text-white transition hover:bg-[#4752c4]"
+        >
+          <DiscordGlyph />
+          Continue with Discord
+        </button>
+        <button
+          type="button"
+          onClick={signOut}
+          className="mt-4 text-sm font-semibold text-muted transition hover:text-[#5EEAD4]"
+        >
+          Sign Out
+        </button>
+      </div>
+    );
+  }
+
   if (gate === "profile-error" || !ctx) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center px-4 text-center">
         <h1 className="font-display text-2xl font-extrabold text-bone">
-          The portal is still warming up
+          Couldn&apos;t load your creator profile
         </h1>
         <p className="mt-3 max-w-md text-sm leading-relaxed text-muted">
-          You&apos;re signed in with Discord, but creator profiles
-          aren&apos;t reachable yet — the portal database is being
-          switched on. Try again shortly.
+          You&apos;re signed in with Discord, but your creator profile
+          didn&apos;t load. Reload the page — if it keeps happening,
+          sign out and back in.
         </p>
-        <button
-          type="button"
-          onClick={signOut}
-          className="mt-6 rounded-full border border-white/15 px-5 py-2.5 text-sm font-bold text-bone transition hover:border-[#5EEAD4]/60 hover:text-[#5EEAD4]"
-        >
-          Sign Out
-        </button>
+        <div className="mt-6 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="rounded-full bg-[#5EEAD4] px-5 py-2.5 text-sm font-bold text-[#0a0a0c] transition hover:bg-[#99f6e4]"
+          >
+            Reload
+          </button>
+          <button
+            type="button"
+            onClick={signOut}
+            className="rounded-full border border-white/15 px-5 py-2.5 text-sm font-bold text-bone transition hover:border-[#5EEAD4]/60 hover:text-[#5EEAD4]"
+          >
+            Sign Out
+          </button>
+        </div>
       </div>
     );
   }

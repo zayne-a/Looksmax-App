@@ -47,6 +47,12 @@ function AccountVerification({
       setError("Upload a recording or paste a link to one.");
       return;
     }
+    if (file && file.size > 50 * 1024 * 1024) {
+      setError(
+        "That recording is over the 50 MB upload cap — trim it, export it at a lower quality, or paste a link to it instead."
+      );
+      return;
+    }
     setBusy(true);
     let storagePath: string | null = null;
     let recordingUrl: string | null = null;

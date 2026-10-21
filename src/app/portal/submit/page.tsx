@@ -12,13 +12,23 @@ import {
 } from "@/components/portal/ui";
 import {
   loadAccounts,
+  loadSubmissions,
   monthKey,
   type ConnectedAccount,
+  type VideoSubmission,
 } from "@/lib/portal";
+
+/** Comparison key for the duplicate check (his rule: a video is
+ *  submitted once — payout is calculated on the views at submission
+ *  and never re-enters). Mirrors the lower(video_url) unique index. */
+function normalizeVideoUrl(u: string): string {
+  return u.trim().toLowerCase().replace(/\/+$/, "");
+}
 
 export default function PortalSubmitPage() {
   const { sb, profile } = usePortal();
   const [accounts, setAccounts] = useState<ConnectedAccount[] | null>(null);
+  const [submissions, setSubmissions] = useState<VideoSubmission[]>([]);
   const [accountId, setAccountId] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
   const [postedAt, setPostedAt] = useState("");
@@ -30,9 +40,13 @@ export default function PortalSubmitPage() {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const accs = await loadAccounts(sb, profile.id);
+      const [accs, subs] = await Promise.all([
+        loadAccounts(sb, profile.id),
+        loadSubmissions(sb, profile.id),
+      ]);
       if (cancelled) return;
       setAccounts(accs);
+      setSubmissions(subs);
       const firstApproved = accs.find((a) => a.status === "approved");
       if (firstApproved) setAccountId(firstApproved.id);
     })();
@@ -59,6 +73,19 @@ export default function PortalSubmitPage() {
     const host = account.platform === "tiktok" ? "tiktok.com" : "instagram.com";
     if (!url.includes(host)) {
       setError(`That link doesn't look like a ${account.platform} link — paste the full video URL from ${host}.`);
+      return;
+    }
+    const dupe = submissions.find(
+      (s) =>
+        normalizeVideoUrl(s.video_url) === normalizeVideoUrl(url) &&
+        s.status !== "rejected"
+    );
+    if (dupe) {
+      setError(
+        dupe.status === "approved"
+          ? "You've already submitted this video and it was approved — a video can only be submitted once."
+          : "You've already submitted this video — it's waiting for review under My Videos. A video can only be submitted once."
+      );
       return;
     }
     const posted = new Date(`${postedAt}T12:00:00`);
@@ -98,9 +125,16 @@ export default function PortalSubmitPage() {
     });
     setBusy(false);
     if (insertError) {
-      setError("Couldn't save that submission — please try again.");
+      setError(
+        insertError.code === "23505"
+          ? "You've already submitted this video — a video can only be submitted once."
+          : "Couldn't save that submission — please try again."
+      );
       return;
     }
+    // Refresh so a second submit of the same video is caught by the
+    // duplicate guard without a page reload.
+    setSubmissions(await loadSubmissions(sb, profile.id));
     setDone(true);
     setVideoUrl("");
     setViews("");

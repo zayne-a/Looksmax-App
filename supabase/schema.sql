@@ -541,3 +541,11 @@ revoke all on function public.portal_referral_friends() from public;
 grant execute on function public.portal_resolve_referral(text) to authenticated;
 grant execute on function public.portal_leaderboard(text) to authenticated;
 grant execute on function public.portal_referral_friends() to authenticated;
+
+-- One live submission per (creator, video): payout is calculated on
+-- the views at submission and never re-enters. A rejected submission
+-- leaves the index, so it can be submitted again. (Audit fix,
+-- 2026-10-22; also in migrations/2026-10-22-portal-submission-uniqueness.sql.)
+create unique index if not exists video_submissions_creator_url_active_idx
+  on public.video_submissions (creator_id, lower(video_url))
+  where status in ('pending', 'approved');

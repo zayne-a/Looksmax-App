@@ -211,6 +211,14 @@ export function storedRefCode(): string | null {
   }
 }
 
+function clearStoredRefCode(): void {
+  try {
+    window.localStorage.removeItem(REF_STORAGE_KEY);
+  } catch {
+    // storage unavailable — nothing to clear
+  }
+}
+
 interface DiscordIdentity {
   discordId: string | null;
   username: string | null;
@@ -262,7 +270,13 @@ export async function ensureCreatorProfile(
     .eq("id", user.id)
     .maybeSingle();
   if (error) return null;
-  if (existing) return existing as CreatorProfile;
+  if (existing) {
+    // The referral decision for this account was made at creation —
+    // drop any stored code so a different account signing in later
+    // on this browser can't inherit it.
+    clearStoredRefCode();
+    return existing as CreatorProfile;
+  }
 
   const identity = discordIdentity(user);
   let referredBy: string | null = null;
@@ -272,30 +286,41 @@ export async function ensureCreatorProfile(
     if (typeof data === "string" && data !== user.id) referredBy = data;
   }
 
-  const row = {
-    id: user.id,
-    discord_id: identity.discordId,
-    discord_username: identity.username,
-    discord_avatar_url: identity.avatarUrl,
-    referral_code: generateReferralCode(),
-    referred_by: referredBy,
-  };
-  const { data: created, error: insertError } = await sb
-    .from("creator_profiles")
-    .insert(row)
-    .select("*")
-    .single();
-  if (insertError || !created) {
-    // Lost a race (double mount / second tab) or a referral-code
-    // collision — re-read; the row should be there.
-    const { data: retry } = await sb
+  // Insert with a fresh referral code; a code collision (23505 on
+  // referral_code) retries with a new code instead of dead-ending —
+  // only a collision on the profile's own id means we lost a race
+  // (double mount / second tab), which the re-read below resolves.
+  let profile: CreatorProfile | null = null;
+  for (let attempt = 0; attempt < 3 && !profile; attempt++) {
+    const { data: created, error: insertError } = await sb
+      .from("creator_profiles")
+      .insert({
+        id: user.id,
+        discord_id: identity.discordId,
+        discord_username: identity.username,
+        discord_avatar_url: identity.avatarUrl,
+        referral_code: generateReferralCode(),
+        referred_by: referredBy,
+      })
+      .select("*")
+      .single();
+    if (!insertError && created) {
+      profile = created as CreatorProfile;
+      break;
+    }
+    const { data: raced } = await sb
       .from("creator_profiles")
       .select("*")
       .eq("id", user.id)
       .maybeSingle();
-    return (retry as CreatorProfile | null) ?? null;
+    if (raced) {
+      profile = raced as CreatorProfile;
+      break;
+    }
+    // Otherwise: referral-code collision — loop and mint a new code.
   }
-  const profile = created as CreatorProfile;
+  if (!profile) return null;
+  clearStoredRefCode();
 
   if (referredBy) {
     // Best-effort: a duplicate (unique invitee) is fine to ignore.

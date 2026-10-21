@@ -99,6 +99,13 @@ function ConnectDialog({
       setError("Paste the full profile URL (starting with https://).");
       return;
     }
+    const host = platform === "tiktok" ? "tiktok.com" : "instagram.com";
+    if (!url.toLowerCase().includes(host)) {
+      setError(
+        `That link doesn't look like a ${platform === "tiktok" ? "TikTok" : "Instagram"} profile — paste the full profile URL from ${host}.`
+      );
+      return;
+    }
     setBusy(true);
     setError(null);
     const { error: insertError } = await sb.from("connected_accounts").insert({
