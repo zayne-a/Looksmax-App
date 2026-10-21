@@ -24,7 +24,7 @@ THE SCAN (/scan)
 PRIVACY (important, users ask a lot)
 - Face analysis runs ON THE DEVICE in the browser — photos are never uploaded for analysis.
 - Scan photos a signed-in user keeps for their history are stored in their own browser on their device, not on our servers.
-- Account data (scores, plans, check-ins) is stored securely in their account. Users can wipe everything from the dashboard (More → Delete my saved data).
+- Account data (scores, plans, check-ins) is stored securely in their account. Signing out deletes nothing — log back in and everything is restored exactly as left. Full deletion of an account and its data is available on request.
 
 FREE vs PRO
 - Free: the scan, your score, the measurement breakdown and written read, and a preview plan — the first 3 steps of each of the 4 protocol sections (12 tasks) are open; the other tasks show their titles but stay locked.

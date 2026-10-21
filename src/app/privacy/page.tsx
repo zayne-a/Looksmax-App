@@ -61,11 +61,11 @@ export default function PrivacyPage() {
             Deleting your data
           </h2>
           <p className="mt-2 text-sm leading-relaxed text-muted">
-            The dashboard&apos;s “Delete my saved data” button wipes your
-            saved scans, plans, check-ins, logs and coach history from our
-            database, and clears the on-device photos and shelf in that
-            browser. It works immediately — no email round-trip, no
-            retention games.
+            Your saved scans, plans, check-ins, logs and coach history
+            live in your account — signing out deletes nothing, and
+            everything is restored when you log back in. If you want your
+            account and all of its data permanently deleted, that is
+            available on request.
           </p>
         </Card>
       </Reveal>

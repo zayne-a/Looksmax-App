@@ -25,7 +25,6 @@ import ProgressPhotos from "@/components/ProgressPhotos";
 import MyShelf from "@/components/MyShelf";
 import { supabaseConfigured } from "@/lib/supabase";
 import {
-  deleteMySavedData,
   fetchActivePlanId,
   listCheckins,
   listDailyLogs,
@@ -80,7 +79,6 @@ export default function DashboardPage() {
   const [activePlanIdPref, setActivePlanIdPref] = useState<string | null>(null);
   const [checkins, setCheckins] = useState<Checkin[] | null>(null);
   const [dailyLogs, setDailyLogs] = useState<DailyLog[]>([]);
-  const [confirmingWipe, setConfirmingWipe] = useState(false);
   // Clock reads in an effect only (Next prerender rule). These hooks sit
   // ABOVE the early returns below — hooks after a conditional return
   // change the hook count between renders and crash a cold load of
@@ -98,8 +96,6 @@ export default function DashboardPage() {
       setTab(t);
     }
   }, []);
-  const [wiped, setWiped] = useState(false);
-
   const load = useCallback(async () => {
     if (!user) return;
     const [s, p, c, logs, pref] = await Promise.all([
@@ -133,19 +129,6 @@ export default function DashboardPage() {
     }
     setPlan(saved.plan);
     router.push("/plan");
-  };
-
-  const onWipe = async () => {
-    const ok = await deleteMySavedData();
-    if (ok) {
-      setScans([]);
-      setPlans([]);
-      setCheckins([]);
-      setDailyLogs([]);
-      setActivePlanIdPref(null);
-      setWiped(true);
-    }
-    setConfirmingWipe(false);
   };
 
   // Revert to a saved plan version: re-selects that version as the
@@ -883,33 +866,12 @@ export default function DashboardPage() {
             <Button onClick={onSignOut} variant="ghost" className="px-6 py-3 text-sm">
               Sign out
             </Button>
-            {confirmingWipe ? (
-              <>
-                <Button onClick={onWipe} className="px-6 py-3 text-sm">
-                  Yes — delete my scans &amp; plans
-                </Button>
-                <Button
-                  onClick={() => setConfirmingWipe(false)}
-                  variant="ghost"
-                  className="px-6 py-3 text-sm"
-                >
-                  Keep them
-                </Button>
-              </>
-            ) : (
-              <Button
-                onClick={() => setConfirmingWipe(true)}
-                variant="ghost"
-                className="px-6 py-3 text-sm"
-              >
-                Delete my saved data
-              </Button>
-            )}
           </div>
           <p className="mt-3 text-xs leading-relaxed text-muted">
-            {wiped
-              ? "Done — your saved scans and plans are deleted. Your photos were never uploaded, so there is nothing else to erase."
-              : "Your photos are measured on your device and never uploaded. Deleting removes your saved measurements, scores and plans from our database — the privacy promise, with a working button."}
+            Signing out deletes nothing — your scans, plans and history
+            stay in your account and are restored exactly as you left
+            them when you log back in. Your photos are measured on your
+            device and never uploaded.
           </p>
           <p className="mt-2 text-xs text-muted">
             Questions about your account?{" "}

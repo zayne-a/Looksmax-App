@@ -1,4 +1,3 @@
-// AUDIT FIX: deleteMySavedData also clears the device-local stores (progress photos, shelf, journey start) — the wipe now matches the privacy promise on both sides of the wire.
 import { getSupabase } from "./supabase";
 import type { AscendPlan, FaceMeasurements, QuizAnswers } from "./types";
 
@@ -399,33 +398,4 @@ export async function listChatMessages(limit = 60): Promise<ChatMessage[]> {
   return (data as ChatMessage[]).reverse();
 }
 
-/** Privacy promise, working version: wipe the user's saved data. */
-export async function deleteMySavedData(): Promise<boolean> {
-  const sb = getSupabase();
-  if (!sb) return false;
-  const userId = await currentUserId();
-  if (!userId) return false;
-  const plans = await sb.from("plans").delete().eq("user_id", userId);
-  if (plans.error) return false;
-  const checkins = await sb.from("checkins").delete().eq("user_id", userId);
-  if (checkins.error) return false;
-  const logs = await sb.from("daily_logs").delete().eq("user_id", userId);
-  if (logs.error) return false;
-  const chats = await sb.from("chat_messages").delete().eq("user_id", userId);
-  if (chats.error) return false;
-  const scans = await sb.from("scans").delete().eq("user_id", userId);
-  if (scans.error) return false;
-  // Device-local data goes too (audit fix): progress photos, the shelf
-  // and the journey-start marker live only in this browser's storage —
-  // a wipe that left them behind would not be the privacy promise.
-  try {
-    localStorage.removeItem("ascend_progress_photos");
-    localStorage.removeItem("ascend_scan_photos");
-    localStorage.removeItem("ascend_shelf");
-    localStorage.removeItem("ascend_journey_start");
-    localStorage.removeItem(ACTIVE_PLAN_LS_KEY);
-  } catch {
-    /* storage unavailable — server data is already gone */
-  }
-  return true;
-}
+
