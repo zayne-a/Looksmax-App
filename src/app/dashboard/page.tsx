@@ -8,6 +8,8 @@ import { Button, Card, Eyebrow } from "@/components/ui";
 import { Reveal } from "@/components/motion";
 import { useApp } from "@/lib/store";
 import JourneyRoadmap from "@/components/JourneyRoadmap";
+import ProtocolRoadmap from "@/components/ProtocolRoadmap";
+import { roadmapSpanWeeks } from "@/lib/roadmap";
 import WeeklyCheckin from "@/components/WeeklyCheckin";
 import CoachReview from "@/components/CoachReview";
 import TodayHome from "@/components/TodayHome";
@@ -220,6 +222,18 @@ export default function DashboardPage() {
       .map((x) => x.created_at)
       .sort()[0] ?? null;
   const weekNum = journeyWeek(journeyStartIso);
+  // The roadmap spans the weeks the user chose in their quiz
+  // (resolved through the same quiz the Today home reads).
+  const roadmapQuiz =
+    (plans?.[0]?.scan_id
+      ? scans?.find((s) => s.id === plans[0].scan_id)?.quiz
+      : null) ??
+    latest?.quiz ??
+    null;
+  const timelineSpan = roadmapSpanWeeks(
+    roadmapQuiz?.timelineWeeks,
+    plans?.[0]?.plan.projection.horizonWeeks
+  );
   const streakNum = currentStreak(activeDaysSet);
   const freeze = todayKey
     ? freezeState(dailyLogs, activeDaysSet, todayKey)
@@ -270,19 +284,19 @@ export default function DashboardPage() {
             </span>
           </div>
         </div>
-        <div className="mt-3 flex gap-1.5">
+        <div className="mt-3 flex gap-1.5 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {(["today", "progress", "records", "more"] as AppTab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
-              className={`rounded-full px-4 py-2 text-sm font-bold capitalize transition ${tab === t ? "bg-gold text-ink" : "border border-white/12 text-muted hover:text-bone"}`}
+              className={`min-h-[44px] shrink-0 rounded-full px-4 py-2 text-sm font-bold capitalize transition ${tab === t ? "bg-gold text-ink" : "border border-white/12 text-muted hover:text-bone"}`}
             >
               {t}
             </button>
           ))}
           <Link
             href="/coach"
-            className="rounded-full border border-gold/40 bg-gold/10 px-4 py-2 text-sm font-bold text-gold-soft transition hover:bg-gold/20"
+            className="flex min-h-[44px] shrink-0 items-center rounded-full border border-gold/40 bg-gold/10 px-4 py-2 text-sm font-bold text-gold-soft transition hover:bg-gold/20"
           >
             ✦ Coach
           </Link>
@@ -374,6 +388,67 @@ export default function DashboardPage() {
       {isPro && plans?.[0] && (
         <Reveal delay={0.06} className="mt-6">
           <WeeklyPlan plan={plans[0].plan} journeyWeek={weekNum ?? 1} />
+        </Reveal>
+      )}
+
+      {/* YOUR PROTOCOL — the roadmap: the whole journey in one place,
+          one week open at a time (Zayne, 2026-10-21). Subscribers see
+          the live roadmap; free users get the locked teaser, never
+          roadmap data. */}
+      {isPro && plans?.[0] ? (
+        <Reveal delay={0.065} className="mt-6">
+          <ProtocolRoadmap
+            plan={plans[0].plan}
+            journeyStart={journeyStartIso}
+            logs={dailyLogs}
+            activeDays={activeDaysSet}
+            checkins={checkins?.length ?? 0}
+            planCreatedAts={(plans ?? []).map((p) => p.created_at)}
+            timelineWeeks={timelineSpan}
+            todayKey={todayKey}
+            onSaveDay={saveDay}
+          />
+        </Reveal>
+      ) : isPro ? (
+        <Reveal delay={0.065} className="mt-6">
+          <Card>
+            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-gold">
+              Your Protocol · the roadmap
+            </p>
+            <h2 className="font-display mt-2 text-2xl font-extrabold text-bone">
+              Your roadmap starts with your plan
+            </h2>
+            <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted">
+              Generate your personalised protocol and this page lays it
+              out week by week, day by day — one week open at a time,
+              the next unlocking when every day is finished and the
+              streak survives.
+            </p>
+            <Button href="/quiz" className="mt-4 px-7 py-3">
+              Start free scan
+            </Button>
+          </Card>
+        </Reveal>
+      ) : (
+        <Reveal delay={0.065} className="mt-6">
+          <Card>
+            <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-gold">
+              Your Protocol · Pro
+            </p>
+            <h2 className="font-display mt-2 text-2xl font-extrabold text-bone">
+              Your whole journey, one week at a time
+            </h2>
+            <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted">
+              Subscribers get a roadmap across the weeks they chose:
+              the open week laid out day by day — every day&apos;s plan
+              in one place — with the next week locked until every day
+              is finished and the streak survives. No skipping ahead;
+              the road opens as you walk it.
+            </p>
+            <Button href="/paywall" className="mt-4 px-7 py-3">
+              Unlock the roadmap
+            </Button>
+          </Card>
         </Reveal>
       )}
 
