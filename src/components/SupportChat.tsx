@@ -107,6 +107,7 @@ export default function SupportChat() {
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [teaser, setTeaser] = useState(false);
+  const [entered, setEntered] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const [vp, setVp] = useState({ w: 0, h: 0 });
@@ -188,6 +189,15 @@ export default function SupportChat() {
   useEffect(() => {
     if (view !== "closed") setTeaser(false);
   }, [view]);
+
+  /* The spring entrance plays ONCE. After it has run, the launcher
+     remounts (every panel close) must appear instantly at full size —
+     replaying the pop would leave an invisible 17px dot for ~1.75s. */
+  useEffect(() => {
+    if (!onHome || entered) return;
+    const t = window.setTimeout(() => setEntered(true), 1900);
+    return () => window.clearTimeout(t);
+  }, [onHome, entered]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -379,7 +389,7 @@ export default function SupportChat() {
             onClick={onLauncherClick}
             aria-label="Chat with Max, the Mewmax support guide"
             title="Chat with Max — drag to move"
-            className={`max-pop-in relative block h-14 w-14 touch-none select-none rounded-full border border-gold/40 bg-ink/95 backdrop-blur transition hover:border-gold ${
+            className={`${entered ? "" : "max-pop-in "}relative block h-14 w-14 touch-none select-none rounded-full border border-gold/40 bg-ink/95 backdrop-blur transition hover:border-gold ${
               dragging
                 ? "cursor-grabbing shadow-[0_18px_44px_rgba(0,0,0,0.65)]"
                 : "cursor-grab shadow-[0_12px_36px_rgba(0,0,0,0.55)]"
