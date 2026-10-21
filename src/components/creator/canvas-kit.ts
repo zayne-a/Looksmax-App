@@ -290,11 +290,21 @@ export function drawScoreCard(
   ctx.fillStyle = "#ffffff";
   const tierX = dotCx + dotR + h * 0.055;
   const tierAvail = x + w - pad - tierX;
+  // The tier text zone is a FIXED two-line block, like the
+  // reference: line 1 rides the number line and line 2 sits one
+  // line height below it — the second line's slot is reserved
+  // whether or not the tier wraps, so the fixed bar below keeps
+  // the same clear gap to the text in every card of a row. (The
+  // wrapped line used to be placed from the number baseline
+  // instead, dropping it ~9px lower, onto the bar's glow.)
+  const tierLine1Y = baseY - h * 0.022;
+  const tierLine2Y = tierLine1Y + tierFont * 1.18;
   if (ctx.measureText(opts.tier).width <= tierAvail) {
-    ctx.fillText(opts.tier, tierX, baseY - h * 0.022);
+    ctx.fillText(opts.tier, tierX, tierLine1Y);
   } else {
     // Long tier names wrap like the reference: first words ride the
-    // number line, the rest drop to a second line at the left edge.
+    // number line, the rest drop to the reserved second line at the
+    // left edge.
     const words = opts.tier.split(" ");
     let line1 = "";
     for (const word of words) {
@@ -303,8 +313,8 @@ export function drawScoreCard(
       line1 = next;
     }
     const line2 = opts.tier.slice(line1.length).trim();
-    ctx.fillText(line1, tierX, baseY - h * 0.022);
-    if (line2) ctx.fillText(line2, x + pad, baseY + tierFont * 1.18);
+    ctx.fillText(line1, tierX, tierLine1Y);
+    if (line2) ctx.fillText(line2, x + pad, tierLine2Y);
   }
 
   // Progress bar: thick, rounded, tier-coloured, glowing.
