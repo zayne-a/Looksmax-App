@@ -22,6 +22,7 @@ const QUICK = [
   "What do I get for free?",
   "How much is Pro?",
   "Why was my photo rejected?",
+  "How can I earn with the creator program?",
 ];
 
 const GREETING =
