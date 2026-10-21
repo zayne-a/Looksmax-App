@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { ReviewStatus, Tier } from "@/lib/portal";
 
 // Shared portal chrome (2026-10-22): the creator portal speaks the
@@ -33,6 +33,31 @@ export function MintButton({
       onClick={onClick}
       disabled={disabled}
       className={`inline-flex items-center justify-center gap-2 rounded-full bg-[#5EEAD4] px-5 py-2.5 text-sm font-bold text-[#0a0a0c] transition hover:bg-[#99f6e4] disabled:cursor-not-allowed disabled:opacity-40 ${className}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+export function WhiteButton({
+  children,
+  onClick,
+  type = "button",
+  disabled = false,
+  className = "",
+}: {
+  children: ReactNode;
+  onClick?: () => void;
+  type?: "button" | "submit";
+  disabled?: boolean;
+  className?: string;
+}) {
+  return (
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      className={`inline-flex items-center justify-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-bold text-[#0a0a0c] transition hover:bg-white/85 disabled:cursor-not-allowed disabled:opacity-40 ${className}`}
     >
       {children}
     </button>
@@ -95,11 +120,11 @@ export function StatCard({
 }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
-      <div className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted">
-        {label}
-      </div>
-      <div className="mt-2 font-display text-2xl font-extrabold text-bone">
+      <div className="font-display text-2xl font-extrabold text-bone">
         {value}
+      </div>
+      <div className="mt-2 text-[11px] font-bold uppercase tracking-[0.14em] text-muted">
+        {label}
       </div>
       {hint ? <div className="mt-1 text-xs text-muted">{hint}</div> : null}
     </div>
@@ -155,10 +180,138 @@ export function GateCard({
       </div>
       <a
         href={ctaHref}
-        className="mt-6 inline-flex items-center justify-center gap-2 rounded-full bg-[#5EEAD4] px-6 py-3 text-sm font-bold text-[#0a0a0c] transition hover:bg-[#99f6e4]"
+        className="mt-6 inline-flex items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-bold text-[#0a0a0c] transition hover:bg-white/85"
       >
         {ctaLabel}
       </a>
+    </div>
+  );
+}
+
+/** His month selector: a custom dropdown (calendar icon + label +
+ *  chevron) whose options carry a checkmark on the selected month.
+ *  Same data behaviour as the native select it replaces. */
+export function MonthSelect({
+  value,
+  onChange,
+  options,
+  ariaLabel = "Month",
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string }[];
+  ariaLabel?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open ]);
+
+  const selected = options.find((o) => o.value === value);
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-label={ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        data-testid="month-select"
+        className="inline-flex items-center gap-2.5 rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-semibold text-bone transition hover:border-white/25 focus:border-[#5EEAD4]/60 focus:outline-none"
+      >
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.9"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+          className="text-muted"
+        >
+          <rect x="3" y="5" width="18" height="16" rx="2.5" />
+          <path d="M8 3v4M16 3v4M3 10h18" />
+        </svg>
+        {selected?.label ?? value}
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden
+          className={`text-muted transition-transform ${open ? "rotate-180" : ""}`}
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </button>
+      {open ? (
+        <div
+          role="listbox"
+          aria-label={ariaLabel}
+          className="absolute right-0 z-40 mt-2 max-h-80 w-60 overflow-auto rounded-2xl border border-white/10 bg-[#141416] p-1.5 shadow-2xl"
+        >
+          {options.map((o) => {
+            const isSel = o.value === value;
+            return (
+              <button
+                key={o.value}
+                type="button"
+                role="option"
+                aria-selected={isSel}
+                data-testid="month-option"
+                onClick={() => {
+                  onChange(o.value);
+                  setOpen(false);
+                }}
+                className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm font-semibold transition hover:bg-white/[0.05] ${
+                  isSel ? "text-bone" : "text-muted hover:text-bone"
+                }`}
+              >
+                {o.label}
+                {isSel ? (
+                  <svg
+                    width="15"
+                    height="15"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden
+                    className="shrink-0 text-[#5EEAD4]"
+                  >
+                    <path d="m4.5 12.5 5 5 10-11" />
+                  </svg>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }

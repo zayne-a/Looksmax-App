@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePortal } from "@/components/portal/PortalShell";
-import { PageHeading } from "@/components/portal/ui";
+import { MonthSelect, PageHeading } from "@/components/portal/ui";
 import {
   formatMoney,
   formatViews,
@@ -53,20 +53,11 @@ export default function PortalLeaderboardPage() {
         sub="See how you rank against other creators this month"
         right={
           unlocked ? (
-            <select
+            <MonthSelect
               value={month}
-              onChange={(e) => setMonth(e.target.value)}
-              className="rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-semibold text-bone focus:border-[#5EEAD4]/60 focus:outline-none"
-              aria-label="Month"
-            >
-              {monthOptions()
-                .filter((o) => o.value !== "all")
-                .map((o) => (
-                  <option key={o.value} value={o.value} className="bg-[#111113]">
-                    {o.label}
-                  </option>
-                ))}
-            </select>
+              onChange={setMonth}
+              options={monthOptions().filter((o) => o.value !== "all")}
+            />
           ) : undefined
         }
       />
@@ -84,7 +75,7 @@ export default function PortalLeaderboardPage() {
           </p>
           <Link
             href="/portal/settings"
-            className="mt-6 inline-flex rounded-full bg-[#5EEAD4] px-6 py-3 text-sm font-bold text-[#0a0a0c] transition hover:bg-[#99f6e4]"
+            className="mt-6 inline-flex rounded-full bg-white px-6 py-3 text-sm font-bold text-[#0a0a0c] transition hover:bg-white/85"
           >
             Connect an Account
           </Link>

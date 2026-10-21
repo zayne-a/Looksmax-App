@@ -9,6 +9,7 @@ import {
   PlatformGlyph,
   StatusPill,
   TierBadge,
+  WhiteButton,
   inputClass,
   labelClass,
 } from "@/components/portal/ui";
@@ -256,112 +257,279 @@ function ConnectDialog({
 }
 
 /* ------------------------------------------------------------------ */
-/* Payout method card with his double-entry save form                  */
+/* Payout methods: his pattern — a ROW per method ("+ Connect") that   */
+/* opens a MODAL dialog with double-entry fields. The confirm entry    */
+/* must match before Save enables; a mismatch shows his red            */
+/* "✕ Entries don't match" under the confirm field. Saves persist      */
+/* through the payout_methods upsert and the row then shows the        */
+/* saved state.                                                        */
 /* ------------------------------------------------------------------ */
 
-function PayoutCard({
-  title,
-  blurb,
-  saved,
-  fieldLabel,
-  placeholder,
-  note,
-  warning,
-  onSave,
-}: {
+type PayoutKind = Exclude<PayoutMethod["type"], "bank">;
+
+interface PayoutConfig {
+  kind: PayoutKind;
   title: string;
-  blurb: string;
-  saved: string | null;
+  line: string;
+  glyph: string;
+  dialogTitle: string;
+  intro?: string;
   fieldLabel: string;
+  confirmLabel: string;
   placeholder: string;
   note?: string;
   warning?: string;
+  crypto?: boolean;
+}
+
+const PAYOUT_CONFIGS: PayoutConfig[] = [
+  {
+    kind: "paypal",
+    title: "PayPal",
+    line: "Payouts to your PayPal email or username.",
+    glyph: "P",
+    dialogTitle: "Connect PayPal",
+    fieldLabel: "PayPal email or username",
+    confirmLabel: "Confirm",
+    placeholder: "yourname@example.com or @username",
+    note: "Double-check your PayPal email or username — we can't verify if it's correct.",
+  },
+  {
+    kind: "cashapp",
+    title: "Cash App",
+    line: "Payouts to your Cash App $Cashtag.",
+    glyph: "$",
+    dialogTitle: "Connect Cash App",
+    fieldLabel: "$Cashtag",
+    confirmLabel: "Confirm $Cashtag",
+    placeholder: "$YourCashTag",
+    note: "Double-check your $Cashtag — we can't verify if it exists.",
+  },
+  {
+    kind: "crypto",
+    title: "Crypto Wallet",
+    line: "USDC on Solana.",
+    glyph: "◎",
+    dialogTitle: "Connect Crypto Wallet",
+    intro: "Connect Phantom or enter your Solana wallet address manually.",
+    fieldLabel: "Wallet address",
+    confirmLabel: "Confirm address",
+    placeholder: "Your Solana wallet address",
+    warning:
+      "USDC sent to a wrong address cannot be recovered. Enter your address twice to confirm.",
+    crypto: true,
+  },
+];
+
+interface PhantomProvider {
+  isPhantom?: boolean;
+  connect: () => Promise<{ publicKey: { toString: () => string } }>;
+}
+
+function PayoutDialog({
+  config,
+  initial,
+  onClose,
+  onSave,
+}: {
+  config: PayoutConfig;
+  initial: string | null;
+  onClose: () => void;
   onSave: (value: string) => Promise<boolean>;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [v1, setV1] = useState("");
-  const [v2, setV2] = useState("");
+  const [v1, setV1] = useState(initial ?? "");
+  const [v2, setV2] = useState(initial ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [phantomNote, setPhantomNote] = useState<string | null>(null);
+  const [phantomBusy, setPhantomBusy] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const mismatch = v1.trim() !== "" && v2.trim() !== "" && v1.trim() !== v2.trim();
+  const canSave = v1.trim() !== "" && v1.trim() === v2.trim() && !busy;
+
+  const connectPhantom = async () => {
+    const provider = (
+      window as unknown as { solana?: PhantomProvider }
+    ).solana;
+    if (!provider?.isPhantom) {
+      setPhantomNote(
+        "Phantom not detected. You can still enter your address manually."
+      );
+      return;
+    }
+    setPhantomBusy(true);
+    setPhantomNote(null);
+    try {
+      const res = await provider.connect();
+      const address = res.publicKey.toString();
+      setV1(address);
+      setV2(address);
+    } catch {
+      setPhantomNote(
+        "Phantom connection was dismissed. You can still enter your address manually."
+      );
+    } finally {
+      setPhantomBusy(false);
+    }
+  };
 
   const save = async () => {
-    setError(null);
-    if (!v1.trim()) {
-      setError(`Enter your ${fieldLabel.toLowerCase()}.`);
-      return;
-    }
-    if (v1.trim() !== v2.trim()) {
-      setError("The two entries don't match — double-check and try again.");
-      return;
-    }
+    if (!canSave) return;
     setBusy(true);
+    setError(null);
     const ok = await onSave(v1.trim());
     setBusy(false);
     if (ok) {
-      setEditing(false);
-      setV1("");
-      setV2("");
+      onClose();
     } else {
       setError("Couldn't save — please try again.");
     }
   };
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="font-display text-lg font-extrabold text-bone">{title}</h3>
-          <p className="mt-0.5 text-sm text-muted">{blurb}</p>
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-4 sm:items-center"
+      role="dialog"
+      aria-modal="true"
+      aria-label={config.dialogTitle}
+      data-testid={`payout-dialog-${config.kind}`}
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#111113] p-6 shadow-2xl sm:p-8"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <h3 className="font-display text-xl font-extrabold text-bone">
+            {config.dialogTitle}
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="text-muted transition hover:text-bone"
+          >
+            ✕
+          </button>
         </div>
-        {saved && !editing ? (
-          <span className="inline-flex shrink-0 items-center rounded-full border border-[#5EEAD4]/40 bg-[#5EEAD4]/10 px-3 py-1 text-xs font-bold text-[#5EEAD4]">
-            Connected
-          </span>
-        ) : null}
-      </div>
 
-      {saved && !editing ? (
-        <div className="mt-4 flex items-center justify-between gap-3">
-          <span className="min-w-0 truncate text-sm font-semibold text-bone">
-            {saved}
-          </span>
-          <GhostButton onClick={() => setEditing(true)}>Update</GhostButton>
-        </div>
-      ) : editing || !saved ? (
-        <div className="mt-4">
-          {warning ? (
-            <p className="mb-3 rounded-xl border border-yellow-300/30 bg-yellow-300/[0.06] px-3.5 py-2.5 text-xs leading-relaxed text-yellow-100">
-              {warning}
+        {config.crypto ? (
+          <div className="mt-4">
+            <p className="text-sm leading-relaxed text-muted">{config.intro}</p>
+            <button
+              type="button"
+              onClick={connectPhantom}
+              disabled={phantomBusy}
+              className="mt-3 inline-flex items-center justify-center gap-2 rounded-full bg-[#AB9FF2] px-5 py-2.5 text-sm font-bold text-[#0a0a0c] transition hover:bg-[#c0b5f5] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {phantomBusy ? "Connecting…" : "Connect Phantom"}
+            </button>
+            {phantomNote ? (
+              <p className="mt-3 text-xs leading-relaxed text-muted">
+                {phantomNote}
+              </p>
+            ) : null}
+            <p className="mt-4 text-xs font-bold uppercase tracking-[0.14em] text-muted">
+              Enter address manually
             </p>
-          ) : null}
-          <label className={labelClass}>{fieldLabel}</label>
+          </div>
+        ) : null}
+
+        {config.warning ? (
+          <p className="mt-4 rounded-xl border border-yellow-300/30 bg-yellow-300/[0.06] px-3.5 py-2.5 text-xs leading-relaxed text-yellow-100">
+            {config.warning}
+          </p>
+        ) : null}
+
+        <div className="mt-5">
+          <label className={labelClass}>{config.fieldLabel}</label>
           <input
             value={v1}
             onChange={(e) => setV1(e.target.value)}
-            placeholder={placeholder}
+            placeholder={config.placeholder}
             className={inputClass}
             autoComplete="off"
+            data-testid={`payout-field-${config.kind}`}
           />
-          <label className={`${labelClass} mt-4`}>Confirm {fieldLabel}</label>
+          <label className={`${labelClass} mt-4`}>{config.confirmLabel}</label>
           <input
             value={v2}
             onChange={(e) => setV2(e.target.value)}
             placeholder="Enter again to confirm"
             className={inputClass}
             autoComplete="off"
+            data-testid={`payout-confirm-${config.kind}`}
           />
-          {note ? <p className="mt-3 text-xs text-muted">{note}</p> : null}
+          {mismatch ? (
+            <p className="mt-2 text-sm font-semibold text-red-400">
+              ✕ Entries don&apos;t match
+            </p>
+          ) : null}
+          {config.note ? (
+            <p className="mt-3 text-xs leading-relaxed text-muted">
+              {config.note}
+            </p>
+          ) : null}
           {error ? <p className="mt-3 text-sm text-red-300">{error}</p> : null}
-          <div className="mt-4 flex gap-3">
-            <MintButton onClick={save} disabled={busy || !v1 || !v2}>
-              {busy ? "Saving…" : "Save"}
-            </MintButton>
-            {editing ? (
-              <GhostButton onClick={() => setEditing(false)}>Cancel</GhostButton>
-            ) : null}
-          </div>
         </div>
-      ) : null}
+
+        <div className="mt-6 flex justify-end gap-3">
+          <GhostButton onClick={onClose}>Cancel</GhostButton>
+          <MintButton onClick={save} disabled={!canSave}>
+            {busy ? "Saving…" : "Save"}
+          </MintButton>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PayoutRow({
+  config,
+  saved,
+  onConnect,
+}: {
+  config: PayoutConfig;
+  saved: string | null;
+  onConnect: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] font-display text-lg font-extrabold text-bone">
+        {config.glyph}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="font-display text-base font-extrabold text-bone">
+            {config.title}
+          </h3>
+          {saved ? (
+            <span className="inline-flex items-center rounded-full border border-[#5EEAD4]/40 bg-[#5EEAD4]/10 px-2.5 py-0.5 text-[11px] font-bold text-[#5EEAD4]">
+              Connected
+            </span>
+          ) : null}
+        </div>
+        <p className="mt-0.5 text-sm text-muted">
+          {saved ? (
+            <span className="break-all font-semibold text-bone">{saved}</span>
+          ) : (
+            config.line
+          )}
+        </p>
+      </div>
+      {saved ? (
+        <GhostButton onClick={onConnect}>Update</GhostButton>
+      ) : (
+        <WhiteButton onClick={onConnect}>+ Connect</WhiteButton>
+      )}
     </div>
   );
 }
@@ -373,6 +541,7 @@ export default function PortalSettingsPage() {
   const [accounts, setAccounts] = useState<ConnectedAccount[]>([]);
   const [methods, setMethods] = useState<PayoutMethod[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [payoutKind, setPayoutKind] = useState<PayoutKind | null>(null);
 
   const load = useCallback(async () => {
     const [accs, meths] = await Promise.all([
@@ -450,9 +619,8 @@ export default function PortalSettingsPage() {
           <div className="truncate font-display text-lg font-extrabold text-bone">
             {profile.discord_username ?? "Creator"}
           </div>
-          <div className="text-sm text-muted">
-            Referral code:{" "}
-            <span className="font-bold text-bone">{profile.referral_code}</span>
+          <div className="truncate text-sm font-semibold text-[#5EEAD4]">
+            @{profile.discord_username ?? "creator"}
           </div>
         </div>
         <span className="ml-auto inline-flex shrink-0 items-center rounded-full border border-[#5865F2]/50 bg-[#5865F2]/15 px-3 py-1 text-xs font-bold text-[#aeb6ff]">
@@ -470,17 +638,11 @@ export default function PortalSettingsPage() {
             Link your account to submit videos &amp; track earnings
           </p>
         </div>
-        <MintButton onClick={() => setDialogOpen(true)}>+ Connect Account</MintButton>
+        <WhiteButton onClick={() => setDialogOpen(true)}>+ Connect Account</WhiteButton>
       </div>
 
       <div className="mt-4 grid gap-3">
-        {accounts.length === 0 ? (
-          <div className="flex items-center gap-3 rounded-2xl border border-dashed border-white/15 p-5 text-muted">
-            <PlatformGlyph platform="tiktok" size={20} />
-            <PlatformGlyph platform="instagram" size={20} />
-            <span className="text-sm">No accounts connected yet.</span>
-          </div>
-        ) : (
+        {accounts.length === 0 ? null : (
           accounts.map((a) => (
             <div
               key={a.id}
@@ -522,58 +684,67 @@ export default function PortalSettingsPage() {
       </h2>
       <p className="mt-1 text-sm text-muted">Choose how you want to receive payouts</p>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        <PayoutCard
-          title="PayPal"
-          blurb="Add your PayPal email or username."
-          saved={methodValue("paypal")}
-          fieldLabel="PayPal email or username"
-          placeholder="yourname@example.com or @username"
-          note="Double-check your PayPal email or username — we can't verify if it's correct."
-          onSave={(v) => saveMethod("paypal", v)}
-        />
-        <PayoutCard
-          title="Cash App"
-          blurb="Add your Cash App $Cashtag."
-          saved={methodValue("cashapp")}
-          fieldLabel="$Cashtag"
-          placeholder="$YourCashTag"
-          note="Double-check your $Cashtag — we can't verify if it exists."
-          onSave={(v) => saveMethod("cashapp", v)}
-        />
-        <PayoutCard
-          title="Crypto Wallet"
-          blurb="USDC on Solana — connect by entering your Solana wallet address."
-          saved={methodValue("crypto")}
-          fieldLabel="Wallet address"
-          placeholder="Your Solana wallet address"
-          warning="USDC sent to a wrong address cannot be recovered. Enter your address twice to confirm."
-          onSave={(v) => saveMethod("crypto", v)}
-        />
-        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-6">
-          <h3 className="font-display text-lg font-extrabold text-bone">
-            Bank Account
-          </h3>
-          <p className="mt-0.5 text-sm text-muted">
-            Receive payouts directly to your bank.
-          </p>
-          <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3 text-sm leading-relaxed text-muted">
-            Bank transfer runs through our payments partner and{" "}
-            <span className="font-bold text-bone">
-              activates when payouts launch
-            </span>
-            . Until then, add PayPal, Cash App or a crypto wallet so your
-            first payout isn&apos;t held up.
+      <div className="mt-4 grid gap-3">
+        {PAYOUT_CONFIGS.map((config) => (
+          <PayoutRow
+            key={config.kind}
+            config={config}
+            saved={methodValue(config.kind)}
+            onConnect={() => setPayoutKind(config.kind)}
+          />
+        ))}
+
+        {/* Bank: honestly deferred — payouts (and Stripe onboarding)
+            stay parked until the owner wires Stripe. */}
+        <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-bone">
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="M3 9.5 12 4l9 5.5" />
+              <path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8" />
+              <path d="M3 21h18" />
+            </svg>
+          </span>
+          <div className="min-w-0 flex-1">
+            <h3 className="font-display text-base font-extrabold text-bone">
+              Bank Account
+            </h3>
+            <p className="mt-0.5 text-sm leading-relaxed text-muted">
+              Bank transfer runs through our payments partner and{" "}
+              <span className="font-bold text-bone">
+                activates when payouts launch
+              </span>
+              . Until then, add PayPal, Cash App or a crypto wallet so your
+              first payout isn&apos;t held up.
+            </p>
           </div>
           <button
             type="button"
             disabled
-            className="mt-4 inline-flex cursor-not-allowed rounded-full border border-white/15 px-5 py-2.5 text-sm font-bold text-muted opacity-50"
+            className="inline-flex cursor-not-allowed rounded-full border border-white/15 px-5 py-2.5 text-sm font-bold text-muted opacity-50"
           >
             + Connect — coming at payout launch
           </button>
         </div>
       </div>
+
+      {payoutKind ? (
+        <PayoutDialog
+          config={PAYOUT_CONFIGS.find((c) => c.kind === payoutKind)!}
+          initial={methodValue(payoutKind)}
+          onClose={() => setPayoutKind(null)}
+          onSave={(v) => saveMethod(payoutKind, v)}
+        />
+      ) : null}
 
       <ConnectDialog
         open={dialogOpen}

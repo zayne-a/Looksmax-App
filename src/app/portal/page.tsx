@@ -1,9 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { usePortal } from "@/components/portal/PortalShell";
-import { PageHeading, StatCard, TierBadge, PlatformGlyph } from "@/components/portal/ui";
+import {
+  MonthSelect,
+  PageHeading,
+  StatCard,
+  TierBadge,
+  PlatformGlyph,
+} from "@/components/portal/ui";
 import {
   formatMoney,
   formatViews,
@@ -19,9 +24,9 @@ import {
   type VideoSubmission,
 } from "@/lib/portal";
 
-/** Live countdown to the end of the current month (his card:
- *  "remaining to submit for this month"). */
-function useMonthCountdown(): string {
+/** Live countdown to the end of the current month, rendered as his
+ *  four segmented boxes: "10d : 08h : 12m : 29s". */
+function useMonthCountdown(): { value: string; unit: string }[] {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
@@ -36,7 +41,12 @@ function useMonthCountdown(): string {
   const m = Math.floor(diff / 60);
   const s = diff - m * 60;
   const pad = (n: number) => `${n}`.padStart(2, "0");
-  return `${d}d ${pad(h)}h ${pad(m)}m ${pad(s)}s`;
+  return [
+    { value: `${d}`, unit: "d" },
+    { value: pad(h), unit: "h" },
+    { value: pad(m), unit: "m" },
+    { value: pad(s), unit: "s" },
+  ];
 }
 
 export default function PortalDashboardPage() {
@@ -113,26 +123,37 @@ export default function PortalDashboardPage() {
         title="Dashboard"
         sub="Track your performance and earnings"
         right={
-          <select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="rounded-full border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-semibold text-bone focus:border-[#5EEAD4]/60 focus:outline-none"
-            aria-label="Month"
-          >
-            {options.map((o) => (
-              <option key={o.value} value={o.value} className="bg-[#111113]">
-                {o.label}
-              </option>
-            ))}
-          </select>
+          <MonthSelect value={filter} onChange={setFilter} options={options} />
         }
       />
 
-      <div className="mb-6 rounded-2xl border border-[#5EEAD4]/25 bg-[#5EEAD4]/[0.04] p-5 text-center">
-        <div className="font-display text-3xl font-extrabold tabular-nums tracking-tight text-[#5EEAD4]">
-          {countdown}
+      <div className="mb-6 rounded-2xl border border-white/10 bg-white/[0.02] p-5 text-center">
+        <div
+          className="flex flex-wrap items-center justify-center gap-1.5 sm:gap-2"
+          data-testid="countdown"
+        >
+          {countdown.map((seg, i) => (
+            <span key={seg.unit} className="flex items-center gap-1.5 sm:gap-2">
+              {i > 0 ? (
+                <span className="font-display text-xl font-extrabold text-muted">
+                  :
+                </span>
+              ) : null}
+              <span
+                data-testid="countdown-seg"
+                className="inline-flex min-w-[64px] items-baseline justify-center rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5"
+              >
+                <span className="font-display text-2xl font-extrabold tabular-nums text-bone">
+                  {seg.value}
+                </span>
+                <span className="ml-1 text-xs font-semibold text-muted">
+                  {seg.unit}
+                </span>
+              </span>
+            </span>
+          ))}
         </div>
-        <div className="mt-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted">
+        <div className="mt-3 text-sm text-muted">
           remaining to submit for this month
         </div>
       </div>
@@ -162,12 +183,6 @@ export default function PortalDashboardPage() {
             <p className="mt-1 text-sm text-muted">
               Connect and verify an account in Settings to start earning.
             </p>
-            <Link
-              href="/portal/settings"
-              className="mt-4 inline-flex rounded-full bg-[#5EEAD4] px-5 py-2.5 text-sm font-bold text-[#0a0a0c] transition hover:bg-[#99f6e4]"
-            >
-              Go to Settings
-            </Link>
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
