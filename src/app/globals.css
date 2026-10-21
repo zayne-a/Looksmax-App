@@ -67,6 +67,28 @@ body {
   color: transparent;
 }
 
+/* ---- In-shell theme (Zayne, 2026-10-21) ----
+   Inside the native app (Capacitor shell), the accent system flips
+   from the website's champagne gold to the app's mint — the reference
+   app's colour language — so the app does not look like the website.
+   SiteChrome adds .in-shell to <body> only when the page runs inside
+   the native shell; the marketing website never sees this. Every
+   gold utility (text, borders, glows, gradients) resolves through
+   these variables, so the whole experience re-skins at once. */
+body.in-shell {
+  --color-gold: #5eead4;
+  --color-gold-soft: #99f6e4;
+  --color-gold-deep: #14b8a6;
+  --shadow-glow-sm: 0 0 20px -6px rgba(94, 234, 212, 0.45);
+  --shadow-glow: 0 10px 40px -10px rgba(94, 234, 212, 0.5);
+}
+body.in-shell .gold-text {
+  background: linear-gradient(100deg, #ccfbf1 5%, #5eead4 52%, #14b8a6 95%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
 /* Premium card: hairline gold border, top-light gradient, deep shadow */
 .card-premium {
   border: 1px solid rgba(227, 185, 78, 0.14);

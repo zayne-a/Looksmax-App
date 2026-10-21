@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -24,6 +24,22 @@ export function isAppZone(pathname: string | null): boolean {
 
 export default function SiteChrome({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+
+  // Inside the native shell the whole experience re-skins to the
+  // app theme (globals.css: body.in-shell) — the app must not look
+  // like the website (Zayne, 2026-10-21). Capacitor injects
+  // window.Capacitor on native platforms only; plain browsers skip.
+  useEffect(() => {
+    const cap = (
+      window as unknown as {
+        Capacitor?: { isNativePlatform?: () => boolean };
+      }
+    ).Capacitor;
+    if (cap?.isNativePlatform?.()) {
+      document.body.classList.add("in-shell");
+    }
+  }, []);
+
   if (isAppZone(pathname)) {
     return <main className="min-h-screen">{children}</main>;
   }
