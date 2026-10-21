@@ -1,6 +1,7 @@
 // Face breakdown for the dashboard (new): the trait-by-trait results pattern (cf. Umax) done honestly — bars only for true 0-100 scores (golden ratio, symmetry), values + plain-language readings for ratios (thirds, canthal tilt, jaw, FWHR), plus the skin readout (redness/texture/under-eye, lower is better) for parity with the plan page’s measurements section. All from the latest scan’s on-device measurements.
 import { Card } from "@/components/ui";
 import type { FaceMeasurements } from "@/lib/types";
+import { buildMeasurementRead } from "@/lib/read";
 
 /**
  * Trait-by-trait face breakdown — the results pattern users love in
@@ -210,6 +211,82 @@ export default function FaceBreakdown({
         </a>{" "}
         turns that into a barber brief.
       </p>
+
+      {/* THE DELIBERATE READ — every trait in long form (Zayne, 2026-10-21) */}
+      <div className="mt-5 border-t border-white/[0.07] pt-5">
+        <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-gold">
+          The deliberate read
+        </p>
+        <p className="mt-1 text-xs leading-relaxed text-muted">
+          Every trait above, in full — what it means, what moves it, and what
+          to watch next scan. Settle in; it&apos;s the long version.
+        </p>
+        {(() => {
+          const read = buildMeasurementRead(m);
+          return (
+            <>
+              {read.intro.split("\n\n").map((p, i) => (
+                <p key={i} className="mt-3 text-sm leading-relaxed text-bone/85">
+                  {p}
+                </p>
+              ))}
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-gold/30 bg-gold/8 px-3 py-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-gold-soft">
+                    Your standout
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-bone/85">
+                    {read.strongest}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">
+                    Biggest lever
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-bone/85">
+                    {read.biggestLever}
+                  </p>
+                </div>
+              </div>
+              <div className="divide-y divide-white/[0.06]">
+                {read.items.map((item) => (
+                  <div key={item.label} className="py-3">
+                    <p className="flex flex-wrap items-baseline justify-between gap-2">
+                      <span className="text-sm font-bold text-bone">
+                        {item.label}
+                      </span>
+                      <span className="font-display text-sm font-extrabold tabular-nums text-gold-soft">
+                        {item.value}
+                      </span>
+                    </p>
+                    {item.detail.split("\n\n").map((p, i) => (
+                      <p
+                        key={i}
+                        className="mt-2 text-sm leading-relaxed text-bone/85"
+                      >
+                        {p}
+                      </p>
+                    ))}
+                  </div>
+                ))}
+              </div>
+              <div className="mt-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted">
+                  What to compare next scan
+                </p>
+                {read.nextScan.split("\n\n").map((p, i) => (
+                  <p
+                    key={i}
+                    className="mt-2 text-sm leading-relaxed text-bone/85"
+                  >
+                    {p}
+                  </p>
+                ))}
+              </div>
+            </>
+          );
+        })()}
+      </div>
     </Card>
   );
 }
