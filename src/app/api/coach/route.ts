@@ -11,13 +11,48 @@ import { createClient } from "@supabase/supabase-js";
  * message cap protects the shared free-tier Gemini quota. The coach's
  * context is assembled from the user's own rows via the service role —
  * the client sends only the new message + recent turns.
+ *
+ * Replies STREAM: generation leads with the fastest model (flash-lite),
+ * hedged across two pool keys — the first attempt to produce a token
+ * wins and its tokens are forwarded to the client as they arrive. Only
+ * when no attempt has produced a token inside the overall budget does
+ * the route answer with the honest 503 "coach_busy" JSON, so failure
+ * stays fast and explicit instead of a long silent hang. The completed
+ * reply is persisted server-side once the stream ends, exactly as the
+ * old blocking version did, keeping the daily-cap accounting real.
  */
 
 export const maxDuration = 120;
 
+// Model ladder for chat: flash-lite leads (fastest time-to-first-token),
+// then the two larger flashes as escalation when lite is unavailable.
+// Live probe (2026-10-21): 3.5-flash-lite TTFT ~0.9s while 3.8-flash
+// was returning 503s — the old primary-first order was the slow path.
+const LITE_MODEL = "gemini-3.5-flash-lite";
+const FLASH_MODEL = "gemini-3.6-flash";
 const PRIMARY_MODEL = "gemini-3.8-flash";
-const FALLBACK_MODEL = "gemini-3.6-flash";
 const DAILY_USER_MESSAGE_CAP = 40;
+
+// Key-pool machinery mirrors /api/plan exactly: 60s cooldowns for keys
+// that hit quota/rate limits (or hang), a round-robin cursor so quota
+// burn spreads, and a capacity circuit breaker — 3 keys in a row
+// reporting Google-side 503s for the SAME model means that model is in
+// a capacity storm, so the ladder escalates to the next model instead
+// of stacking timeouts.
+const KEY_COOLDOWN_MS = 60_000;
+const ATTEMPT_TIMEOUT_MS = 12_000;
+const FIRST_TOKEN_WAIT_MS = 8_000;
+const HEDGE_WAIT_MS = 10_000;
+const WINNER_STREAM_TIMEOUT_MS = 55_000;
+const OVERALL_BUDGET_MS = 25_000;
+const CAPACITY_BREAKER = 3;
+
+/** keyIndex → cooldown-until (epoch ms). Module-level: persists across
+ *  requests in a warm serverless instance. */
+const keyCooldowns = new Map<number, number>();
+
+/** Round-robin cursor: consecutive requests start from different keys. */
+let keyCursor = 0;
 
 function getApiKeys(): string[] {
   const pool = (process.env.GEMINI_API_KEYS ?? "")
@@ -27,6 +62,35 @@ function getApiKeys(): string[] {
   if (pool.length > 0) return pool;
   const single = process.env.GEMINI_API_KEY?.trim();
   return single ? [single] : [];
+}
+
+function isKeyCoolingDown(index: number, now: number): boolean {
+  const until = keyCooldowns.get(index);
+  return until !== undefined && until > now;
+}
+
+/**
+ * Key indexes in the order this request should try them: round-robin
+ * from the cursor, skipping keys in cooldown — unless EVERY key is
+ * cooling down, in which case all keys are returned in rotation order.
+ */
+function orderedKeyIndexes(count: number, now: number): number[] {
+  const start = keyCursor % count;
+  keyCursor += 1;
+  const rotated = Array.from({ length: count }, (_, i) => (start + i) % count);
+  const available = rotated.filter((i) => !isKeyCoolingDown(i, now));
+  return available.length > 0 ? available : rotated;
+}
+
+/**
+ * Quota / rate-limit signals: HTTP 429, or a RESOURCE_EXHAUSTED body.
+ * HTTP 503 is deliberately NOT a quota signal: Google returns 503
+ * UNAVAILABLE for per-MODEL high demand, which says nothing about the
+ * key's quota — another model on the same key is usually healthy.
+ */
+function isQuotaError(status: number, body: string): boolean {
+  if (status === 429) return true;
+  return body.includes("RESOURCE_EXHAUSTED");
 }
 
 function serviceClient() {
@@ -121,7 +185,7 @@ async function buildContext(admin: Admin, userId: string): Promise<string> {
       }
     }
     if (habits.length)
-      lines.push(`Plan habits (week 1): ${habits.slice(0, 10).join(" · ")}`);
+      lines.push(`Plan habits (week 1): ${habits.slice(0, 8).join(" · ")}`);
     const nn = plan.foundations?.nonNegotiables ?? [];
     if (nn.length) lines.push(`Daily non-negotiables: ${nn.slice(0, 5).join(" · ")}`);
   }
@@ -148,7 +212,7 @@ async function buildContext(admin: Admin, userId: string): Promise<string> {
       `Daily logs (last ${logs.length} tracked days). Most recent (${todayLog.day}): ${answered} daily answers banked, water ${todayLog.water_ml}ml, calories ${todayLog.calories ?? "not logged"}, weight ${todayLog.weight_kg ?? "not logged"}kg.`
     );
     const recentAnswers = logs
-      .slice(0, 3)
+      .slice(0, 2)
       .map(
         (l) =>
           `${l.day}: ${Object.entries(l.answers ?? {})
@@ -177,40 +241,326 @@ interface ChatTurn {
   content: string;
 }
 
-async function callCoach(
+interface AttemptFailure {
+  quota: boolean;
+  capacity: boolean;
+  error: string;
+}
+
+interface CoachAttempt {
+  keyIndex: number;
+  model: string;
+  /** Resolves with the next text delta, or null when the attempt ended. */
+  nextDelta: () => Promise<string | null>;
+  /** Failure recorded when the attempt ended without completing; null while running or on a clean finish. */
+  failure: () => AttemptFailure | null;
+  /** True once the attempt has ended (cleanly or not). */
+  ended: () => boolean;
+  /** Abort the underlying fetch (lost a race, or the client went away). */
+  cancel: () => void;
+  /** Give a winning attempt more time to finish streaming its reply. */
+  extend: () => void;
+}
+
+/** Extract the text delta from one raw SSE event block. */
+function deltaFromEvent(rawEvent: string): string {
+  let text = "";
+  for (const line of rawEvent.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) continue;
+    const payload = trimmed.slice(5).trim();
+    if (!payload || payload === "[DONE]") continue;
+    try {
+      const data = JSON.parse(payload) as {
+        candidates?: { content?: { parts?: { text?: string }[] } }[];
+      };
+      for (const part of data.candidates?.[0]?.content?.parts ?? []) {
+        text += part.text ?? "";
+      }
+    } catch {
+      // A partial or keep-alive frame is not an error — skip it.
+    }
+  }
+  return text;
+}
+
+/**
+ * Open one streaming generation attempt against one key + model and
+ * pump its SSE deltas into a small queue. The attempt ends cleanly
+ * (failure() === null) or with a classified failure: quota errors and
+ * our own timeout mark the key for cooldown, 503 marks a capacity
+ * failure for the circuit breaker — same semantics as /api/plan.
+ */
+function startAttempt(
+  keyIndex: number,
   key: string,
   model: string,
   system: string,
+  turns: ChatTurn[]
+): CoachAttempt {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> = setTimeout(
+    () => controller.abort(),
+    ATTEMPT_TIMEOUT_MS
+  );
+  const queue: (string | null)[] = [];
+  let waiter: ((v: string | null) => void) | null = null;
+  let failure: AttemptFailure | null = null;
+  let ended = false;
+
+  const push = (v: string | null) => {
+    if (waiter) {
+      const w = waiter;
+      waiter = null;
+      w(v);
+    } else {
+      queue.push(v);
+    }
+  };
+  const finish = (f: AttemptFailure | null) => {
+    if (ended) return;
+    ended = true;
+    failure = f;
+    clearTimeout(timer);
+    push(null);
+  };
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${encodeURIComponent(key)}`;
+  void (async () => {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: system }] },
+          contents: turns.map((t) => ({
+            role: t.role === "assistant" ? "model" : "user",
+            parts: [{ text: t.content }],
+          })),
+          generationConfig: { temperature: 0.7, maxOutputTokens: 4096 },
+        }),
+      });
+      if (!res.ok || !res.body) {
+        const bodyText = await res.text().catch(() => "");
+        finish({
+          quota: isQuotaError(res.status, bodyText),
+          capacity: res.status === 503,
+          error: `${model} returned HTTP ${res.status}`,
+        });
+        return;
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let m = buffer.match(/\r\n\r\n|\n\n|\r\r/);
+        while (m && m.index !== undefined) {
+          const rawEvent = buffer.slice(0, m.index);
+          buffer = buffer.slice(m.index + m[0].length);
+          const text = deltaFromEvent(rawEvent);
+          if (text) push(text);
+          m = buffer.match(/\r\n\r\n|\n\n|\r\r/);
+        }
+      }
+      const tail = deltaFromEvent(buffer);
+      if (tail) push(tail);
+      finish(null);
+    } catch (err) {
+      if (controller.signal.aborted) {
+        // Our own timeout (or an explicit cancel): like /api/plan, a
+        // hung key is abandoned exactly like a quota hit.
+        finish({ quota: true, capacity: false, error: `${model} timed out` });
+      } else {
+        finish({
+          quota: false,
+          capacity: false,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  })();
+
+  return {
+    keyIndex,
+    model,
+    nextDelta: () => {
+      if (queue.length > 0) return Promise.resolve(queue.shift() ?? null);
+      if (ended) return Promise.resolve(null);
+      return new Promise<string | null>((resolve) => {
+        waiter = resolve;
+      });
+    },
+    failure: () => failure,
+    ended: () => ended,
+    cancel: () => controller.abort(),
+    extend: () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => controller.abort(), WINNER_STREAM_TIMEOUT_MS);
+    },
+  };
+}
+
+interface Winner {
+  attempt: CoachAttempt;
+  firstText: string;
+}
+
+/**
+ * Run the model ladder until one attempt produces its first token.
+ * Accounting mirrors /api/plan: quota failures cool the key down for
+ * 60s; capacity (503) failures count toward a per-model circuit
+ * breaker — 3 in a row ends that model's round and the ladder
+ * escalates, because a 503 says the MODEL is melting, not the keys.
+ */
+async function selectAttempt(
+  keys: string[],
+  system: string,
   turns: ChatTurn[],
-  timeoutMs: number
-): Promise<string | null> {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(key)}`;
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      signal: AbortSignal.timeout(timeoutMs),
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: system }] },
-        contents: turns.map((t) => ({
-          role: t.role === "assistant" ? "model" : "user",
-          parts: [{ text: t.content }],
-        })),
-        generationConfig: { temperature: 0.7, maxOutputTokens: 900 },
-      }),
+  deadline: number
+): Promise<Winner | null> {
+  const coolDown = (keyIndex: number) =>
+    keyCooldowns.set(keyIndex, Date.now() + KEY_COOLDOWN_MS);
+
+  // Wait for one attempt's first delta, capped. Applies cooldown
+  // accounting when the attempt fails or outlives its wait.
+  const awaitFirst = async (
+    a: CoachAttempt,
+    waitMs: number
+  ): Promise<string | null> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<null>((resolve) => {
+      timer = setTimeout(() => resolve(null), waitMs);
     });
-    if (!res.ok) return null;
-    const data = (await res.json()) as {
-      candidates?: { content?: { parts?: { text?: string }[] } }[];
-    };
-    const text = data.candidates?.[0]?.content?.parts
-      ?.map((p) => p.text ?? "")
-      .join("")
-      .trim();
-    return text && text.length > 0 ? text : null;
-  } catch {
+    const result = await Promise.race([a.nextDelta(), timeout]);
+    if (timer) clearTimeout(timer);
+    if (result !== null) return result;
+    const f = a.failure();
+    if (f?.quota) coolDown(a.keyIndex);
+    if (!a.ended()) {
+      // Still hanging past its first-token wait — abandon the key.
+      a.cancel();
+      coolDown(a.keyIndex);
+    }
     return null;
+  };
+
+  // Race a pair of attempts on the same model; first token wins, the
+  // loser is cancelled. Returns null when both fail or the hedge wait
+  // expires (both are cancelled) or the model's breaker has tripped.
+  const hedgeRound = async (
+    model: string,
+    keyIdxs: number[]
+  ): Promise<Winner | null> => {
+    const attempts = keyIdxs.map((i) =>
+      startAttempt(i, keys[i], model, system, turns)
+    );
+    let capacityStreak = 0;
+    return await new Promise<Winner | null>((resolve) => {
+      let settledCount = 0;
+      let done = false;
+      const waitTimer = setTimeout(() => {
+        if (done) return;
+        done = true;
+        attempts.forEach((a) => a.cancel());
+        resolve(null);
+      }, HEDGE_WAIT_MS);
+      attempts.forEach((a) => {
+        void a.nextDelta().then((text) => {
+          if (done) return;
+          if (text !== null) {
+            done = true;
+            clearTimeout(waitTimer);
+            attempts.forEach((o) => {
+              if (o !== a) o.cancel();
+            });
+            a.extend();
+            resolve({ attempt: a, firstText: text });
+            return;
+          }
+          const f = a.failure();
+          if (f?.quota) coolDown(a.keyIndex);
+          if (f?.capacity) {
+            capacityStreak += 1;
+            if (capacityStreak >= CAPACITY_BREAKER) {
+              done = true;
+              clearTimeout(waitTimer);
+              attempts.forEach((o) => o.cancel());
+              resolve(null);
+              return;
+            }
+          }
+          settledCount += 1;
+          if (settledCount >= attempts.length) {
+            done = true;
+            clearTimeout(waitTimer);
+            resolve(null);
+          }
+        });
+      });
+    });
+  };
+
+  // Try keys one at a time on one model until one produces a token,
+  // the model's breaker trips, or the overall budget runs low.
+  const sequentialRound = async (
+    model: string,
+    keyIdxs: number[]
+  ): Promise<Winner | null> => {
+    let capacityStreak = 0;
+    for (const i of keyIdxs) {
+      if (capacityStreak >= CAPACITY_BREAKER) return null;
+      if (deadline - Date.now() < 1_500) return null;
+      const a = startAttempt(i, keys[i], model, system, turns);
+      const wait = Math.min(
+        FIRST_TOKEN_WAIT_MS,
+        Math.max(1_500, deadline - Date.now())
+      );
+      // awaitFirst applies quota cooldowns; capacity accounting for the
+      // breaker happens here from the attempt's recorded failure.
+      const text = await awaitFirst(a, wait);
+      if (text !== null) {
+        a.extend();
+        return { attempt: a, firstText: text };
+      }
+      if (a.failure()?.capacity) capacityStreak += 1;
+      else capacityStreak = 0;
+    }
+    return null;
+  };
+
+  const order = orderedKeyIndexes(keys.length, Date.now());
+
+  // Round 1: flash-lite, hedged across the first two keys.
+  let winner: Winner | null = null;
+  if (order.length >= 2) {
+    winner = await hedgeRound(LITE_MODEL, order.slice(0, 2));
   }
+  // Round 2: flash-lite across the remaining keys, sequentially.
+  if (!winner) {
+    winner = await sequentialRound(
+      LITE_MODEL,
+      order.slice(order.length >= 2 ? 2 : 0)
+    );
+  }
+  // Round 3: escalate to the mid flash — hedged if the budget is
+  // still healthy, otherwise a few sequential attempts.
+  if (!winner && deadline - Date.now() > 3_000) {
+    const fresh = orderedKeyIndexes(keys.length, Date.now());
+    winner =
+      fresh.length >= 2 && deadline - Date.now() > 12_000
+        ? await hedgeRound(FLASH_MODEL, fresh.slice(0, 2))
+        : await sequentialRound(FLASH_MODEL, fresh.slice(0, 4));
+  }
+  // Round 4: the largest flash, a few keys, whatever budget remains.
+  if (!winner && deadline - Date.now() > 2_000) {
+    const fresh = orderedKeyIndexes(keys.length, Date.now());
+    winner = await sequentialRound(PRIMARY_MODEL, fresh.slice(0, 3));
+  }
+  return winner;
 }
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
@@ -232,11 +582,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
             (t.role === "user" || t.role === "assistant") &&
             typeof t.content === "string"
         )
-        .slice(-10)
-        // Per-turn cap (audit fix): an unbounded client-supplied history
-        // could inflate every prompt; 2000 chars matches the new-message
-        // limit.
-        .map((t) => ({ role: t.role, content: t.content.slice(0, 2000) }))
+        .slice(-8)
+        // Per-turn cap (audit fix, tightened for prompt size): an
+        // unbounded client-supplied history could inflate every prompt
+        // and slow every reply; 1200 chars per turn is ample for chat.
+        .map((t) => ({ role: t.role, content: t.content.slice(0, 1200) }))
     : [];
 
   const admin = serviceClient();
@@ -263,6 +613,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       { status: 403 }
     );
   }
+
+  // Start assembling the personalised context NOW, in parallel with
+  // the cap check and the user-message insert below: it depends only
+  // on the user id, and hiding its latency behind the cap queries is
+  // worth ~a second of time-to-first-token on every reply.
+  const contextPromise = buildContext(admin, ent.userId);
+  // If an early return below leaves this promise un-awaited, its
+  // rejection must not surface as an unhandled rejection.
+  contextPromise.catch(() => {});
 
   // Daily cap — protects the shared free-tier quota.
   const startOfDay = new Date();
@@ -300,44 +659,74 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const context = await buildContext(admin, ent.userId);
+  const context = await contextPromise;
   const system = `${SYSTEM_PROMPT}\n\nTHEIR DATA:\n${context || "No plan or logs yet — encourage them to run their first scan and generate their protocol, then come back."}`;
   const turns: ChatTurn[] = [...history, { role: "user", content: message }];
 
-  // Hard overall deadline: without one, a provider outage makes every
-  // key burn its full attempt timeout and Vercel cuts the request off
-  // with a 504 before the graceful 503 below can be returned.
-  const deadline = Date.now() + 45_000;
-  const start = Math.floor(Math.random() * keys.length);
-  for (let i = 0; i < keys.length; i++) {
-    const k = keys[(start + i) % keys.length];
-    for (const model of [PRIMARY_MODEL, FALLBACK_MODEL]) {
-      const remaining = deadline - Date.now();
-      if (remaining < 2_000) break;
-      const reply = await callCoach(
-        k,
-        model,
-        system,
-        turns,
-        Math.min(12_000, remaining)
-      );
-      if (reply) {
-        // Persist the assistant reply server-side too — history is now
-        // fully server-written, so the client never writes chat rows
-        // for API conversations.
-        await admin
-          .from("chat_messages")
-          .insert({ user_id: ent.userId, role: "assistant", content: reply });
-        return NextResponse.json({ reply });
-      }
-    }
+  // Overall generation budget: if no attempt anywhere on the ladder
+  // produces a first token inside it, the honest busy answer below is
+  // returned — fast — instead of the old 45s stack of serial timeouts.
+  const deadline = Date.now() + OVERALL_BUDGET_MS;
+  const winner = await selectAttempt(keys, system, turns, deadline);
+
+  if (!winner) {
+    return NextResponse.json(
+      {
+        error: "coach_busy",
+        message:
+          "The coach is under heavy demand right now (free-tier AI). Give it a minute and ask again — your data is saved.",
+      },
+      { status: 503 }
+    );
   }
-  return NextResponse.json(
-    {
-      error: "coach_busy",
-      message:
-        "The coach is under heavy demand right now (free-tier AI). Give it a minute and ask again — your data is saved.",
+
+  // Stream the winning attempt to the client as it generates. The
+  // full reply is accumulated and persisted server-side when the
+  // stream ends — including a partial reply if the stream dies
+  // mid-way, since that is what the user actually saw; an empty
+  // stream persists nothing.
+  const attempt = winner.attempt;
+  const encoder = new TextEncoder();
+  let full = winner.firstText;
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      controller.enqueue(encoder.encode(winner.firstText));
+      try {
+        for (;;) {
+          const delta = await attempt.nextDelta();
+          if (delta === null) break;
+          full += delta;
+          controller.enqueue(encoder.encode(delta));
+        }
+      } catch {
+        // Stream machinery errors are non-fatal: whatever was
+        // accumulated is still persisted below.
+      }
+      if (full.trim().length > 0) {
+        try {
+          await admin
+            .from("chat_messages")
+            .insert({ user_id: ent.userId, role: "assistant", content: full });
+        } catch {
+          // The reply was already delivered to the user; a failed
+          // history write must not break the response.
+        }
+      }
+      try {
+        controller.close();
+      } catch {
+        // The client already went away.
+      }
     },
-    { status: 503 }
-  );
+    cancel() {
+      attempt.cancel();
+    },
+  });
+  return new NextResponse(stream, {
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      "X-Accel-Buffering": "no",
+    },
+  });
 }

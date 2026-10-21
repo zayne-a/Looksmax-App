@@ -33,6 +33,9 @@ export default function CoachPage() {
   const [loaded, setLoaded] = useState(false);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  // The in-flight streamed reply: null when idle, otherwise the text
+  // accumulated so far ("" while waiting for the first token).
+  const [streamText, setStreamText] = useState<string | null>(null);
   const [plan, setPlan] = useState<AscendPlan | null>(null);
 
   // Daily ritual state. Questions load in the effect below: computing
@@ -47,7 +50,7 @@ export default function CoachPage() {
       top: scrollRef.current.scrollHeight,
       behavior: "smooth",
     });
-  }, [bubbles, ritualStep, sending]);
+  }, [bubbles, ritualStep, sending, streamText]);
 
   useEffect(() => {
     if (!user) return;
@@ -132,6 +135,37 @@ export default function CoachPage() {
         },
         body: JSON.stringify({ message: text, history }),
       });
+      if (
+        res.ok &&
+        res.body &&
+        (res.headers.get("content-type") ?? "").includes("text/plain")
+      ) {
+        // Streaming success: the reply renders token by token, then
+        // settles into a normal bubble. The API route persists it
+        // server-side when the stream completes.
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let acc = "";
+        setStreamText("");
+        try {
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            acc += decoder.decode(value, { stream: true });
+            setStreamText(acc);
+          }
+        } catch {
+          // Stream cut mid-reply: keep whatever arrived as the reply.
+        }
+        setStreamText(null);
+        if (acc.trim()) {
+          setBubbles((prev) => [
+            ...prev,
+            { role: "assistant", content: acc },
+          ]);
+        }
+        return;
+      }
       const data = (await res.json().catch(() => ({}))) as {
         reply?: string;
         message?: string;
@@ -333,7 +367,16 @@ export default function CoachPage() {
           </div>
         )}
 
-        {sending && (
+        {streamText !== null && streamText.length > 0 && (
+          <div className="flex justify-start">
+            <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-3 text-sm leading-relaxed text-bone">
+              {streamText}
+              <span className="ml-0.5 animate-pulse text-gold">▍</span>
+            </div>
+          </div>
+        )}
+
+        {sending && streamText === null && (
           <div className="flex justify-start">
             <div className="rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-3 text-sm text-muted">
               Your coach is reading your plan…
