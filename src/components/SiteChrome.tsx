@@ -13,7 +13,7 @@ import Footer from "@/components/Footer";
  * own header + AppNav). Every other route keeps the website shell
  * exactly as before.
  */
-const APP_ZONE_PREFIXES = ["/dashboard", "/coach", "/creator"];
+const APP_ZONE_PREFIXES = ["/dashboard", "/coach", "/creator", "/portal"];
 
 export function isAppZone(pathname: string | null): boolean {
   if (!pathname) return false;
