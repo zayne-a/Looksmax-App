@@ -88,6 +88,10 @@ function buildProviders(): ProviderDef[] {
         // budget, which both callers already allow.
         "stepfun-ai/step-5-preview",
         "nvidia/nemotron-3.5-lightning-30b-a3b",
+        // Also verified serving 2026-10-21 (full GLM-5.3 — the
+        // -flash variant never answered). Reasoning model: same
+        // separate-thinking-field behaviour as Lightning.
+        "z-ai/glm-5.3",
       ],
     });
   });
