@@ -105,7 +105,8 @@ export async function saveScan(
 
 /** How many plan rows exist for one scan (own rows only, via RLS).
  *  The first is the original plan; every row beyond it is a plan
- *  change. Powers the "changes left" counter (Zayne: max 2 changes). */
+ *  change. Powers the "free change left" counter (Zayne: 1 free
+ *  change per plan; further changes are a paid add-on). */
 export async function countPlansForScan(scanId: string): Promise<number> {
   const sb = getSupabase();
   if (!sb) return 0;

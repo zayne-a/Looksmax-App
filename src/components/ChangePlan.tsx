@@ -11,7 +11,7 @@ import { Card } from "@/components/ui";
 import { countPlansForScan } from "@/lib/account";
 import type { QuizAnswers } from "@/lib/types";
 
-const MAX_CHANGES = 2;
+const MAX_CHANGES = 1;
 
 function Lever<T extends string>({
   label,
@@ -89,30 +89,30 @@ export default function ChangePlan({
       </p>
       <p className="mt-2 text-sm leading-relaxed text-muted">
         Life changed since this protocol was built? Retune it — the plan
-        rebuilds from this same scan with your new settings.
+        rebuilds from this same scan with your new settings. Every plan
+        includes{" "}
+        <span className="font-bold text-bone">1 free change</span>; further
+        changes are a paid add-on.
         {left != null &&
           (left > 0 ? (
             <>
               {" "}
-              You have{" "}
-              <span className="font-bold text-bone">
-                {left} change{left === 1 ? "" : "s"} left
-              </span>{" "}
-              on this plan.
+              Your <span className="font-bold text-bone">free change</span>{" "}
+              is still available on this plan.
             </>
           ) : (
-            <> You&apos;ve used both changes on this plan.</>
+            <> You&apos;ve used the free change on this plan.</>
           ))}
       </p>
 
       {left != null && left <= 0 ? (
         <p className="mt-4 text-sm leading-relaxed text-muted">
-          A{" "}
+          Extra changes open as a paid add-on when payments launch. A{" "}
           <Link href="/scan" className="font-semibold text-gold-soft">
             fresh scan
           </Link>{" "}
-          starts a new plan — with 2 changes of its own, and readings based on
-          where your face is now.
+          starts a new plan — with a free change of its own, and readings
+          based on where your face is now.
         </p>
       ) : (
         <>
@@ -171,6 +171,14 @@ export default function ChangePlan({
             Rebuilding keeps this scan and everything in your history — only
             the protocol is regenerated. Your previous version stays in your
             saved plans.
+            {left === 1 && (
+              <>
+                {" "}
+                <span className="font-semibold text-bone">
+                  Applying spends the 1 free change on this plan.
+                </span>
+              </>
+            )}
           </p>
         </>
       )}

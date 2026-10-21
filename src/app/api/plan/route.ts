@@ -999,11 +999,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
     }
 
-    // PLAN CHANGES (Zayne, 2026-10-21): users may change a built plan,
-    // at most TWICE. A change arrives flagged changeOfPlan with the
-    // scan id; the caller's saved plan rows for that scan are counted
-    // server-side (original + changes) and the third change is refused.
-    // A fresh scan starts a fresh plan with a fresh allowance.
+    // PLAN CHANGES (Zayne, 2026-10-21): ONE free change per plan —
+    // every change is a full premium generation (5 AI calls), so the
+    // second change is a paid add-on (opens with payments). A change
+    // arrives flagged changeOfPlan with the scan id; the caller's saved
+    // plan rows for that scan are counted server-side (original + the
+    // free change) and further changes are refused. A fresh scan
+    // starts a fresh plan with a fresh free change.
     if (planReq.changeOfPlan) {
       if (!uid || !planReq.scanId) {
         return NextResponse.json(
@@ -1018,11 +1020,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           .select("id", { count: "exact", head: true })
           .eq("user_id", uid)
           .eq("scan_id", planReq.scanId);
-        if ((count ?? 0) >= 3) {
+        if ((count ?? 0) >= 2) {
           return NextResponse.json(
             {
               error:
-                "You've used both changes for this plan — a fresh scan starts a new plan with 2 changes.",
+                "You've used the free change for this plan — extra changes are a paid add-on, and a fresh scan starts a new plan with a free change included.",
             },
             { status: 403 }
           );
