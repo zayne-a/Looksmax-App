@@ -44,12 +44,18 @@ function drawSpacedText(
 
 export default function AscendTemplateBuilder() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [circleHover, setCircleHover] = useState(false);
   const [logo, setLogo] = useState<HTMLImageElement | null>(null);
   const [days, setDays] = useState(89);
   const [busy, setBusy] = useState(false);
   const { img, t, setT, onFile } = usePhoto();
 
-  useCanvasPhotoControls(canvasRef, t, setT, !!img);
+  useCanvasPhotoControls(canvasRef, t, setT, !!img, {
+    circle: { cx: 540, cy: 432, r: 240 },
+    onCircleClick: () => fileInputRef.current?.click(),
+    onCircleHoverChange: setCircleHover,
+  });
 
   useEffect(() => {
     loadImage("/icon.png").then(setLogo).catch(() => {});
@@ -62,7 +68,7 @@ export default function AscendTemplateBuilder() {
 
     drawBackdrop(ctx, W, H, 540, 960);
     drawBrandHeader(ctx, logo, 540, 118, 168, 110);
-    drawPhotoCircle(ctx, img, t, 540, 432, 240);
+    drawPhotoCircle(ctx, img, t, 540, 432, 240, circleHover);
 
     // Countdown ring — fills and shifts red → yellow → green → mint
     // as the days run down (progress = (90 − days) / 90).
@@ -104,7 +110,7 @@ export default function AscendTemplateBuilder() {
     ctx.shadowBlur = 8;
     drawSpacedText(ctx, "ASCEND", cx, cy + 290, 20);
     ctx.restore();
-  }, [days, img, t, logo]);
+  }, [days, img, t, logo, circleHover]);
 
   const download = () => {
     const canvas = canvasRef.current;
@@ -121,7 +127,7 @@ export default function AscendTemplateBuilder() {
       title="Ascend Template"
       customize={
         <>
-          <UploadButton onFile={onFile} hasPhoto={!!img} />
+          <UploadButton onFile={onFile} hasPhoto={!!img} inputRef={fileInputRef} />
           {img && <PhotoAdjustPanel t={t} setT={setT} />}
           <ScoreSliderRow
             label="Days Until Ascend"
@@ -159,7 +165,7 @@ export default function AscendTemplateBuilder() {
         width={W}
         height={H}
         className="mx-auto block h-auto w-full max-w-[400px] touch-none rounded-lg bg-black select-none"
-        style={{ cursor: img ? "grab" : "default" }}
+        style={{ cursor: circleHover ? "pointer" : img ? "grab" : "default" }}
       />
     </BuilderShell>
   );

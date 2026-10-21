@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { Dispatch, ReactNode, SetStateAction } from "react";
+import type { Dispatch, ReactNode, RefObject, SetStateAction } from "react";
 import type { Gender } from "@/lib/creator-tiers";
 import {
   IDENTITY_TRANSFORM,
@@ -162,9 +162,14 @@ export function GenderToggle({
 export function UploadButton({
   onFile,
   hasPhoto,
+  inputRef,
 }: {
   onFile: (f: File) => void;
   hasPhoto: boolean;
+  /** Shared ref to this button's file input — the preview's photo
+   *  circle clicks the very same input, so both routes run the exact
+   *  same handling. */
+  inputRef?: RefObject<HTMLInputElement | null>;
 }) {
   return (
     <div>
@@ -172,6 +177,7 @@ export function UploadButton({
       <label className="block w-full cursor-pointer rounded-lg border border-white/15 bg-white/5 px-4 py-3 text-center text-sm font-medium transition-colors hover:border-[#5EEAD4]/60 hover:text-[#5EEAD4]">
         {hasPhoto ? "Change Image" : "Upload Image"}
         <input
+          ref={inputRef}
           type="file"
           accept="image/*"
           className="hidden"
@@ -183,8 +189,8 @@ export function UploadButton({
         />
       </label>
       <p className="mt-2 text-xs text-[#9b9ba4]">
-        Drag the photo on the preview to reposition it. Scroll over it to
-        zoom.
+        Click the photo circle on the preview to upload. Drag the photo
+        to reposition it, scroll over it to zoom.
       </p>
     </div>
   );

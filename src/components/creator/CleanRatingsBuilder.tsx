@@ -42,12 +42,14 @@ interface CleanState {
 
 /** Draws the square card. `yOff` centres the card in the taller
  *  video frame (his MP4 is a 1080x1920 render of this same card);
- *  `anim` drives the intro count-up / bar sweep. */
+ *  `anim` drives the intro count-up / bar sweep. `hoverCircle` is a
+ *  preview-only affordance — exports never pass it. */
 function drawClean(
   ctx: CanvasRenderingContext2D,
   s: CleanState,
   yOff = 0,
-  anim = 1
+  anim = 1,
+  hoverCircle = false
 ) {
   ctx.save();
   ctx.translate(0, yOff);
@@ -79,12 +81,14 @@ function drawClean(
     fraction: barFraction(s.potential),
     anim,
   });
-  drawPhotoCircle(ctx, s.img, s.t, 540, 395, 238);
+  drawPhotoCircle(ctx, s.img, s.t, 540, 395, 238, hoverCircle);
   ctx.restore();
 }
 
 export default function CleanRatingsBuilder() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [circleHover, setCircleHover] = useState(false);
   const [logo, setLogo] = useState<HTMLImageElement | null>(null);
   const [gender, setGender] = useState<Gender>("male");
   const [psl, setPsl] = useState(5);
@@ -95,7 +99,11 @@ export default function CleanRatingsBuilder() {
   const [videoDone, setVideoDone] = useState(false);
   const { img, t, setT, onFile } = usePhoto();
 
-  useCanvasPhotoControls(canvasRef, t, setT, !!img);
+  useCanvasPhotoControls(canvasRef, t, setT, !!img, {
+    circle: { cx: 540, cy: 395, r: 238 },
+    onCircleClick: () => fileInputRef.current?.click(),
+    onCircleHoverChange: setCircleHover,
+  });
 
   useEffect(() => {
     loadImage("/icon.png").then(setLogo).catch(() => {});
@@ -107,9 +115,9 @@ export default function CleanRatingsBuilder() {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
-    drawClean(ctx, state);
+    drawClean(ctx, state, 0, 1, circleHover);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [logo, img, t, gender, psl, potential]);
+  }, [logo, img, t, gender, psl, potential, circleHover]);
 
   const downloadImage = () => {
     const canvas = canvasRef.current;
@@ -207,7 +215,7 @@ export default function CleanRatingsBuilder() {
       customize={
         <>
           <GenderToggle gender={gender} onChange={setGender} />
-          <UploadButton onFile={onFile} hasPhoto={!!img} />
+          <UploadButton onFile={onFile} hasPhoto={!!img} inputRef={fileInputRef} />
           {img && <PhotoAdjustPanel t={t} setT={setT} />}
           <ScoreSliderRow
             label="PSL Rating"
@@ -281,7 +289,7 @@ export default function CleanRatingsBuilder() {
         width={SIZE}
         height={SIZE}
         className="mx-auto block h-auto w-full max-w-[440px] touch-none rounded-lg bg-black select-none"
-        style={{ cursor: img ? "grab" : "default" }}
+        style={{ cursor: circleHover ? "pointer" : img ? "grab" : "default" }}
       />
     </BuilderShell>
   );

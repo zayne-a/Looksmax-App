@@ -115,7 +115,9 @@ export function drawBrandHeader(
  * Circular photo slot. With no photo: hairline ring + "Insert Image
  * Here". With a photo: cover-fit inside the circle, transform applied
  * (offsets in canvas px, scale multiplies the cover size), and the
- * reference's white/20 ring on top.
+ * reference's white/20 ring on top. `hover` (preview only) brightens
+ * the ring and placeholder so the slot reads as clickable — exports
+ * always draw with it off.
  */
 export function drawPhotoCircle(
   ctx: CanvasRenderingContext2D,
@@ -123,7 +125,8 @@ export function drawPhotoCircle(
   t: PhotoTransform,
   cx: number,
   cy: number,
-  r: number
+  r: number,
+  hover = false
 ) {
   ctx.save();
   if (img) {
@@ -140,13 +143,17 @@ export function drawPhotoCircle(
     ctx.drawImage(img, cx - w / 2 + t.x, cy - h / 2 + t.y, w, h);
     ctx.restore();
     ctx.save();
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.3)";
+    ctx.strokeStyle = hover
+      ? "rgba(255, 255, 255, 0.65)"
+      : "rgba(255, 255, 255, 0.3)";
     ctx.lineWidth = 6;
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.stroke();
   } else {
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+    ctx.strokeStyle = hover
+      ? "rgba(255, 255, 255, 0.55)"
+      : "rgba(255, 255, 255, 0.2)";
     ctx.lineWidth = 4;
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
@@ -156,7 +163,9 @@ export function drawPhotoCircle(
     const s = r * 0.36;
     const ix = cx - s / 2;
     const iy = cy - s * 0.78;
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
+    ctx.strokeStyle = hover
+      ? "rgba(255, 255, 255, 0.75)"
+      : "rgba(255, 255, 255, 0.45)";
     ctx.lineWidth = Math.max(3, r * 0.022);
     roundRectPath(ctx, ix, iy, s, s * 0.8, s * 0.08);
     ctx.stroke();
@@ -177,7 +186,9 @@ export function drawPhotoCircle(
     ctx.moveTo(ix + s - plus * 0.3, iy - plus * 0.8);
     ctx.lineTo(ix + s + plus * 1.1, iy - plus * 0.8);
     ctx.stroke();
-    ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
+    ctx.fillStyle = hover
+      ? "rgba(255, 255, 255, 0.7)"
+      : "rgba(255, 255, 255, 0.4)";
     ctx.font = `${Math.round(r * 0.115)}px Inter, system-ui, sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
