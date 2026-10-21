@@ -121,7 +121,7 @@ export const GUIDES: Guide[] = [
       {
         heading: "When it's a dermatologist, not a guide",
         paragraphs: [
-          "Deep, painful, cystic spots; acne leaving scars or dark marks; sudden severe adult acne; or no improvement after 8–12 weeks of consistent over-the-counter care. Prescription options exist and work — but choosing them is a doctor's job, not an app's. Ascend will never specify prescription medication; that line is deliberate.",
+          "Deep, painful, cystic spots; acne leaving scars or dark marks; sudden severe adult acne; or no improvement after 8–12 weeks of consistent over-the-counter care. Prescription options exist and work — but choosing them is a doctor's job, not an app's. Mewmax will never specify prescription medication; that line is deliberate.",
         ],
       },
     ],
@@ -269,7 +269,7 @@ export const GUIDES: Guide[] = [
       "Your scan measures your face shape for a reason. Here's how each shape should think about length, volume and fringe — the barber brief, decoded.",
     readMins: 5,
     intro:
-      "Hairstyles work when they balance your proportions: adding width where the face is narrow, length where it's wide, and never exaggerating what already dominates. Your Ascend scan identifies your face shape — this guide turns that label into decisions you can hand to a barber.",
+      "Hairstyles work when they balance your proportions: adding width where the face is narrow, length where it's wide, and never exaggerating what already dominates. Your Mewmax scan identifies your face shape — this guide turns that label into decisions you can hand to a barber.",
     sections: [
       {
         heading: "Oval — the flexible shape",
@@ -589,7 +589,7 @@ export const GUIDES: Guide[] = [
       {
         heading: "Protein: the structural nutrient",
         steps: [
-          "Aim for roughly 1.6–2.2 g of protein per kg of bodyweight daily when training or cutting — your Ascend targets already compute this from your weight.",
+          "Aim for roughly 1.6–2.2 g of protein per kg of bodyweight daily when training or cutting — your Mewmax targets already compute this from your weight.",
           "Spread it across the day (3–4 protein-containing meals) rather than one giant serving.",
           "Anchor each meal with a palm-to-two-palms portion of a protein source you actually like — adherence beats optimisation.",
           "When cutting, protein is what protects your muscle — and muscle is what keeps a leaner face from looking gaunt.",
@@ -777,7 +777,7 @@ export const GUIDES: Guide[] = [
       "Mirrors lie daily; photos don't — if you take them correctly. The exact setup for honest before/afters, and why this timeline becomes your best motivation.",
     readMins: 4,
     intro:
-      "You see your own face daily, so gradual change is invisible to you — the mirror shows you a memory, not a measurement. Standardised photos remove the noise: same light, same angle, same distance. Ascend's progress timeline stores these on your device only; this guide makes them worth storing.",
+      "You see your own face daily, so gradual change is invisible to you — the mirror shows you a memory, not a measurement. Standardised photos remove the noise: same light, same angle, same distance. Mewmax's progress timeline stores these on your device only; this guide makes them worth storing.",
     sections: [
       {
         heading: "The setup (5 minutes, once)",
@@ -799,7 +799,7 @@ export const GUIDES: Guide[] = [
       {
         heading: "Reading them without spiralling",
         paragraphs: [
-          "Compare week 1 to week 4, never to yesterday. Expect the order of change to be: how clothes fit and how others comment, first; what photos show, second; what your mirror shows you, last. If a photo set looks worse, check the light and your sleep before you check your plan — Ascend's measurement-day rhythm (every ~4 weeks) exists because that's the timescale real change photographs on.",
+          "Compare week 1 to week 4, never to yesterday. Expect the order of change to be: how clothes fit and how others comment, first; what photos show, second; what your mirror shows you, last. If a photo set looks worse, check the light and your sleep before you check your plan — Mewmax's measurement-day rhythm (every ~4 weeks) exists because that's the timescale real change photographs on.",
         ],
       },
     ],

@@ -75,19 +75,19 @@ const faqs = [
   },
   {
     q: "Do I pay to see my results?",
-    a: "No. Your first scan — real measurements and your core score — is completely free, no card required. Ascend Pro starts your 12-week adaptive protocol: Phase 1 in full, weekly check-ins and progress scans, Phases 2–3 generated from your progress, and a weekly coach review. Monthly and Yearly start with a 3-day free trial; Weekly bills from day one.",
+    a: "No. Your first scan — real measurements and your core score — is completely free, no card required. Mewmax Pro starts your 12-week adaptive protocol: Phase 1 in full, weekly check-ins and progress scans, Phases 2–3 generated from your progress, and a weekly coach review. Monthly and Yearly start with a 3-day free trial; Weekly bills from day one.",
   },
   {
     q: "What is softmaxxing?",
-    a: "Softmaxxing is the discipline of maximizing your appearance through non-surgical levers: skin, body composition, hairstyle, grooming, posture, tongue posture (mewing), and style. Ascend turns that loose internet concept into measured ratios and a structured protocol you can actually follow.",
+    a: "Softmaxxing is the discipline of maximizing your appearance through non-surgical levers: skin, body composition, hairstyle, grooming, posture, tongue posture (mewing), and style. Mewmax turns that loose internet concept into measured ratios and a structured protocol you can actually follow.",
   },
   {
     q: "Can this replace a doctor or dermatologist?",
-    a: "No — and it doesn't pretend to. Ascend is aesthetic guidance, not medical advice. If you have persistent skin conditions, hair loss, or any health concern, see a qualified professional. Nothing here is a diagnosis.",
+    a: "No — and it doesn't pretend to. Mewmax is aesthetic guidance, not medical advice. If you have persistent skin conditions, hair loss, or any health concern, see a qualified professional. Nothing here is a diagnosis.",
   },
   {
-    q: "How is Ascend different from rating apps?",
-    a: "Rating apps hand you a number and upsell you on credits. Ascend hands you measured geometry, unlimited rescans, and a structured plan that tells you exactly what to do this week — for half the weekly price.",
+    q: "How is Mewmax different from rating apps?",
+    a: "Rating apps hand you a number and upsell you on credits. Mewmax hands you measured geometry, unlimited rescans, and a structured plan that tells you exactly what to do this week — for half the weekly price.",
   },
 ];
 
@@ -177,7 +177,7 @@ export default function Home() {
               <div className="noise relative rounded-[2rem] border border-gold/25 bg-ink-2 p-3 shadow-[0_30px_80px_-30px_rgba(227,185,78,0.35)]">
                 <ScanFrame
                   src={IMAGES.hero}
-                  alt="Ascend face scan preview"
+                  alt="Mewmax face scan preview"
                   scanning
                   className="aspect-[3/4]"
                 />
@@ -265,7 +265,7 @@ export default function Home() {
           <SectionHeading
             eyebrow="The loopholes"
             title="Every rating app has a trap. We removed all of them."
-            sub="We read hundreds of 1-star reviews of Umax and the other rating apps. The same traps, over and over — so we built Ascend the opposite way. Your first scan proves it, free."
+            sub="We read hundreds of 1-star reviews of Umax and the other rating apps. The same traps, over and over — so we built Mewmax the opposite way. Your first scan proves it, free."
           />
           <div className="grid gap-4 lg:grid-cols-2">
             <Reveal>
@@ -301,7 +301,7 @@ export default function Home() {
             <Reveal delay={0.08}>
               <Card glow className="h-full border-gold/50">
                 <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-gold">
-                  Ascend — the way out
+                  Mewmax — the way out
                 </p>
                 <ul className="mt-5 space-y-4">
                   {[
@@ -458,7 +458,7 @@ export default function Home() {
       {/* ================= WHY ASCEND ================= */}
       <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
         <SectionHeading
-          eyebrow="Why Ascend"
+          eyebrow="Why Mewmax"
           title="Built differently, on purpose"
           sub="Eight reasons this isn't another rating app."
         />

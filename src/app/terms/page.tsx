@@ -3,8 +3,8 @@ import { Card, Eyebrow } from "@/components/ui";
 import { Reveal } from "@/components/motion";
 
 export const metadata = {
-  title: "Terms — Ascend",
-  description: "The terms for using Ascend, including Ascend Pro.",
+  title: "Terms — Mewmax",
+  description: "The terms for using Mewmax, including Mewmax Pro.",
 };
 
 export default function TermsPage() {
@@ -23,10 +23,10 @@ export default function TermsPage() {
       <Reveal delay={0.05} className="mt-8 space-y-4">
         <Card>
           <h2 className="font-display text-lg font-extrabold text-bone">
-            What Ascend is
+            What Mewmax is
           </h2>
           <p className="mt-2 text-sm leading-relaxed text-muted">
-            Ascend provides aesthetic self-improvement guidance
+            Mewmax provides aesthetic self-improvement guidance
             (“softmaxxing”): skincare, grooming, fitness and lifestyle
             protocols generated from your measurements and answers. It is
             not medical advice, diagnosis or treatment. Prescription-only
@@ -37,7 +37,7 @@ export default function TermsPage() {
         </Card>
         <Card>
           <h2 className="font-display text-lg font-extrabold text-bone">
-            Ascend Pro
+            Mewmax Pro
           </h2>
           <p className="mt-2 text-sm leading-relaxed text-muted">
             Pro is a subscription: $1.99/week, $4.99/month or $29.99/year.

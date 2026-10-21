@@ -80,7 +80,7 @@ export default function WorthItPage() {
           </h1>
           <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-muted">
             The leading rating app sells you a scan — then charges again for
-            re-scans and upgraded results. Ascend runs your next 12 weeks:
+            re-scans and upgraded results. Mewmax runs your next 12 weeks:
             the protocol, the coach, the daily system, the adjustments.
             Compare for yourself.
           </p>
@@ -98,11 +98,11 @@ export default function WorthItPage() {
       <Reveal delay={0.05} className="mt-14">
         <SectionHeading
           eyebrow="Head to head"
-          title="Ascend Pro vs the leading rating app"
+          title="Mewmax Pro vs the leading rating app"
         />
         <div className="mt-6">
           <CompareTable
-            head={["", "Ascend Pro", "Umax"]}
+            head={["", "Mewmax Pro", "Umax"]}
             rows={VS_UMAX}
           />
         </div>
@@ -135,7 +135,7 @@ export default function WorthItPage() {
       <Reveal delay={0.05} className="mt-14">
         <SectionHeading eyebrow="No surprises" title="Free vs Pro, line by line" />
         <div className="mt-6">
-          <CompareTable head={["", "Free", "Ascend Pro"]} rows={FREE_VS_PRO} />
+          <CompareTable head={["", "Free", "Mewmax Pro"]} rows={FREE_VS_PRO} />
         </div>
       </Reveal>
 

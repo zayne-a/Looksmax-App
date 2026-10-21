@@ -8,7 +8,7 @@ export default function Footer() {
     <footer className="border-t border-gold/10 bg-ink-2">
       <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
         <p className="font-display text-xl font-extrabold tracking-tight">
-          <span className="gold-text">ASCEND</span>
+          <span className="gold-text">MEWMAX</span>
         </p>
         <p className="mt-3 max-w-md text-sm leading-relaxed text-muted">
           Your most attractive self — measured, not guessed. Deterministic
@@ -35,7 +35,7 @@ export default function Footer() {
           </Link>
         </div>
         <p className="mt-8 text-xs text-muted/60">
-          © 2026 Ascend. All rights reserved.
+          © 2026 Mewmax. All rights reserved.
         </p>
       </div>
     </footer>

@@ -295,7 +295,7 @@ export default function DashboardPage() {
       <div className="sticky top-0 z-30 -mx-4 border-b border-white/10 bg-[#0d0b08]/95 px-4 py-3 backdrop-blur-md sm:-mx-6 sm:px-6">
         <div className="flex items-center justify-between gap-3">
           <p className="font-display text-lg font-extrabold tracking-tight text-bone">
-            Ascend{" "}
+            Mewmax{" "}
             <span className="text-gold">
               · {tab === "today" ? "Today" : tab === "progress" ? "Progress" : tab === "records" ? "Records" : "More"}
             </span>
@@ -408,7 +408,7 @@ export default function DashboardPage() {
                 Your protocol, as a daily app — not a document
               </h2>
               <p className="mt-2 max-w-xl text-sm leading-relaxed text-muted">
-                Subscribers open Ascend to a 🔥 streak, today&apos;s
+                Subscribers open Mewmax to a 🔥 streak, today&apos;s
                 protocol as a tappable checklist, the daily 3 questions,
                 water and calorie trackers set from their own plan, and a
                 calendar of every tracked day. That daily loop is where
@@ -763,7 +763,7 @@ export default function DashboardPage() {
                         >
                           <div className="min-w-0">
                             <p className="truncate font-display text-lg font-extrabold text-bone">
-                              {p.plan.headline || "Your Ascend plan"}
+                              {p.plan.headline || "Your Mewmax plan"}
                             </p>
                             <p className="text-xs text-muted">
                               {fmtDate(p.created_at)} ·{" "}
@@ -839,7 +839,7 @@ export default function DashboardPage() {
           )}
           {isPro ? (
             <span className="rounded-full border border-gold/50 bg-gold/15 px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.14em] text-gold-soft">
-              Ascend Pro — active
+              Mewmax Pro — active
             </span>
           ) : (
             <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-[11px] font-extrabold uppercase tracking-[0.14em] text-muted">

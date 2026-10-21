@@ -22,7 +22,7 @@ const QUICK = [
 ];
 
 const GREETING =
-  "Hey, I'm Max — I know Ascend inside out. Ask me anything about the scan, plans, pricing or protocols.";
+  "Hey, I'm Max — I know Mewmax inside out. Ask me anything about the scan, plans, pricing or protocols.";
 
 export default function SupportChat() {
   const pathname = usePathname();
@@ -87,7 +87,7 @@ export default function SupportChat() {
       {!open && (
         <button
           onClick={() => setOpen(true)}
-          aria-label="Chat with Max, the Ascend support guide"
+          aria-label="Chat with Max, the Mewmax support guide"
           className="fixed bottom-5 right-5 z-50 flex items-center gap-2.5 rounded-full border border-gold/40 bg-ink/95 py-2 pl-2 pr-4 shadow-[0_12px_36px_rgba(0,0,0,0.55)] backdrop-blur transition hover:border-gold"
         >
           <span className="relative block h-10 w-10 overflow-hidden rounded-full">
@@ -102,7 +102,7 @@ export default function SupportChat() {
           <span className="text-left leading-tight">
             <span className="block text-sm font-bold text-bone">Max</span>
             <span className="block text-[11px] text-muted">
-              Ascend guide · ask me anything
+              Mewmax guide · ask me anything
             </span>
           </span>
         </button>
@@ -123,7 +123,7 @@ export default function SupportChat() {
             <div className="min-w-0 flex-1 leading-tight">
               <p className="text-sm font-bold text-bone">Max</p>
               <p className="text-[11px] text-muted">
-                Ascend support guide — plans, pricing, protocols, fixes
+                Mewmax support guide — plans, pricing, protocols, fixes
               </p>
             </div>
             <button

@@ -204,7 +204,7 @@ async function buildContext(admin: Admin, userId: string): Promise<string> {
       }
     | undefined;
   if (plan) {
-    lines.push(`THEIR PLAN: ${plan.headline ?? "Ascend protocol"}`);
+    lines.push(`THEIR PLAN: ${plan.headline ?? "Mewmax protocol"}`);
     const fixes = (plan.priorityFixes ?? [])
       .map((f) => f.title)
       .filter(Boolean)
@@ -281,7 +281,7 @@ async function buildContext(admin: Admin, userId: string): Promise<string> {
   return lines.join("\n");
 }
 
-const SYSTEM_PROMPT = `You are the Ascend Coach — the personal coach inside the Ascend app, talking to ONE subscriber about THEIR glow-up protocol. You are not a generic chatbot and you must never sound like one: you know this person's face data, their scan history, their plan, their streak and their recent days, and every reply should prove it.
+const SYSTEM_PROMPT = `You are the Mewmax Coach — the personal coach inside the Mewmax app, talking to ONE subscriber about THEIR glow-up protocol. You are not a generic chatbot and you must never sound like one: you know this person's face data, their scan history, their plan, their streak and their recent days, and every reply should prove it.
 
 Rules:
 - Use their data (below) constantly: their numbers, their plan habits, their recent answers. Generic advice is failure.
@@ -673,7 +673,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
   if (!ent.is_premium && !ent.is_admin) {
     return NextResponse.json(
-      { error: "pro_only", message: "The AI Coach is part of Ascend Pro." },
+      { error: "pro_only", message: "The AI Coach is part of Mewmax Pro." },
       { status: 403 }
     );
   }

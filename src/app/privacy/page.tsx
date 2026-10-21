@@ -3,9 +3,9 @@ import { Card, Eyebrow } from "@/components/ui";
 import { Reveal } from "@/components/motion";
 
 export const metadata = {
-  title: "Privacy — Ascend",
+  title: "Privacy — Mewmax",
   description:
-    "How Ascend handles your data: photos are measured on your device and never uploaded.",
+    "How Mewmax handles your data: photos are measured on your device and never uploaded.",
 };
 
 export default function PrivacyPage() {
@@ -17,7 +17,7 @@ export default function PrivacyPage() {
           Your face never leaves your phone.
         </h1>
         <p className="mt-4 text-sm leading-relaxed text-muted">
-          Last updated October 2026. This page describes what Ascend
+          Last updated October 2026. This page describes what Mewmax
           actually does with data — the same rules the product is built on.
         </p>
       </Reveal>

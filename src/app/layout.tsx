@@ -19,9 +19,22 @@ const archivo = Archivo({
 });
 
 export const metadata: Metadata = {
-  title: "Ascend — Your Most Attractive Self, Measured",
+  title: "Mewmax — PSL Score & Looksmax",
   description:
     "Upload a selfie and get deterministic facial measurements plus a week-by-week softmaxxing plan for skin, diet, exercise and style. Free first scan. $1.99/week.",
+  openGraph: {
+    title: "Mewmax — PSL Score & Looksmax",
+    description:
+      "Upload a selfie and get deterministic facial measurements plus a week-by-week softmaxxing plan for skin, diet, exercise and style. Free first scan. $1.99/week.",
+    siteName: "Mewmax",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Mewmax — PSL Score & Looksmax",
+    description:
+      "Upload a selfie and get deterministic facial measurements plus a week-by-week softmaxxing plan for skin, diet, exercise and style. Free first scan. $1.99/week.",
+  },
 };
 
 export default function RootLayout({

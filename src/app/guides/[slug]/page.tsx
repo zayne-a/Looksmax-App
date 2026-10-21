@@ -16,8 +16,8 @@ export async function generateMetadata({
 }) {
   const { slug } = await params;
   const guide = getGuide(slug);
-  if (!guide) return { title: "Guide — Ascend" };
-  return { title: `${guide.title} — Ascend Guides`, description: guide.blurb };
+  if (!guide) return { title: "Guide — Mewmax" };
+  return { title: `${guide.title} — Mewmax Guides`, description: guide.blurb };
 }
 
 export default async function GuidePage({

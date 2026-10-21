@@ -1,4 +1,4 @@
-# Ascend — AI Looksmaxxing, Measured Not Guessed
+# Mewmax — AI Looksmaxxing, Measured Not Guessed
 
 MVP v1 of the AI looksmaxxing / glow-up web app. Users take a quiz, upload selfies,
 get **deterministic facial measurements** (computed on-device, never LLM vibes) and a

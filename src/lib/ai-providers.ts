@@ -113,7 +113,7 @@ function buildProviders(): ProviderDef[] {
         "google/gemma-4-31b-it:free",
         "minimax/minimax-m3.1-flash:free",
       ],
-      extraHeaders: { "X-Title": "Ascend" },
+      extraHeaders: { "X-Title": "Mewmax" },
     });
   }
 

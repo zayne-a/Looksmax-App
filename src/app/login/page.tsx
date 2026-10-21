@@ -71,7 +71,7 @@ export default function LoginPage() {
         <div className="text-center">
           <Eyebrow>Welcome back</Eyebrow>
           <h1 className="font-display mt-4 text-4xl font-extrabold tracking-tight">
-            Log in to <span className="gold-text">Ascend</span>
+            Log in to <span className="gold-text">Mewmax</span>
           </h1>
           <p className="mt-3 text-sm leading-relaxed text-muted">
             Your scans, scores and plans live in your account — pick up

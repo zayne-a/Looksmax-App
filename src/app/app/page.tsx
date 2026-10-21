@@ -35,7 +35,7 @@ export default function AppEntryPage() {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black">
       <p className="font-display text-sm font-black uppercase tracking-[0.35em] text-white/50">
-        Ascend
+        Mewmax
       </p>
     </div>
   );

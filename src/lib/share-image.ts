@@ -105,7 +105,7 @@ export function downloadMilestoneCard(input: {
   ctx.fillStyle = MUTED;
   ctx.font = "500 30px system-ui, sans-serif";
   ctx.fillText("looksmax-app-echo-mint.vercel.app", 96, H - 120);
-  download(canvas, "ascend-milestone.png");
+  download(canvas, "mewmax-milestone.png");
 }
 
 export function downloadWeeklyReport(input: {
@@ -173,6 +173,6 @@ export function downloadWeeklyReport(input: {
 
   ctx.fillStyle = MUTED;
   ctx.font = "500 30px system-ui, sans-serif";
-  ctx.fillText("Ascend · your 12-week adaptive protocol", 96, H - 120);
-  download(canvas, "ascend-weekly-report.png");
+  ctx.fillText("Mewmax · your 12-week adaptive protocol", 96, H - 120);
+  download(canvas, "mewmax-weekly-report.png");
 }

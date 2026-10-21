@@ -13,7 +13,7 @@ const links = [
   { href: "/calculators", label: "Toolbox" },
   { href: "/guides", label: "Guides" },
   { href: "/coach", label: "Coach" },
-  { href: "/why-ascend", label: "Why Ascend" },
+  { href: "/why-ascend", label: "Why Mewmax" },
   { href: "/paywall", label: "Pricing" },
 ];
 
@@ -25,9 +25,9 @@ export default function Navbar() {
           <Link
             href="/"
             className="font-display text-[1.35rem] font-extrabold tracking-tight"
-            aria-label="Ascend home"
+            aria-label="Mewmax home"
           >
-            <span className="gold-text">ASCEND</span>
+            <span className="gold-text">MEWMAX</span>
           </Link>
           <nav className="hidden items-center gap-7 text-sm font-medium text-muted lg:flex">
             {links.map((l) => (

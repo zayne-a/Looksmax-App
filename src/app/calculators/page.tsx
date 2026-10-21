@@ -1450,7 +1450,7 @@ export default function CalculatorsPage() {
             <span className="gold-text">Your plan is next.</span>
           </h2>
           <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-muted">
-            Your Ascend blueprint takes these numbers — plus your facial
+            Your Mewmax blueprint takes these numbers — plus your facial
             measurements — and turns them into a week-by-week protocol for
             skin, diet, exercise, and style.
           </p>

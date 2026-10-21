@@ -195,7 +195,7 @@ export default function StartPage() {
         >
           {step === 0 && (
             <div className="flex flex-1 flex-col px-6 pb-6 pt-16">
-              <Eyebrow>PSL · Looksmax · Ascend</Eyebrow>
+              <Eyebrow>PSL · Looksmax · Mewmax</Eyebrow>
               <h1 className="mt-4 font-display text-5xl font-black leading-[0.98] tracking-tight">
                 Become
                 <br />

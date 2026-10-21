@@ -47,7 +47,7 @@ const BUILD_STAGES = [
   "Matching protocols to your goals",
   "Organising your plan",
   "Structuring your weeks",
-  "Finalising your Ascend plan",
+  "Finalising your Mewmax plan",
 ];
 
 const REASSURANCE_LINES = [
@@ -81,7 +81,7 @@ const WAIT_CARDS = [
     body: "Growth hormone peaks in deep sleep. Your plan treats sleep, water and daily steps as non-negotiables — they compound everything else.",
   },
   {
-    kicker: "The Ascend way",
+    kicker: "The Mewmax way",
     title: "Phase 1 of a 12-week protocol",
     body: "No 30-day miracle promises. Four weeks of measurable checkpoints, then progression — that's how real change is built.",
   },
@@ -1205,7 +1205,7 @@ export default function PlanPage() {
             Your blueprint needs your answers first
           </h1>
           <p className="mx-auto mt-3 max-w-md text-sm sm:text-base text-muted">
-            Take the 60-second quiz so we can build your ascend plan around
+            Take the 60-second quiz so we can build your Mewmax plan around
             you — your goals, your skin, your body.
           </p>
           <div className="mt-8">

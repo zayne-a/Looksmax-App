@@ -5,7 +5,7 @@ import { Reveal } from "@/components/motion";
 import { GUIDES, GUIDE_CATEGORIES } from "@/lib/guides";
 
 export const metadata = {
-  title: "Guides — Ascend",
+  title: "Guides — Mewmax",
   description:
     "The clear, general advice library: skincare, hair, jawline, posture, sleep, nutrition, gym and style — no fluff, no miracle claims.",
 };
@@ -84,7 +84,7 @@ export default function GuidesPage() {
             Guides are general. Your plan is personal.
           </h2>
           <p className="mx-auto mt-2 max-w-lg text-sm leading-relaxed text-muted">
-            These pages explain the principles. Your Ascend plan sequences
+            These pages explain the principles. Your Mewmax plan sequences
             them against your own measurements, skin readings and goals —
             with a weekly loop that adjusts as you go.
           </p>
@@ -99,7 +99,7 @@ export default function GuidesPage() {
               href="/why-ascend"
               className="rounded-full border border-white/15 px-7 py-3 text-sm font-bold text-bone transition hover:border-gold/40"
             >
-              Why Ascend
+              Why Mewmax
             </Link>
           </div>
         </Card>

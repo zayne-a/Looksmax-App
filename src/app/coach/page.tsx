@@ -293,7 +293,7 @@ export default function CoachPage() {
       <Reveal>
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <Eyebrow>Ascend Coach</Eyebrow>
+            <Eyebrow>Mewmax Coach</Eyebrow>
             <h1 className="font-display mt-2 text-3xl font-extrabold tracking-tight text-bone">
               {ritualStep !== null
                 ? "First — today's 3 questions"

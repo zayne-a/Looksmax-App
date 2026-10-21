@@ -330,8 +330,8 @@ function headlineFor(quiz: QuizAnswers): string {
     .map((b) => b.charAt(0).toUpperCase() + b.slice(1))
     .join(" and ");
   return pretty
-    ? `Your Phase 1 Ascend Protocol: ${pretty}`
-    : "Your Phase 1 Ascend Protocol";
+    ? `Your Phase 1 Mewmax Protocol: ${pretty}`
+    : "Your Phase 1 Mewmax Protocol";
 }
 
 function scoreSummaryFor(

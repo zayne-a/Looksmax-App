@@ -98,7 +98,7 @@ export default function PaywallPage() {
     <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6 sm:py-20">
       <div className="mx-auto max-w-2xl text-center">
         <Reveal>
-          <Eyebrow>Ascend Pro</Eyebrow>
+          <Eyebrow>Mewmax Pro</Eyebrow>
           <h1 className="font-display mt-4 text-4xl sm:text-6xl font-extrabold tracking-tight leading-[1.05]">
             Lock in your glow-up.
             <br />
