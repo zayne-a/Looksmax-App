@@ -47,7 +47,7 @@ export default function WeeklyPlan({
           <button
             onClick={() => setWeek((w) => Math.max(1, w - 1))}
             disabled={week <= 1}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/15 text-bone transition disabled:opacity-30"
+            className="flex h-11 w-11 items-center justify-center rounded-full border border-white/15 text-bone transition disabled:opacity-30 sm:h-9 sm:w-9"
             aria-label="Previous week"
           >
             ‹
@@ -58,7 +58,7 @@ export default function WeeklyPlan({
           <button
             onClick={() => setWeek((w) => Math.min(maxWeek, w + 1))}
             disabled={week >= maxWeek}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/15 text-bone transition disabled:opacity-30"
+            className="flex h-11 w-11 items-center justify-center rounded-full border border-white/15 text-bone transition disabled:opacity-30 sm:h-9 sm:w-9"
             aria-label="Next week"
           >
             ›

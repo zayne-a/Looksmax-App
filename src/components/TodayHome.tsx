@@ -125,8 +125,8 @@ export default function TodayHome({
     <div className="space-y-6">
       {/* STATUS HERO — score ring, streak, week: the app's home face */}
       <Card glow>
-        <div className="flex items-center gap-5">
-          <div className="relative h-[92px] w-[92px] shrink-0">
+        <div className="flex items-center gap-4 sm:gap-5">
+          <div className="relative h-[78px] w-[78px] shrink-0 sm:h-[92px] sm:w-[92px]">
             <svg viewBox="0 0 92 92" className="h-full w-full -rotate-90">
               <circle cx="46" cy="46" r="40" fill="none" stroke="rgba(255,255,255,0.09)" strokeWidth="8" />
               <circle
@@ -142,7 +142,7 @@ export default function TodayHome({
               />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="font-display text-[26px] font-extrabold leading-none text-bone">
+              <span className="font-display text-[22px] font-extrabold leading-none text-bone sm:text-[26px]">
                 {score !== null ? Math.round(score) : "—"}
               </span>
               <span className="mt-0.5 text-[9px] font-bold uppercase tracking-[0.14em] text-muted">
@@ -257,7 +257,7 @@ export default function TodayHome({
                     <li key={key}>
                       <button
                         onClick={() => toggleTask(s.sectionId, t.title)}
-                        className={`flex w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left transition ${
+                        className={`flex min-h-[48px] w-full items-start gap-3 rounded-xl border px-3 py-2.5 text-left transition ${
                           done
                             ? "border-gold/40 bg-gold/[0.08]"
                             : "border-white/8 bg-white/[0.02] hover:border-gold/30"
@@ -330,7 +330,7 @@ export default function TodayHome({
                     <button
                       key={chip}
                       onClick={() => answer(q.id, chip)}
-                      className={`rounded-full border px-4 py-2 text-sm font-semibold transition ${
+                      className={`min-h-[44px] rounded-full border px-4 py-2 text-sm font-semibold transition ${
                         selected
                           ? "border-gold bg-gold/15 text-gold-soft"
                           : "border-white/12 bg-white/[0.03] text-muted hover:border-gold/40 hover:text-bone"

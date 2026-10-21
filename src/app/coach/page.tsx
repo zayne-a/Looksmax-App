@@ -279,7 +279,7 @@ export default function CoachPage() {
   const nonNegotiables = plan?.foundations.nonNegotiables ?? [];
 
   return (
-    <div className="mx-auto flex min-h-[70vh] w-full max-w-3xl flex-col px-4 pb-28 pt-10 sm:px-6 sm:pb-10">
+    <div className="mx-auto flex min-h-[70vh] w-full max-w-3xl flex-col px-4 pb-28 pt-6 sm:px-6 sm:pb-10 sm:pt-10">
       <Reveal>
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
@@ -358,7 +358,7 @@ export default function CoachPage() {
                 <button
                   key={chip}
                   onClick={() => answerRitual(chip)}
-                  className="rounded-full border border-gold/40 bg-gold/10 px-4 py-2 text-sm font-semibold text-gold-soft transition hover:bg-gold/20"
+                  className="min-h-[44px] rounded-full border border-gold/40 bg-gold/10 px-4 py-2 text-sm font-semibold text-gold-soft transition hover:bg-gold/20"
                 >
                   {chip}
                 </button>
