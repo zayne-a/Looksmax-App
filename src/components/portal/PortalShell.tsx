@@ -174,26 +174,43 @@ function LoginWall() {
     }
     setBusy(true);
     setError(null);
-    // Preflight with skipBrowserRedirect: while the Discord provider
-    // is still being enabled, GoTrue answers with an error instead of
-    // a URL — surface the friendly state here rather than landing the
-    // creator on Supabase's raw error page. Once the provider is on,
-    // the same call returns the authorize URL and we navigate to it.
-    const { data, error: oauthError } = await sb.auth.signInWithOAuth({
-      provider: "discord",
-      options: {
-        redirectTo: `${window.location.origin}/portal`,
-        skipBrowserRedirect: true,
-      },
-    });
-    if (oauthError || !data?.url) {
-      setBusy(false);
+    const notEnabled = () =>
       setError(
         "Discord login isn't switched on yet — we're enabling it right now. Try again in a little while."
       );
-      return;
+    // supabase-js builds the authorize URL client-side without
+    // checking whether the provider is enabled, so while Discord is
+    // still being switched on the click would land the creator on
+    // Supabase's raw 400 page. Ask GoTrue's public settings endpoint
+    // first — it reports exactly which providers are live. Once
+    // discord flips on, the same click runs the normal OAuth flow.
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL}/auth/v1/settings`,
+        {
+          headers: {
+            apikey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
+          },
+        }
+      );
+      const settings = res.ok ? await res.json() : null;
+      if (settings?.external && settings.external.discord === false) {
+        setBusy(false);
+        notEnabled();
+        return;
+      }
+    } catch {
+      // The check itself failed (offline etc.) — fall through and let
+      // the OAuth flow speak for itself.
     }
-    window.location.assign(data.url);
+    const { error: oauthError } = await sb.auth.signInWithOAuth({
+      provider: "discord",
+      options: { redirectTo: `${window.location.origin}/portal` },
+    });
+    if (oauthError) {
+      setBusy(false);
+      notEnabled();
+    }
   };
 
   return (
