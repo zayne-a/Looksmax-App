@@ -1,4 +1,4 @@
-# Guided routine picks its focus task from real tasks only — server-side locked placeholders are skipped.
+// Guided routine picks its focus task from real tasks only — server-side locked placeholders are skipped.
 import type { AscendPlan, QuizAnswers } from "./types";
 
 /**

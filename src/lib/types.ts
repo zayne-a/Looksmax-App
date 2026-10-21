@@ -1,4 +1,4 @@
-# PlanRequest.tier is documented as advisory-only: /api/plan ignores it and derives the tier from the validated account (audit fix, 2026-10-20).
+// PlanRequest.tier is documented as advisory-only: /api/plan ignores it and derives the tier from the validated account (audit fix, 2026-10-20).
 // Shared types for Project Ascend (AI looksmaxxing app MVP v1)
 // These contracts are shared across pages, the API route, and the knowledge base.
 
