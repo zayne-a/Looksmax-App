@@ -1,4 +1,4 @@
-# App-style status hero + tiles: score RING (SVG progress circle of the latest score, delta chip vs previous scan), week/stage line, streak and today-progress bar in one dense header. Calorie tile is MyFitnessPal-style: the big number is kcal REMAINING (goal - logged) with the Goal - Logged equation, a progress bar, the goal note, and protein/carb dials from the plan-derived targets.
+// App-style status hero + tiles: score RING (SVG progress circle of the latest score, delta chip vs previous scan), week/stage line, streak and today-progress bar in one dense header. Calorie tile is MyFitnessPal-style: the big number is kcal REMAINING (goal - logged) with the Goal - Logged equation, a progress bar, the goal note, and protein/carb dials from the plan-derived targets.
 "use client";
 
 import { useEffect, useMemo, useState } from "react";

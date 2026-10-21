@@ -1,4 +1,4 @@
-# Face breakdown for the dashboard (new): the trait-by-trait results pattern (cf. Umax) done honestly — bars only for true 0-100 scores (golden ratio, symmetry), values + plain-language readings for ratios (thirds, canthal tilt, jaw, FWHR), plus the skin readout (redness/texture/under-eye, lower is better) for parity with the plan page’s measurements section. All from the latest scan’s on-device measurements.
+// Face breakdown for the dashboard (new): the trait-by-trait results pattern (cf. Umax) done honestly — bars only for true 0-100 scores (golden ratio, symmetry), values + plain-language readings for ratios (thirds, canthal tilt, jaw, FWHR), plus the skin readout (redness/texture/under-eye, lower is better) for parity with the plan page’s measurements section. All from the latest scan’s on-device measurements.
 import { Card } from "@/components/ui";
 import type { FaceMeasurements } from "@/lib/types";
 

@@ -1,4 +1,4 @@
-# Bottom app navigation (mobile, MyFitnessPal pattern): Today / Progress / Records / More switch dashboard views in place when onNavigate is given; elsewhere they deep-link /dashboard?tab=. Centre + is the Scan action; Coach links to /coach. Hidden on sm+ where the dashboard app bar carries the tabs.
+// Bottom app navigation (mobile, MyFitnessPal pattern): Today / Progress / Records / More switch dashboard views in place when onNavigate is given; elsewhere they deep-link /dashboard?tab=. Centre + is the Scan action; Coach links to /coach. Hidden on sm+ where the dashboard app bar carries the tabs.
 "use client";
 
 import Link from "next/link";

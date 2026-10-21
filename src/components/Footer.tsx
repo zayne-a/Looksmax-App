@@ -1,4 +1,4 @@
-# Guides link added alongside Privacy/Terms/Pricing/Toolbox.
+// Guides link added alongside Privacy/Terms/Pricing/Toolbox.
 "use client";
 
 import Link from "next/link";
