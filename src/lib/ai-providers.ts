@@ -12,8 +12,8 @@
  *   2. NVIDIA NIM    (NVIDIA_API_KEY)        — OpenAI-compatible
  *   3. OpenRouter    (OPENROUTER_API_KEY)    — free-tier models only
  *   4. Cloudflare    (CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID)
- *                      Workers AI, OpenAI-compatible endpoint; inactive
- *                      until the account id is configured.
+ *                      Workers AI, OpenAI-compatible endpoint (account
+ *                      id configured + live-verified 2026-10-21).
  *
  * Every provider speaks the OpenAI chat-completions shape, so one
  * client covers all four. Keys are read from env ONLY and never logged
