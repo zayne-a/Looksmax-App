@@ -214,6 +214,9 @@ export default function SupportChat() {
   /* ---- drag (pointer events; a clean press-release is a tap) ---- */
   const onPointerDown = (e: ReactPointerEvent<HTMLButtonElement>) => {
     if (e.button !== undefined && e.button !== 0) return;
+    // A new gesture: any stale click-suppression from a previous drag
+    // has already had its click event by now — never let it eat a tap.
+    suppressClickRef.current = false;
     setTeaser(false);
     const base = pos ?? defaultPos(vp.w || SIZE + 40, vp.h || SIZE + 40);
     dragRef.current = {
@@ -252,10 +255,12 @@ export default function SupportChat() {
     const d = dragRef.current;
     if (!d || e.pointerId !== d.id) return;
     dragRef.current = null;
+    // The browser fires a click right after pointerup for this same
+    // gesture — the tap/drag decision is made here, and that trailing
+    // click must never re-trigger (or be needed).
+    suppressClickRef.current = true;
     if (d.moved) {
       setDragging(false);
-      // The browser still fires a click after a drag — swallow it.
-      suppressClickRef.current = true;
       try {
         window.localStorage.setItem(
           POS_KEY,
@@ -264,6 +269,9 @@ export default function SupportChat() {
       } catch {
         /* ignore */
       }
+    } else {
+      // A clean press-and-release is a tap: open the chat.
+      setView("open");
     }
   };
 
