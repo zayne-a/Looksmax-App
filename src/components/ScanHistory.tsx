@@ -61,6 +61,7 @@ export default function ScanHistory({ scans }: { scans: SavedScan[] }) {
               ? scan.overall_score - prev.overall_score
               : null;
           const photo = photos[scan.id];
+          const sidePhoto = photos[`${scan.id}:side`];
           const m = scan.measurements;
           const isOpen = openId === scan.id;
           const read =
@@ -131,12 +132,22 @@ export default function ScanHistory({ scans }: { scans: SavedScan[] }) {
               {isOpen && m && read && (
                 <div className="border-t border-white/10 px-4 py-4">
                   {photo && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={photo.img}
-                      alt={`Your scan photo from ${fmtDate(scan.created_at)}`}
-                      className="mb-4 h-52 w-full rounded-2xl object-cover"
-                    />
+                    <div className="mb-4 flex gap-3">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={photo.img}
+                        alt={`Your scan photo from ${fmtDate(scan.created_at)}`}
+                        className={`h-52 rounded-2xl object-cover ${sidePhoto ? "w-1/2" : "w-full"}`}
+                      />
+                      {sidePhoto && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={sidePhoto.img}
+                          alt={`Your side profile from ${fmtDate(scan.created_at)}`}
+                          className="h-52 w-1/2 rounded-2xl object-cover"
+                        />
+                      )}
+                    </div>
                   )}
                   <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-gold">
                     The full read — {fmtDate(scan.created_at)}

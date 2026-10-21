@@ -148,7 +148,7 @@ export default function Home() {
             <Reveal delay={0.24}>
               <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
                 <Button
-                  href="/quiz"
+                  href="/start"
                   className="w-full sm:w-auto px-9 py-4 text-base"
                 >
                   Start your free scan
@@ -339,7 +339,7 @@ export default function Home() {
             </Reveal>
           </div>
           <Reveal className="mt-8 text-center">
-            <Button href="/quiz" className="px-9 py-3.5">
+            <Button href="/start" className="px-9 py-3.5">
               Get my free scan
             </Button>
             <p className="mt-3 text-xs text-muted">
@@ -377,7 +377,7 @@ export default function Home() {
           ))}
         </StaggerGroup>
         <Reveal className="mt-8 text-center">
-          <Button href="/quiz" className="px-9 py-3.5">
+          <Button href="/start" className="px-9 py-3.5">
             Let's go — start the quiz
           </Button>
         </Reveal>
@@ -497,7 +497,7 @@ export default function Home() {
                 See plans
               </Button>
               <Button
-                href="/quiz"
+                href="/start"
                 variant="ghost"
                 className="w-full sm:w-auto px-9 py-3.5"
               >
@@ -534,7 +534,7 @@ export default function Home() {
               actual measurements.
             </p>
             <div className="mt-9">
-              <Button href="/quiz" className="px-12 py-4 text-base">
+              <Button href="/start" className="px-12 py-4 text-base">
                 Start your free scan
               </Button>
             </div>
