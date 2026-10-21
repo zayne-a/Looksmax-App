@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { PointerEvent as ReactPointerEvent } from "react";
+import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { SUPPORT_AVATAR } from "@/lib/support-avatar";
 
@@ -36,6 +36,64 @@ const TEASER_KEY = "max-teaser-shown";
 
 const clampN = (v: number, lo: number, hi: number) =>
   Math.min(Math.max(v, lo), Math.max(lo, hi));
+
+/* Render an assistant message with clickable links: bare http(s) URLs
+   and markdown-style [label](url) become real anchors (new tab, mint,
+   underlined). Built purely from text + <a> elements — no raw HTML —
+   and only http/https ever linkifies. */
+const LINK_RE = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<]+)/g;
+
+function renderRichText(text: string): ReactNode {
+  const parts: ReactNode[] = [];
+  let last = 0;
+  let k = 0;
+  let m: RegExpExecArray | null;
+  LINK_RE.lastIndex = 0;
+  while ((m = LINK_RE.exec(text)) !== null) {
+    if (m.index > last) parts.push(text.slice(last, m.index));
+    const anchorCls =
+      "font-semibold text-gold-soft underline decoration-gold/50 underline-offset-2 transition hover:text-gold";
+    if (m[1] && m[2]) {
+      parts.push(
+        <a
+          key={k++}
+          href={m[2]}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={anchorCls}
+        >
+          {m[1]}
+        </a>,
+      );
+    } else if (m[3]) {
+      let url = m[3];
+      let trail = "";
+      while (/[.,;:!?]$/.test(url)) {
+        trail = url.slice(-1) + trail;
+        url = url.slice(0, -1);
+      }
+      if (url.endsWith(")") && !url.includes("(")) {
+        trail = ")" + trail;
+        url = url.slice(0, -1);
+      }
+      parts.push(
+        <a
+          key={k++}
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={anchorCls}
+        >
+          {url}
+        </a>,
+      );
+      if (trail) parts.push(trail);
+    }
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
 
 const defaultPos = (w: number, h: number) => ({
   x: w - SIZE - 20,
@@ -382,7 +440,7 @@ export default function SupportChat() {
                     : "max-w-[85%] rounded-2xl rounded-bl-md bg-white/5 px-3.5 py-2.5 text-sm leading-relaxed text-bone"
                 }
               >
-                {m.content}
+                {m.role === "model" ? renderRichText(m.content) : m.content}
               </div>
             ))}
             {busy && (
