@@ -9,7 +9,14 @@ create table if not exists public.profiles (
   email text not null,
   is_admin boolean not null default false,
   is_premium boolean not null default false,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- The plan version the user reverted to / selected as active
+  -- (plan version history, 2026-10-21). NULL = follow the latest
+  -- plan. The FK is declared after public.plans below (the table does
+  -- not exist yet at this point). Also shipped as
+  -- supabase/migrations/2026-10-21-active-plan-id.sql for existing
+  -- projects.
+  active_plan_id uuid
 );
 
 create table if not exists public.scans (
@@ -33,6 +40,14 @@ create table if not exists public.plans (
 );
 create index if not exists plans_user_created_idx
   on public.plans (user_id, created_at desc);
+
+-- profiles.active_plan_id -> plans(id): declared here because plans
+-- is created after profiles above. Deleting the active plan version
+-- clears the pointer back to "follow the latest".
+alter table public.profiles drop constraint if exists profiles_active_plan_fk;
+alter table public.profiles
+  add constraint profiles_active_plan_fk
+  foreign key (active_plan_id) references public.plans(id) on delete set null;
 
 -- Weekly check-ins: the retention loop. One row per weekly check-in;
 -- the answers drive the adaptive adjustments + phase unlock counts.

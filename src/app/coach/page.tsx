@@ -8,6 +8,7 @@ import { Reveal } from "@/components/motion";
 import { useApp } from "@/lib/store";
 import { supabaseConfigured, getSupabase } from "@/lib/supabase";
 import {
+  fetchActivePlanId,
   listChatMessages,
   listDailyLogs,
   listPlans,
@@ -56,16 +57,25 @@ export default function CoachPage() {
     if (!user) return;
     let alive = true;
     void (async () => {
-      const [history, logs, plans] = await Promise.all([
+      const [history, logs, plans, activePlanId] = await Promise.all([
         listChatMessages(60),
         listDailyLogs(7),
-        listPlans(1),
+        listPlans(50),
+        fetchActivePlanId(),
       ]);
       if (!alive) return;
       setBubbles(
         history.map((m: ChatMessage) => ({ role: m.role, content: m.content }))
       );
-      setPlan(plans[0]?.plan ?? null);
+      // The active plan version — the one the user reverted to, when
+      // set; otherwise the latest, as before.
+      setPlan(
+        (activePlanId
+          ? plans.find((p) => p.id === activePlanId)?.plan
+          : undefined) ??
+          plans[0]?.plan ??
+          null
+      );
       const qs = questionsForDay();
       setQuestions(qs);
       const todayLog = logs.find((l) => l.day === dayKey());

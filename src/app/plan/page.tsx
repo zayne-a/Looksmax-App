@@ -7,7 +7,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useApp } from "@/lib/store";
 import { isOwnerTestMode, setOwnerTestMode } from "@/lib/admin";
 import { getSupabase } from "@/lib/supabase";
-import { listCheckins, savePlan } from "@/lib/account";
+import { listCheckins, savePlan, setActivePlanId } from "@/lib/account";
 import JourneyRoadmap from "@/components/JourneyRoadmap";
 import ChangePlan from "@/components/ChangePlan";
 import { SECTION_GUIDES, getGuide } from "@/lib/guides";
@@ -1031,6 +1031,10 @@ export default function PlanPage() {
       const data = (await res.json()) as PlanResponse;
       setPlan(data.plan);
       setAiPending(Boolean(data.aiPending || data.plan.aiPending));
+      // A freshly generated plan is the active one: clear any revert
+      // preference so the dashboard follows this newest version
+      // (plan version history, 2026-10-21). Best-effort, fire-and-forget.
+      void setActivePlanId(null);
       if (previewRef.current) {
         previewRef.current = false;
         setJustLanded(true);

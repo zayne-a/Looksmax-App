@@ -129,14 +129,45 @@ async function entitlementForToken(
 
 /** Compact snapshot of the user's own data — the coach's memory. */
 async function buildContext(admin: Admin, userId: string): Promise<string> {
-  const [planRes, scanRes, checkinRes, logRes, checkinCountRes] =
-    await Promise.all([
+  // Plan version history (2026-10-21): when the user has reverted to
+  // an earlier plan version, the coach works from THAT version, not
+  // the latest. profiles.active_plan_id ships with the migration of
+  // the same date — until it is applied the select errors and the
+  // coach keeps using the latest plan, exactly as before.
+  let activePlanId: string | null = null;
+  try {
+    const { data } = await admin
+      .from("profiles")
+      .select("active_plan_id")
+      .eq("id", userId)
+      .single();
+    activePlanId =
+      (data as { active_plan_id?: string | null } | null)?.active_plan_id ??
+      null;
+  } catch {
+    activePlanId = null;
+  }
+  const latestPlanQuery = () =>
     admin
       .from("plans")
       .select("plan, created_at")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
-      .limit(1),
+      .limit(1);
+  let planRes = activePlanId
+    ? await admin
+        .from("plans")
+        .select("plan, created_at")
+        .eq("user_id", userId)
+        .eq("id", activePlanId)
+        .limit(1)
+    : await latestPlanQuery();
+  if (activePlanId && !(planRes.data?.length)) {
+    // The reverted-to row is gone (deleted) — fall back to latest.
+    planRes = await latestPlanQuery();
+  }
+  const [scanRes, checkinRes, logRes, checkinCountRes] =
+    await Promise.all([
     admin
       .from("scans")
       .select("overall_score, quiz, created_at, measurements")
