@@ -8,6 +8,7 @@ import { Button, Card, Eyebrow } from "@/components/ui";
 import { Reveal } from "@/components/motion";
 import { useApp } from "@/lib/store";
 import JourneyRoadmap from "@/components/JourneyRoadmap";
+import AscendHero from "@/components/AscendHero";
 import ProtocolLibrary from "@/components/ProtocolLibrary";
 import ScanHistory from "@/components/ScanHistory";
 import ProtocolRoadmap from "@/components/ProtocolRoadmap";
@@ -331,6 +332,17 @@ export default function DashboardPage() {
 
       {tab === "today" && (
         <>
+      {/* ASCEND HERO — countdown ring + PSL/potential, the product's home */}
+      {latest?.measurements?.landmarksDetected && journeyStartIso && (
+        <Reveal delay={0.04} className="mt-8">
+          <AscendHero
+            measurements={latest.measurements}
+            journeyStartIso={journeyStartIso}
+            streak={streakNum}
+          />
+        </Reveal>
+      )}
+
       {!isPro && (
         <Reveal delay={0.05} className="mt-8">
           <Card glow>
@@ -841,6 +853,25 @@ export default function DashboardPage() {
           )}
         </div>
       </Reveal>
+
+      {/* ADMIN — funnel media console (Zayne only) */}
+      {profile?.is_admin && (
+        <Reveal delay={0.09} className="mt-12">
+          <Card>
+            <h2 className="font-display text-lg font-extrabold text-bone">
+              Funnel media — admin
+            </h2>
+            <p className="mt-1 max-w-md text-sm leading-relaxed text-muted">
+              Upload the Chad&apos;s Reality / Average Reality videos and set
+              the testimonial quotes for the /start persuasion funnel. Changes
+              go live in the funnel immediately.
+            </p>
+            <Button href="/admin/funnel" className="mt-4 px-6 py-2.5">
+              Open the funnel console
+            </Button>
+          </Card>
+        </Reveal>
+      )}
 
       {/* JOURNEY — starts at the account's first saved scan/plan */}
       <Reveal delay={0.1} className="mt-12">
