@@ -9,6 +9,7 @@ import { isOwnerTestMode, setOwnerTestMode } from "@/lib/admin";
 import { getSupabase } from "@/lib/supabase";
 import { listCheckins, savePlan } from "@/lib/account";
 import JourneyRoadmap from "@/components/JourneyRoadmap";
+import ChangePlan from "@/components/ChangePlan";
 import { SECTION_GUIDES, getGuide } from "@/lib/guides";
 import { getOrStartJourneyStart } from "@/lib/journey";
 import type {
@@ -20,6 +21,7 @@ import type {
   PlanSection,
   PlanTask,
   PlanWeek,
+  QuizAnswers,
 } from "@/lib/types";
 import { Button, Card, Eyebrow, ProgressBar, SectionHeading } from "@/components/ui";
 import {
@@ -930,6 +932,7 @@ export default function PlanPage() {
     setPlan,
     setPlanLoading,
     setPlanError,
+    setQuiz,
     frontPhoto,
     savedScanId,
     user,
@@ -949,6 +952,7 @@ export default function PlanPage() {
   const previewRef = useRef(false);
   const skipFiredRef = useRef(false);
   const fetchStarted = useRef(false);
+  const changeRef = useRef(false);
   const runStartedAt = useRef<number | null>(null);
   const planRef = useRef(plan);
   planRef.current = plan;
@@ -1000,6 +1004,7 @@ export default function PlanPage() {
           measurements,
           quiz,
           scanId: savedScanIdRef.current,
+          changeOfPlan: changeRef.current || undefined,
           // v1 has no auth: free tier by default; owner test mode (the
           // paywall code, see lib/admin.ts) requests the premium tier so
           // Zayne can test the paid experience. v2 derives the tier
@@ -1010,10 +1015,19 @@ export default function PlanPage() {
       });
       if (!res.ok) {
         const text = await res.text().catch(() => "");
+        let msg = text;
+        try {
+          msg =
+            (JSON.parse(text) as { error?: string }).error ??
+            text;
+        } catch {
+          // keep the raw text
+        }
         throw new Error(
-          text || `Plan request failed with status ${res.status}`
+          msg || `Plan request failed with status ${res.status}`
         );
       }
+      changeRef.current = false;
       const data = (await res.json()) as PlanResponse;
       setPlan(data.plan);
       setAiPending(Boolean(data.aiPending || data.plan.aiPending));
@@ -1042,6 +1056,20 @@ export default function PlanPage() {
       setPlanLoading(false);
     }
   }, [quiz, measurements, setPlan, setPlanLoading, setPlanError]);
+
+  // Plan change (Zayne, 2026-10-21): retune the levers and rebuild
+  // from the same scan. The flag rides along so /api/plan can enforce
+  // the 2-changes-per-plan cap server-side; clearing the stored plan
+  // re-fires the mount fetch with the adjusted quiz.
+  const applyPlanChange = useCallback(
+    (adjusted: QuizAnswers) => {
+      changeRef.current = true;
+      fetchStarted.current = false;
+      setQuiz(adjusted);
+      setPlan(null);
+    },
+    [setQuiz, setPlan]
+  );
 
   // Owner banner action: rebuild the plan through the premium path.
   // Clearing the stored plan re-fires the mount fetch below, and
@@ -1532,6 +1560,17 @@ export default function PlanPage() {
       </section>
 
       {/* DISCLAIMERS + CTA */}
+      {/* CHANGE MY PLAN — signed-in, saved-scan plans only (max 2) */}
+      {user && savedScanId && quiz && (
+        <Reveal className="mt-12">
+          <ChangePlan
+            quiz={quiz}
+            savedScanId={savedScanId}
+            onApply={applyPlanChange}
+          />
+        </Reveal>
+      )}
+
       <Reveal className="mt-12">
         <footer className="card-premium rounded-3xl p-6 sm:p-8">
           <p className="font-display text-lg font-extrabold text-bone">
