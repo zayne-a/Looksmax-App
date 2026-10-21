@@ -1,4 +1,4 @@
-# The subscriber weekly-plan view for the dashboard: full task lists per section for the selected plan week (stepper defaults to the current journey week), expandable sections, frequency chips and why-you notes. Server-side locked placeholders from free-tier plans are filtered out and never render as tasks.
+// The subscriber weekly-plan view for the dashboard: full task lists per section for the selected plan week (stepper defaults to the current journey week), expandable sections, frequency chips and why-you notes. Server-side locked placeholders from free-tier plans are filtered out and never render as tasks.
 "use client";
 
 import { useState } from "react";

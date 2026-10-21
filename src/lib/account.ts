@@ -1,4 +1,4 @@
-# AUDIT FIX: deleteMySavedData also clears the device-local stores (progress photos, shelf, journey start) — the wipe now matches the privacy promise on both sides of the wire.
+// AUDIT FIX: deleteMySavedData also clears the device-local stores (progress photos, shelf, journey start) — the wipe now matches the privacy promise on both sides of the wire.
 import { getSupabase } from "./supabase";
 import type { AscendPlan, FaceMeasurements, QuizAnswers } from "./types";
 

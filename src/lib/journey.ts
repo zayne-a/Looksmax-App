@@ -1,4 +1,4 @@
-# AUDIT FIX: a phase reads "complete" only when its check-ins were actually done; a lapsed window with unmet check-ins stays "locked" — time passing alone earns nothing, per the file’s own rule.
+// AUDIT FIX: a phase reads "complete" only when its check-ins were actually done; a lapsed window with unmet check-ins stays "locked" — time passing alone earns nothing, per the file’s own rule.
 /**
  * The 12-week journey model (retention core).
  *

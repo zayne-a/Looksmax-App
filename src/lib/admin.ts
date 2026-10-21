@@ -1,4 +1,4 @@
-# Header rewritten to v2 reality (audited 2026-10-20): owner test mode is a client-side cosmetic only; server entitlement is account-derived and the APIs ignore client assertions. Real premium testing = sign in with the admin account (signup trigger grants is_admin + is_premium).
+// Header rewritten to v2 reality (audited 2026-10-20): owner test mode is a client-side cosmetic only; server entitlement is account-derived and the APIs ignore client assertions. Real premium testing = sign in with the admin account (signup trigger grants is_admin + is_premium).
 // Owner test mode — a CLIENT-SIDE COSMETIC only (v2 reality, audited
 // 2026-10-20). Accounts and server-side entitlement have shipped: the
 // signup trigger grants is_admin + is_premium to ADMIN_EMAIL, and the

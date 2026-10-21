@@ -1,4 +1,4 @@
-# todaysSections filters out server-side locked placeholder tasks ("Pro protocol step") so a free-tier saved plan can never surface placeholder text as daily protocol.
+// todaysSections filters out server-side locked placeholder tasks ("Pro protocol step") so a free-tier saved plan can never surface placeholder text as daily protocol.
 import type { AscendPlan, PlanTask, QuizAnswers } from "./types";
 import { tdee, type ActivityLevel } from "./calculators";
 
