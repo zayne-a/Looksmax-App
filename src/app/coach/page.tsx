@@ -1,4 +1,4 @@
-# The coach page no longer writes chat rows for API conversations — /api/coach persists both sides server-side (that is what makes its daily cap enforceable). The daily-questions summary message is still client-saved: it never passes through the API.
+// The coach page no longer writes chat rows for API conversations — /api/coach persists both sides server-side (that is what makes its daily cap enforceable). The daily-questions summary message is still client-saved: it never passes through the API.
 "use client";
 
 import { useEffect, useRef, useState } from "react";

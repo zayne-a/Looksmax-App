@@ -1,4 +1,4 @@
-# AUDIT FIXES (2026-10-20): (1) the route persists the user message and the assistant reply ITSELF — the 40/day cap counts server-written rows, so a direct API caller can no longer bypass it by never writing rows; (2) Bearer prefix is checked properly; (3) client history turns are capped at 2000 chars each; (4) the context line uses an exact check-in COUNT query instead of the recent-4 array length.
+// AUDIT FIXES (2026-10-20): (1) the route persists the user message and the assistant reply ITSELF — the 40/day cap counts server-written rows, so a direct API caller can no longer bypass it by never writing rows; (2) Bearer prefix is checked properly; (3) client history turns are capped at 2000 chars each; (4) the context line uses an exact check-in COUNT query instead of the recent-4 array length.
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 

@@ -1,4 +1,4 @@
-# Tonight (2026-10-20): a Guides Library card joins the Today tab (browse-all + quick chips), and the FaceBreakdown renders in Progress from the latest scan (only when landmarks were actually measured — never for quiz-only scans). Nothing removed; presentation of existing data only, per Zayne.
+// Tonight (2026-10-20): a Guides Library card joins the Today tab (browse-all + quick chips), and the FaceBreakdown renders in Progress from the latest scan (only when landmarks were actually measured — never for quiz-only scans). Nothing removed; presentation of existing data only, per Zayne.
 "use client";
 
 import { useCallback, useEffect, useState } from "react";

@@ -1,4 +1,4 @@
-# Guide article (new): statically generated per guide — intro, numbered protocol steps, common-mistakes card, bottom-line card with the personalised-plan bridge, and keep-reading links. (Fixed during the zero-error pass: Eyebrow renders a <p>, so it must not be wrapped in another <p> — that nesting caused React hydration error #418 on every article.)
+// Guide article (new): statically generated per guide — intro, numbered protocol steps, common-mistakes card, bottom-line card with the personalised-plan bridge, and keep-reading links. (Fixed during the zero-error pass: Eyebrow renders a <p>, so it must not be wrapped in another <p> — that nesting caused React hydration error #418 on every article.)
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Card, Eyebrow } from "@/components/ui";

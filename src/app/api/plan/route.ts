@@ -1,4 +1,4 @@
-# AUDIT FIX (2026-10-20) — BLOCKER: tier is now server-derived ONLY; the client-sent tier is ignored, so premium requires a validated premium/admin account (tokenless/garbage-token requests are free). Free plans are truncated server-side by truncateForFree (first 3 tasks per section real, the rest locked placeholders) so locked protocol content never ships behind the client blur. aiPending now means exactly "a background swap was scheduled" for a real account.
+// AUDIT FIX (2026-10-20) — BLOCKER: tier is now server-derived ONLY; the client-sent tier is ignored, so premium requires a validated premium/admin account (tokenless/garbage-token requests are free). Free plans are truncated server-side by truncateForFree (first 3 tasks per section real, the rest locked placeholders) so locked protocol content never ships behind the client blur. aiPending now means exactly "a background swap was scheduled" for a real account.
 // POST /api/plan — generates a personalized AscendPlan.
 // Layer 3 (LLM orchestration): Gemini with strict JSON output, grounded in the
 // KB via matched excerpts. Validates schema + safety; falls back to the pure
