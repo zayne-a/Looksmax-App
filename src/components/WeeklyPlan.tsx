@@ -1,4 +1,4 @@
-// The subscriber weekly-plan view for the dashboard: full task lists per section for the selected plan week (stepper defaults to the current journey week), expandable sections, frequency chips and why-you notes. Server-side locked placeholders from free-tier plans are filtered out and never render as tasks.
+// The subscriber weekly-plan view for the dashboard: full task lists per section for the selected plan week (stepper defaults to the current journey week), expandable sections, frequency chips and why-you notes. Server-side locked tasks from free-tier plans are filtered out and never render as tasks.
 "use client";
 
 import { useState } from "react";
@@ -11,7 +11,8 @@ import type { AscendPlan } from "@/lib/types";
  * plan week — title, detail, frequency and the why-you note — not just
  * today's checklist slice. Weeks 1–4 are the plan's phase cycle; the
  * stepper defaults to the week the journey is actually on. Locked
- * placeholder tasks from free-tier plans never render here.
+ * tasks from free-tier plans (locked: true — real titles, instructions
+ * stubbed out server-side) never render here.
  */
 export default function WeeklyPlan({
   plan,
@@ -70,9 +71,7 @@ export default function WeeklyPlan({
           const wk =
             section.weeks.find((w) => w.week === week) ?? section.weeks[0];
           if (!wk) return null;
-          const tasks = wk.tasks.filter(
-            (t) => t.title !== "Pro protocol step"
-          );
+          const tasks = wk.tasks.filter((t) => !t.locked);
           const isOpen = open === section.id;
           return (
             <div

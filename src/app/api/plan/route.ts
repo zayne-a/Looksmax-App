@@ -1,4 +1,4 @@
-// AUDIT FIX (2026-10-20) — BLOCKER: tier is now server-derived ONLY; the client-sent tier is ignored, so premium requires a validated premium/admin account (tokenless/garbage-token requests are free). Free plans are truncated server-side by truncateForFree (first 3 tasks per section real, the rest locked placeholders) so locked protocol content never ships behind the client blur. aiPending now means exactly "a background swap was scheduled" for a real account.
+// AUDIT FIX (2026-10-20) — BLOCKER: tier is now server-derived ONLY; the client-sent tier is ignored, so premium requires a validated premium/admin account (tokenless/garbage-token requests are free). Free plans are truncated server-side by truncateForFree (first 3 tasks per section in full; the rest ship as locked tasks — real titles, instructions stubbed out — so the full protocol's scope is visible but its how-to never ships). aiPending now means exactly "a background swap was scheduled" for a real account.
 // POST /api/plan — generates a personalized AscendPlan.
 // Layer 3 (LLM orchestration): Gemini with strict JSON output, grounded in the
 // KB via matched excerpts. Validates schema + safety; falls back to the pure
@@ -832,14 +832,18 @@ async function entitlementForToken(
 }
 
 /** Free-preview allowance: the first 3 tasks per protocol section ship
- *  in full; everything past that is replaced with a locked placeholder
- *  BEFORE the response leaves the server (audit fix, 2026-10-20 — the
- *  earlier build shipped the full protocol and only blurred it in the
- *  browser, so the "locked" content was readable in the network tab).
- *  Mirrors FREE_TASKS_PER_SECTION on the plan page exactly: earliest
- *  weeks first, budget spent per section. Placeholders keep the task
- *  shape (and frequency) so the page renders the same full-size locked
- *  layout — with nothing real behind the blur. */
+ *  in full; every task past that ships as a LOCKED task — its real title
+ *  and frequency stay (so the full 48-step protocol is visibly there and
+ *  worth unlocking), but its detail and why-you instructions are stubbed
+ *  out BEFORE the response leaves the server (audit fix, 2026-10-20 —
+ *  the earlier build shipped the full protocol and only blurred it in
+ *  the browser, so the "locked" content was readable in the network
+ *  tab; Zayne, 2026-10-21 — titles now ship so free users can see the
+ *  whole protocol's scope, instructions still never do). Mirrors
+ *  FREE_TASKS_PER_SECTION on the plan page exactly: earliest weeks
+ *  first, budget spent per section. Locked tasks carry `locked: true`
+ *  so renderers draw them as locked rows and task consumers (daily
+ *  checklist, routines, shelf) can skip them without title matching. */
 const FREE_TASKS_PER_SECTION = 3;
 
 function truncateForFree(plan: AscendPlan): AscendPlan {
@@ -849,30 +853,22 @@ function truncateForFree(plan: AscendPlan): AscendPlan {
       let budget = FREE_TASKS_PER_SECTION;
       return {
         ...section,
-        weeks: section.weeks.map((week) => {
-          if (budget <= 0) {
+        weeks: section.weeks.map((week) => ({
+          ...week,
+          tasks: week.tasks.map((t) => {
+            if (budget > 0) {
+              budget -= 1;
+              return t;
+            }
             return {
-              ...week,
-              focus: "Pro protocol",
-              tasks: week.tasks.map((t) => ({
-                title: "Pro protocol step",
-                detail:
-                  "This step is part of the full Ascend Pro protocol.",
-                frequency: t.frequency,
-                whyYou: "",
-              })),
+              title: t.title,
+              detail: "",
+              frequency: t.frequency,
+              whyYou: "",
+              locked: true,
             };
-          }
-          const shown = week.tasks.slice(0, budget);
-          const rest = week.tasks.slice(budget).map((t) => ({
-            title: "Pro protocol step",
-            detail: "This step is part of the full Ascend Pro protocol.",
-            frequency: t.frequency,
-            whyYou: "",
-          }));
-          budget -= shown.length;
-          return { ...week, tasks: [...shown, ...rest] };
-        }),
+          }),
+        })),
       };
     }),
   };

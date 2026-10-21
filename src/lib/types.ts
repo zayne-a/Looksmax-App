@@ -59,6 +59,12 @@ export interface PlanTask {
   detail: string;
   frequency: string; // e.g. "daily", "3x/week", "once"
   whyYou: string; // cites the specific measurement/answer that triggered this task
+  /** Free-tier marker set server-side by /api/plan's truncateForFree:
+   *  a locked task ships its REAL title + frequency only — detail and
+   *  whyYou are stubbed out before the response leaves the server.
+   *  Renderers show it as a locked row; it is never a doable task.
+   *  Absent (undefined) on every task of a premium plan. */
+  locked?: boolean;
 }
 
 export interface PlanWeek {

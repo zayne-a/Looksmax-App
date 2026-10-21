@@ -1,4 +1,4 @@
-// Guided routine picks its focus task from real tasks only — server-side locked placeholders are skipped.
+// Guided routine picks its focus task from open tasks only — server-side locked tasks (real titles, instructions stubbed out) are skipped.
 import type { AscendPlan, QuizAnswers } from "./types";
 
 /**
@@ -24,8 +24,7 @@ export function buildRoutine(
   const planWeek = ((Math.max(1, week) - 1) % 4) + 1;
   const wk = skin?.weeks.find((w) => w.week === planWeek) ?? skin?.weeks[0];
   const focusTask =
-    wk?.tasks.find((t) => t.title !== "Pro protocol step")?.title ??
-    "Your treatment step";
+    wk?.tasks.find((t) => !t.locked)?.title ?? "Your treatment step";
   const skinType = quiz?.skinType ?? "your skin type";
 
   if (kind === "am") {
