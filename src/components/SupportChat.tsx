@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import Image from "next/image";
+import { SUPPORT_AVATAR } from "@/lib/support-avatar";
 
 /**
  * Max — the Ascend support guide (Zayne, 2026-10-21). A floating
@@ -91,12 +91,11 @@ export default function SupportChat() {
           className="fixed bottom-5 right-5 z-50 flex items-center gap-2.5 rounded-full border border-gold/40 bg-ink/95 py-2 pl-2 pr-4 shadow-[0_12px_36px_rgba(0,0,0,0.55)] backdrop-blur transition hover:border-gold"
         >
           <span className="relative block h-10 w-10 overflow-hidden rounded-full">
-            <Image
-              src="/images/support-max.webp"
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={SUPPORT_AVATAR}
               alt="Max"
-              fill
-              sizes="40px"
-              className="object-cover"
+              className="h-full w-full object-cover"
             />
             <span className="absolute bottom-0.5 right-0.5 h-2.5 w-2.5 rounded-full border-2 border-ink bg-emerald-400" />
           </span>
@@ -113,12 +112,11 @@ export default function SupportChat() {
         <div className="fixed bottom-4 right-4 z-50 flex h-[min(560px,calc(100dvh-2rem))] w-[min(380px,calc(100vw-2rem))] flex-col overflow-hidden rounded-3xl border border-white/10 bg-ink shadow-[0_24px_60px_rgba(0,0,0,0.6)]">
           <div className="flex items-center gap-3 border-b border-white/10 px-4 py-3">
             <span className="relative block h-10 w-10 shrink-0 overflow-hidden rounded-full">
-              <Image
-                src="/images/support-max.webp"
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={SUPPORT_AVATAR}
                 alt="Max"
-                fill
-                sizes="40px"
-                className="object-cover"
+                className="h-full w-full object-cover"
               />
               <span className="absolute bottom-0.5 right-0.5 h-2.5 w-2.5 rounded-full border-2 border-ink bg-emerald-400" />
             </span>
