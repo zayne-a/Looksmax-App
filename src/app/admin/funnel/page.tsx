@@ -79,7 +79,10 @@ export default function AdminFunnelPage() {
         persuasion-step background videos and the testimonial quotes.
         Upload a file or edit the text, hit Save, and the live funnel
         picks it up. A slot with no media (or switched off) simply
-        doesn&apos;t render.
+        doesn&apos;t render.{" "}
+        <Link href="/admin/portal" className="font-semibold text-gold hover:underline">
+          Portal review queues →
+        </Link>
       </p>
 
       {gate === "loading" && (
