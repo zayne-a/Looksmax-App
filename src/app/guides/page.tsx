@@ -1,4 +1,4 @@
-# Guides hub (new): every guide on one clear page, grouped by category with anchor chips — the "certain page" where all general advice lives. Closes with the positioning line: guides are general, your plan is personal.
+// Guides hub (new): every guide on one clear page, grouped by category with anchor chips — the "certain page" where all general advice lives. Closes with the positioning line: guides are general, your plan is personal.
 import Link from "next/link";
 import { Card, Eyebrow } from "@/components/ui";
 import { Reveal } from "@/components/motion";

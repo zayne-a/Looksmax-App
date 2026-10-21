@@ -1,4 +1,4 @@
-# Terms page (new, audit fix). Plain-terms framing matches the brand: softmaxxing only, not medical advice, Pro pricing + the trial rule stated exactly as sold (3-day trial on Monthly/Yearly only, Weekly bills day one), no transformation guarantees.
+// Terms page (new, audit fix). Plain-terms framing matches the brand: softmaxxing only, not medical advice, Pro pricing + the trial rule stated exactly as sold (3-day trial on Monthly/Yearly only, Weekly bills day one), no transformation guarantees.
 import { Card, Eyebrow } from "@/components/ui";
 import { Reveal } from "@/components/motion";
 

@@ -1,4 +1,4 @@
-# Privacy page (new, audit fix — the footer linked to "#" before). Written from the product’s actual behaviour: photos measured on-device and never uploaded, account data under own-rows RLS, AI receives measurements/answers/logs but never photos, and the dashboard wipe button described as it works (now including device-local stores).
+// Privacy page (new, audit fix — the footer linked to "#" before). Written from the product’s actual behaviour: photos measured on-device and never uploaded, account data under own-rows RLS, AI receives measurements/answers/logs but never photos, and the dashboard wipe button described as it works (now including device-local stores).
 import { Card, Eyebrow } from "@/components/ui";
 import { Reveal } from "@/components/motion";
 

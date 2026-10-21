@@ -1,4 +1,4 @@
-# Value props corrected per the deep audit WITHOUT cutting features (Zayne: do not simplify what was added): weekly check-ins and the Coach Review are available with an account, so the Pro props now lead with what is genuinely Pro — the full unblurred protocol + complete weekly plan in the dashboard, and the AI Coach chat. Coupon behaviour intentionally unchanged as shipped.
+// Value props corrected per the deep audit WITHOUT cutting features (Zayne: do not simplify what was added): weekly check-ins and the Coach Review are available with an account, so the Pro props now lead with what is genuinely Pro — the full unblurred protocol + complete weekly plan in the dashboard, and the AI Coach chat. Coupon behaviour intentionally unchanged as shipped.
 "use client";
 
 import { useEffect, useState } from "react";

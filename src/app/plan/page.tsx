@@ -1,4 +1,4 @@
-# Each protocol pillar now ends with "Go deeper" links into the Guides library (SECTION_GUIDES), so the personalised plan and the general advice read as one system.
+// Each protocol pillar now ends with "Go deeper" links into the Guides library (SECTION_GUIDES), so the personalised plan and the general advice read as one system.
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
