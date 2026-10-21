@@ -1,6 +1,7 @@
 // AUDIT FIXES (2026-10-20): (1) the route persists the user message and the assistant reply ITSELF — the 40/day cap counts server-written rows, so a direct API caller can no longer bypass it by never writing rows; (2) Bearer prefix is checked properly; (3) client history turns are capped at 2000 chars each; (4) the context line uses an exact check-in COUNT query instead of the recent-4 array length.
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { fallbackConfigured, openFallbackStream } from "@/lib/ai-providers";
 
 /**
  * The Ascend Coach — a subscriber-only AI chat that knows the user's
@@ -652,7 +653,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     .insert({ user_id: ent.userId, role: "user", content: message });
 
   const keys = getApiKeys();
-  if (keys.length === 0) {
+  if (keys.length === 0 && !fallbackConfigured()) {
     return NextResponse.json(
       { error: "Coach is temporarily unavailable" },
       { status: 503 }
@@ -667,9 +668,38 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // produces a first token inside it, the honest busy answer below is
   // returned — fast — instead of the old 45s stack of serial timeouts.
   const deadline = Date.now() + OVERALL_BUDGET_MS;
-  const winner = await selectAttempt(keys, system, turns, deadline);
+  const winner =
+    keys.length > 0 ? await selectAttempt(keys, system, turns, deadline) : null;
 
-  if (!winner) {
+  // Unified delta source for the response stream below: either the
+  // winning Gemini attempt or a fallback-provider stream (Groq →
+  // NVIDIA → OpenRouter → Cloudflare) opened when the whole Gemini
+  // ladder produced nothing — the "never runs out" safety net added
+  // 2026-10-21. Both expose the same firstText/nextDelta/cancel shape.
+  let source: {
+    firstText: string;
+    nextDelta: () => Promise<string | null>;
+    cancel: () => void;
+  } | null = winner
+    ? {
+        firstText: winner.firstText,
+        nextDelta: winner.attempt.nextDelta,
+        cancel: winner.attempt.cancel,
+      }
+    : null;
+  if (!source) {
+    const fb = await openFallbackStream({
+      system,
+      messages: turns,
+      maxTokens: 4096,
+      temperature: 0.7,
+      timeoutMs: 20_000,
+      firstTokenTimeoutMs: 3_500,
+    });
+    if (fb) source = fb;
+  }
+
+  if (!source) {
     return NextResponse.json(
       {
         error: "coach_busy",
@@ -685,12 +715,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // stream ends — including a partial reply if the stream dies
   // mid-way, since that is what the user actually saw; an empty
   // stream persists nothing.
-  const attempt = winner.attempt;
+  const attempt = source;
   const encoder = new TextEncoder();
-  let full = winner.firstText;
+  let full = source.firstText;
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      controller.enqueue(encoder.encode(winner.firstText));
+      controller.enqueue(encoder.encode(source.firstText));
       try {
         for (;;) {
           const delta = await attempt.nextDelta();

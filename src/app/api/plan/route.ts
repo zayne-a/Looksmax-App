@@ -31,6 +31,7 @@ import type {
 } from "@/lib/types";
 import { buildFoundations, buildStubPlan, getRelevantKbExcerpts } from "@/lib/kb";
 import { extractProductTypes, topTriggerSources } from "@/lib/eval";
+import { completeWithFallback, fallbackConfigured } from "@/lib/ai-providers";
 
 const PRIMARY_MODEL = "gemini-3.8-flash";
 const FALLBACK_MODEL = "gemini-3.6-flash";
@@ -388,6 +389,18 @@ Example 3 — inputs: combination skin, pigmentation 66/100, goalRanking ["de-ta
 - sample task: {"title": "SPF 50+ PA++++ — daily, with reapplication", "detail": "Two finger-lengths: face, ears, neck, every AM before you leave. Reapply every 2–3 hours outdoors — no exceptions on high-UV days.", "frequency": "daily", "whyYou": "because you ranked de-tan as your #1 goal and you're outdoors most of the day — sunscreen is what stops new tanning; the brighteners only work on top of it"}
 - sample task: {"title": "Vitamin C serum 10–15% — 3 drops, AM", "detail": "Three drops on dry skin after cleansing, before moisturiser. Mid-tier types only — the molecule matters, not the label.", "frequency": "daily", "whyYou": "because your pigmentation reading is elevated (66/100) and de-tan is your #1 goal — vitamin C is the AM brightener paired with your PM azelaic acid"}`;
 
+/**
+ * Compact variant of the system prompt for fallback providers: the
+ * full prompt MINUS the few-shot examples (rules + schema kept —
+ * they sit before the examples). Groq's free tier caps a whole
+ * request at 8,000 tokens/min, so fallback plan calls pair this
+ * with a trimmed draft and a smaller output ask (see runPoolText).
+ */
+const SYSTEM_PROMPT_COMPACT = SYSTEM_PROMPT.slice(
+  0,
+  SYSTEM_PROMPT.indexOf("FEW-SHOT EXAMPLES")
+).trimEnd();
+
 function userDataBlock(req: PlanRequest, kbExcerpts: string): string {
   return [
     "## User measurements (deterministic scan)",
@@ -574,7 +587,8 @@ async function runPoolText<T>(
   userMessage: string,
   timeoutMs: number,
   deadline: number,
-  parse: (text: string) => T | null
+  parse: (text: string) => T | null,
+  fallback?: { system: string; user: string; maxTokens: number }
 ): Promise<T | null> {
   const keys = getApiKeys();
   if (keys.length === 0) return null;
@@ -616,7 +630,60 @@ async function runPoolText<T>(
     }
   }
 
-  console.warn("[plan] generation job exhausted all keys");
+  // Gemini pool exhausted — try the independent-provider fallback
+  // chain (Groq → NVIDIA → OpenRouter → Cloudflare) before giving up
+  // on this job. The output goes through the SAME parse + validation
+  // as Gemini output, so a fallback part is held to the same schema
+  // and safety bar; anything that fails validation is discarded.
+  // Two retry shapes, both observed live (2026-10-21): a served part
+  // rejected for a banned word ("hunger hormones") earns ONE retry
+  // with an explicit vocabulary constraint appended; a round where no
+  // provider served at all (free-tier minute caps) earns a pause and
+  // another round when the deadline comfortably allows — the caps
+  // refill every minute, and the 240s background pass exists exactly
+  // for this.
+  const VOCAB_HINT =
+    "\n\nVOCABULARY CONSTRAINT (a previous draft was rejected for this): never use the words hormone, hormones, hormonal, testosterone, steroid, surgery, filler, botox, melatonin, diagnosis, diagnosed. Say 'hunger signals' instead of 'hunger hormones' and 'stress signals' instead of naming stress chemicals.";
+  let vocabHint = "";
+  for (let round = 0; round < 3; round += 1) {
+    if (deadline - Date.now() < 6_000) break;
+    const fb = await completeWithFallback({
+      system: (fallback?.system ?? systemPrompt) + vocabHint,
+      messages: [{ role: "user", content: fallback?.user ?? userMessage }],
+      json: true,
+      // Compact ask (compact prompt + trimmed draft + ~2k output):
+      // Groq's free tier rejects any single request over its 8,000
+      // tokens/min cap with HTTP 413 — the full-size Gemini request
+      // can never fit, this one can.
+      maxTokens: fallback?.maxTokens ?? 2048,
+      temperature: 0.7,
+      // Slow free endpoints (NVIDIA) need more than the Gemini
+      // per-attempt budget, especially in the 240s background pass;
+      // the deadline still clamps every attempt. 30s (not 45s):
+      // at 45s two NVIDIA timeouts ate a whole background window
+      // before OpenRouter was ever reached (observed 2026-10-21).
+      timeoutMs: 30_000,
+      deadline,
+      // Groq's models, the best NVIDIA keys' models, OpenRouter —
+      // then stop: more attempts are timeouts, not coverage.
+      maxAttempts: 10,
+    });
+    if (fb) {
+      const parsed = parse(fb.text);
+      if (parsed !== null) return parsed;
+      console.warn("[plan] fallback provider output failed validation");
+      if (vocabHint) break;
+      vocabHint = VOCAB_HINT;
+      continue;
+    }
+    if (deadline - Date.now() > 30_000) {
+      await new Promise((r) => setTimeout(r, 20_000));
+      continue;
+    }
+    break;
+  }
+
+  console.warn("[plan] generation job exhausted all keys and providers");
   return null;
 }
 
@@ -683,6 +750,17 @@ async function generateSection(
   draft: PlanSection,
   deadline: number
 ): Promise<PlanSection | null> {
+  // Fallback-size draft: task titles + frequencies only (the detail
+  // text is what the AI is being asked to WRITE, so the fallback
+  // prompt loses nothing it needs) over a shortened KB excerpt.
+  const trimmedDraft = {
+    ...draft,
+    weeks: draft.weeks.map((w) => ({
+      week: w.week,
+      focus: w.focus,
+      tasks: w.tasks.map((t) => ({ title: t.title, frequency: t.frequency })),
+    })),
+  } as unknown as PlanSection;
   return runPoolText(
     SYSTEM_PROMPT + SECTION_MODE_SUFFIX,
     buildSectionMessage(req, kbExcerpts, draft),
@@ -697,10 +775,18 @@ async function generateSection(
         parsed.whyForYou,
         ...parsed.weeks.flatMap((w) => [
           w.focus,
-          ...w.tasks.flatMap((t) => [t.title, t.detail, t.frequency]),
+          // whyYou included (2026-10-21): a fallback-provider section
+          // once passed this check while its whyYou text tripped the
+          // merged-plan filter — scan every field the merge will see.
+          ...w.tasks.flatMap((t) => [t.title, t.detail, t.frequency, t.whyYou]),
         ]),
       ].join("\n");
       return passesSafetyText(sectionText) ? parsed : null;
+    },
+    {
+      system: SYSTEM_PROMPT_COMPACT + SECTION_MODE_SUFFIX,
+      user: buildSectionMessage(req, kbExcerpts.slice(0, 6000), trimmedDraft),
+      maxTokens: 2048,
     }
   );
 }
@@ -726,6 +812,11 @@ async function generateFrame(
         ...parsed.priorityFixes.flatMap((f) => [f.title, f.why]),
       ].join("\n");
       return passesSafetyText(frameText) ? parsed : null;
+    },
+    {
+      system: SYSTEM_PROMPT_COMPACT + FRAME_MODE_SUFFIX,
+      user: buildFrameMessage(req, kbExcerpts.slice(0, 6000), draft),
+      maxTokens: 1024,
     }
   );
 }
@@ -743,7 +834,8 @@ async function generatePremiumPlan(
   deadline: number
 ): Promise<{ plan: AscendPlan; source: "gemini" | "stub" }> {
   const stub = buildStubPlan(req.measurements ?? null, req.quiz);
-  if (getApiKeys().length === 0) return { plan: stub, source: "stub" };
+  if (getApiKeys().length === 0 && !fallbackConfigured())
+    return { plan: stub, source: "stub" };
   const kbExcerpts = getRelevantKbExcerpts(req.measurements, req.quiz);
 
   const [frame, ...aiSections] = await Promise.all([
@@ -921,9 +1013,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json(res);
     }
 
-    // PREMIUM tier: two-pass AI curation. With no keys configured it
-    // degrades to the same deterministic plan as free.
-    if (getApiKeys().length === 0) {
+    // PREMIUM tier: two-pass AI curation. With no AI configured at all
+    // it degrades to the same deterministic plan as free.
+    if (getApiKeys().length === 0 && !fallbackConfigured()) {
       const plan = buildStubPlan(planReq.measurements ?? null, planReq.quiz);
       logDiversity(plan);
       const res: PlanResponse = { plan, source: "stub", tier };
