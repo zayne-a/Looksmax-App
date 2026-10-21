@@ -72,7 +72,7 @@ export default function MyShelf({
   suggestions.push("SPF 50 sunscreen", "Moisturiser");
   const skinTasks =
     plan?.sections.find((s) => s.id === "skin")?.weeks[0]?.tasks ?? [];
-  for (const t of skinTasks.slice(0, 2)) {
+  for (const t of skinTasks.filter((t) => !t.locked).slice(0, 2)) {
     if (!suggestions.includes(t.title)) suggestions.push(t.title);
   }
 

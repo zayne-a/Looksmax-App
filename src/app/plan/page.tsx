@@ -477,10 +477,12 @@ function BuildingScreen({
 /*                                                                     */
 /* v2 (audited 2026-10-20): the gate is REAL, not presentational.      */
 /* /api/plan derives the tier from the caller's account server-side    */
-/* and truncates free plans before responding — past the free           */
-/* allowance, task content is replaced with locked placeholders on     */
-/* the server, so nothing real ships behind this blur. The split        */
-/* below only decides what renders visible vs veiled.                  */
+/* and truncates free plans before responding — past the free          */
+/* allowance, a task's instructions are stubbed out on the server, so  */
+/* nothing instructional ever ships to a free client. v3 (Zayne,      */
+/* 2026-10-21): locked tasks keep their REAL titles, so the full      */
+/* 48-step protocol renders below — every step visible as a named,    */
+/* locked row; only the how-to is gated.                              */
 /* ------------------------------------------------------------------ */
 
 function LockIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
@@ -502,6 +504,37 @@ function LockIcon({ className = "h-3.5 w-3.5" }: { className?: string }) {
       />
       <circle cx="12" cy="15.25" r="1.4" fill="currentColor" />
     </svg>
+  );
+}
+
+/** A locked step: the real title and cadence are visible — the step is
+ *  plainly part of YOUR protocol — but its instructions never shipped
+ *  to this client, so there is nothing here to blur or peek at. */
+function LockedTaskItem({ task }: { task: PlanTask }) {
+  return (
+    <li className="flex gap-3 rounded-2xl border border-white/10 bg-white/[0.02] p-3.5">
+      <span
+        aria-hidden
+        className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-gold/50 bg-gold/10 text-gold"
+      >
+        <LockIcon className="h-3 w-3" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+          <p className="font-semibold leading-snug text-bone">{task.title}</p>
+          <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[11px] font-semibold text-muted">
+            {task.frequency}
+          </span>
+          <span className="rounded-full border border-gold/30 bg-gold/10 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-gold-soft">
+            Locked
+          </span>
+        </div>
+        <p className="mt-1 text-sm leading-relaxed text-muted">
+          Part of your protocol — unlock with Pro to see this step in
+          full.
+        </p>
+      </div>
+    </li>
   );
 }
 
@@ -583,9 +616,13 @@ function WeekBlock({
           {week.focus}
         </p>
         <ul className="mt-3 space-y-2.5">
-          {week.tasks.map((task, ti) => (
-            <TaskItem key={ti} task={task} premium={premium} />
-          ))}
+          {week.tasks.map((task, ti) =>
+            task.locked ? (
+              <LockedTaskItem key={ti} task={task} />
+            ) : (
+              <TaskItem key={ti} task={task} premium={premium} />
+            )
+          )}
         </ul>
       </div>
     </div>
@@ -594,59 +631,6 @@ function WeekBlock({
 
 function sectionTaskCount(section: PlanSection): number {
   return section.weeks.reduce((n, w) => n + w.tasks.length, 0);
-}
-
-/** Split a section into the free preview (first N tasks, earliest weeks
- *  first) and the locked remainder. */
-function splitSection(section: PlanSection): {
-  visible: PlanWeek[];
-  locked: PlanWeek[];
-} {
-  let budget = FREE_TASKS_PER_SECTION;
-  const visible: PlanWeek[] = [];
-  const locked: PlanWeek[] = [];
-  for (const week of section.weeks) {
-    if (budget <= 0) {
-      locked.push(week);
-      continue;
-    }
-    const shown = week.tasks.slice(0, budget);
-    const rest = week.tasks.slice(budget);
-    budget -= shown.length;
-    if (shown.length > 0) visible.push({ ...week, tasks: shown });
-    if (rest.length > 0) locked.push({ ...week, tasks: rest });
-  }
-  return { visible, locked };
-}
-
-function LockedWeeks({ weeks }: { weeks: PlanWeek[] }) {
-  return (
-    <div className="relative mt-5 overflow-hidden rounded-2xl border border-white/10">
-      {/* Veil, not wall: the locked weeks render FULL-SIZE at their real
-          layout and length — the complete protocol visibly exists behind
-          the blur; only readability is gated. */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none select-none blur-[6px]"
-      >
-        <div className="space-y-5 p-4 sm:p-5">
-          {weeks.map((week, wi) => (
-            <WeekBlock key={week.week} week={week} last={wi === weeks.length - 1} />
-          ))}
-        </div>
-      </div>
-      <div
-        aria-hidden
-        className="absolute inset-0 bg-gradient-to-b from-transparent via-ink/20 to-ink/75"
-      />
-      <div className="absolute inset-x-0 bottom-3 flex justify-center">
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-gold/40 bg-ink/85 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-gold-soft backdrop-blur">
-          <LockIcon />
-          Locked
-        </span>
-      </div>
-    </div>
-  );
 }
 
 function UnlockCard({ total }: { total: number }) {
@@ -660,9 +644,10 @@ function UnlockCard({ total }: { total: number }) {
           Your full protocol is ready
         </h3>
         <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-muted">
-          You&rsquo;re seeing {FREE_TASKS_PER_SECTION} of your {total}{" "}
-          personalised steps. Every step is already built from your photos
-          and answers — unlock to see it all, plus progress re-scans that
+          All {total} of your personalised steps are listed above — the
+          first {FREE_TASKS_PER_SECTION} in each pillar are open in full.
+          Every step is already built from your photos and answers —
+          unlock to read every step in full, plus progress re-scans that
           re-measure you as you improve.
         </p>
         <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-gold-soft">
@@ -1439,11 +1424,12 @@ export default function PlanPage() {
       </div>
 
       {/* PROTOCOL — teaser gate.
-          The first FREE_TASKS_PER_SECTION tasks of each pillar render in
-          full; everything beyond that renders blurred/locked behind the
-          trial. Measurements, scores and priority fixes above stay fully
-          visible — the free-scan promise. (Gate comment also lives with
-          the LockedWeeks/UnlockCard components.) */}
+          Every step of every pillar renders: the first
+          FREE_TASKS_PER_SECTION tasks of each pillar in full, the rest as
+          named locked rows (their instructions never shipped to this
+          client). Measurements, scores and priority fixes above stay
+          fully visible — the free-scan promise. (Gate comment also lives
+          with the LockedTaskItem/UnlockCard components.) */}
       <section className="mt-14 space-y-6">
         <SectionHeading
           align="left"
@@ -1452,13 +1438,20 @@ export default function PlanPage() {
           sub={
             ownerMode
               ? "Weeks 1–4 of your 12-week protocol: face, skin, body, sleep, water, presence — sequenced week by week. Owner test mode: every step is open."
-              : "Weeks 1–4 of your 12-week protocol: face, skin, body, sleep, water, presence — sequenced week by week. The first 3 steps of each pillar are open; the rest sits under the veil."
+              : "Weeks 1–4 of your 12-week protocol: face, skin, body, sleep, water, presence — sequenced week by week. Every step is listed below; the first 3 steps of each pillar are open in full, the rest unlock with Pro."
           }
         />
+        {!ownerMode && (
+          <p className="max-w-2xl text-sm leading-relaxed text-muted">
+            <span className="font-bold text-bone">
+              Your full protocol: {totalTasks} steps
+            </span>{" "}
+            across {plan.sections.map((s) => s.title).join(", ")} — the
+            first {FREE_TASKS_PER_SECTION} steps in each section are open
+            in full; Pro unlocks every step in full.
+          </p>
+        )}
         {plan.sections.map((section, si) => {
-          const { visible, locked } = ownerMode
-            ? { visible: section.weeks, locked: [] as PlanWeek[] }
-            : splitSection(section);
           return (
           <Reveal key={section.id} delay={Math.min(si * 0.06, 0.2)}>
             <Card>
@@ -1513,16 +1506,15 @@ export default function PlanPage() {
                 </p>
               )}
               <div className="mt-6">
-                {visible.map((week, wi) => (
+                {section.weeks.map((week, wi) => (
                   <WeekBlock
                     key={week.week}
                     week={week}
                     premium
-                    last={wi === visible.length - 1}
+                    last={wi === section.weeks.length - 1}
                   />
                 ))}
               </div>
-              {locked.length > 0 && <LockedWeeks weeks={locked} />}
             </Card>
             {si === firstLockedSectionIdx && !ownerMode && (
               <UnlockCard total={totalTasks} />
@@ -1571,7 +1563,7 @@ export default function PlanPage() {
       </Reveal>
 
       {/* Sticky unlock bar — sells both halves of the subscription: every
-          step unblurred AND the deep-curated regeneration of the plan.
+          step in full AND the deep-curated regeneration of the plan.
           Hidden in owner test mode (nothing left to unlock). */}
       {!ownerMode && (
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-gold/25 bg-ink/85 backdrop-blur-md">
@@ -1582,7 +1574,7 @@ export default function PlanPage() {
           <p className="text-sm font-bold leading-snug text-bone">
             Your protocol is ready — unlock it
             <span className="block text-xs font-semibold text-gold-soft">
-              Phase 1 unblurred today — Phases 2–3 unlock with your weekly check-ins
+              Phase 1 in full today — Phases 2–3 unlock with your weekly check-ins
             </span>
           </p>
           <Button href="/paywall" className="shrink-0 px-4 py-2.5 text-sm">

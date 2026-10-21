@@ -300,8 +300,8 @@ export default function DashboardPage() {
                   Unlock the full protocol
                 </h2>
                 <p className="mt-1 max-w-md text-sm leading-relaxed text-muted">
-                  Pro unblurs every step of your plan, switches on the
-                  deep-curated AI plan, and keeps unlimited rescans.
+                  Pro unlocks every step of your plan in full, switches on
+                  the deep-curated AI plan, and keeps unlimited rescans.
                   Monthly and Yearly start with a 3-day free trial.
                 </p>
               </div>
