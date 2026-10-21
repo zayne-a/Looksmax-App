@@ -38,7 +38,7 @@ function Cta({
     <button
       type="button"
       onClick={onClick}
-      className="w-full rounded-full bg-white px-6 py-4 font-display text-base font-black uppercase tracking-wide text-black transition active:scale-[0.98]"
+      className="w-full rounded-full bg-white px-6 py-4 font-display text-base font-black tracking-wide text-black transition active:scale-[0.98]"
     >
       {children}
     </button>
@@ -133,7 +133,7 @@ export default function StartPage() {
       )}
       <div className="relative mt-auto px-6 pb-4 pt-40">
         <Eyebrow>The two realities</Eyebrow>
-        <h2 className="mt-3 font-display text-4xl font-black uppercase leading-[1.02] tracking-tight">
+        <h2 className="mt-3 font-display text-4xl font-black leading-[1.02] tracking-tight">
           {row?.headline || fallbackHeadline}
         </h2>
         <p className="mt-4 max-w-md text-[15px] leading-relaxed text-white/75">
@@ -196,7 +196,7 @@ export default function StartPage() {
           {step === 0 && (
             <div className="flex flex-1 flex-col px-6 pb-6 pt-16">
               <Eyebrow>PSL · Looksmax · Ascend</Eyebrow>
-              <h1 className="mt-4 font-display text-5xl font-black uppercase leading-[0.98] tracking-tight">
+              <h1 className="mt-4 font-display text-5xl font-black leading-[0.98] tracking-tight">
                 Become
                 <br />
                 top-tier
@@ -220,7 +220,7 @@ export default function StartPage() {
           {step === 1 && (
             <div className="flex flex-1 flex-col px-6 pb-6 pt-10">
               <Eyebrow>The dating reality</Eyebrow>
-              <h2 className="mt-3 font-display text-4xl font-black uppercase leading-[1.02] tracking-tight">
+              <h2 className="mt-3 font-display text-4xl font-black leading-[1.02] tracking-tight">
                 80% of men are rated below average
               </h2>
               <p className="mt-4 text-[15px] leading-relaxed text-white/70">
@@ -263,7 +263,7 @@ export default function StartPage() {
           {step === 2 && (
             <div className="flex flex-1 flex-col px-6 pb-6 pt-10">
               <Eyebrow>The halo effect</Eyebrow>
-              <h2 className="mt-3 font-display text-4xl font-black uppercase leading-[1.02] tracking-tight">
+              <h2 className="mt-3 font-display text-4xl font-black leading-[1.02] tracking-tight">
                 Your face speaks before you do
               </h2>
               <p className="mt-4 text-[15px] leading-relaxed text-white/70">
@@ -321,7 +321,7 @@ export default function StartPage() {
           {step === 5 && (
             <div className="flex flex-1 flex-col px-6 pb-6 pt-10">
               <Eyebrow>The PSL scale</Eyebrow>
-              <h2 className="mt-3 font-display text-4xl font-black uppercase leading-[1.02] tracking-tight">
+              <h2 className="mt-3 font-display text-4xl font-black leading-[1.02] tracking-tight">
                 You&apos;ve been rated your whole life
               </h2>
               <p className="mt-4 text-[15px] leading-relaxed text-white/70">
@@ -375,7 +375,7 @@ export default function StartPage() {
           {step === 6 && (
             <div className="flex flex-1 flex-col px-6 pb-6 pt-10">
               <Eyebrow>The research</Eyebrow>
-              <h2 className="mt-3 font-display text-4xl font-black uppercase leading-[1.02] tracking-tight">
+              <h2 className="mt-3 font-display text-4xl font-black leading-[1.02] tracking-tight">
                 This isn&apos;t opinion. It&apos;s measured.
               </h2>
               <div className="mt-8 space-y-3">
