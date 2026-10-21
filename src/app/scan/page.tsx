@@ -6,6 +6,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useApp } from "@/lib/store";
 import { saveScan } from "@/lib/account";
 import { saveScanPhoto } from "@/lib/scan-photos";
+import AscendTheatre from "@/components/AscendTheatre";
+import { pslScore, pslTier } from "@/lib/psl";
 import {
   analyzeSkin,
   checkPhotoQuality,
@@ -429,6 +431,13 @@ export default function ScanPage() {
   const { quiz, setMeasurements, setFrontPhoto, setSavedScanId, frontPhoto } =
     useApp();
 
+  // The side-profile photo (data URL), kept on this device only and
+  // saved next to the front photo when the scan persists.
+  const [sidePhoto, setSidePhoto] = useState<string | null>(null);
+  // Set when the analysis lands — the theatre reveal plays before the
+  // results open (the PSL mechanism: score first, framed properly).
+  const [theatre, setTheatre] = useState<FaceMeasurements | null>(null);
+
   // Persist the finished scan to the user's account when logged in
   // (no-op logged out). The row id lets the plan page link its plan.
   // The scan's photo is saved alongside it ON THIS DEVICE ONLY (never
@@ -438,6 +447,7 @@ export default function ScanPage() {
       if (id) {
         setSavedScanId(id);
         if (frontPhoto) void saveScanPhoto(id, frontPhoto);
+        if (sidePhoto) void saveScanPhoto(`${id}:side`, sidePhoto);
       }
     });
   };
@@ -652,6 +662,13 @@ export default function ScanPage() {
       if (prev) URL.revokeObjectURL(prev);
       return URL.createObjectURL(file);
     });
+    // Keep a copy so the side profile is saved with the scan (device
+    // only, never uploaded — same rule as the front photo).
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") setSidePhoto(reader.result);
+    };
+    reader.readAsDataURL(file);
   };
 
   const removePhoto = (
@@ -667,6 +684,8 @@ export default function ScanPage() {
       setError(null);
       setIntakeError(null);
       setFrontPhoto(null);
+    } else {
+      setSidePhoto(null);
     }
   };
 
@@ -722,7 +741,8 @@ export default function ScanPage() {
       };
       setMeasurements(measurements);
       persistScan(measurements);
-      router.push("/plan");
+      setPhase("idle");
+      setTheatre(measurements);
     } catch {
       // Graceful fallback: never leave the user stuck, and never show
       // raw exception text (audit fix 2026-10-21 — WASM/model errors
@@ -867,7 +887,9 @@ export default function ScanPage() {
                     +
                   </span>
                   <span className="text-sm font-bold text-bone">Side profile</span>
-                  <span className="text-xs text-muted">Tap to upload</span>
+                  <span className="text-xs text-muted">
+                    Turn a full 90° — your jawline only exists from this angle
+                  </span>
                 </button>
               ) : (
                 <button
@@ -882,7 +904,7 @@ export default function ScanPage() {
             </ScanFrame>
             <p className="mt-2 text-center text-xs font-bold text-bone">
               Side profile{" "}
-              <span className="font-normal text-muted">(optional)</span>
+              <span className="font-normal text-muted">(don&apos;t skip it)</span>
             </p>
           </div>
         </div>
@@ -979,6 +1001,12 @@ export default function ScanPage() {
                   Add your front photo to unlock the analysis.
                 </p>
               )}
+              {frontUrl && !sideUrl && (
+                <p className="mt-3 text-center text-xs font-semibold text-gold-soft">
+                  No side profile, no jawline record. People judge you from
+                  every angle — add it above before you run this.
+                </p>
+              )}
             </motion.div>
           )}
         </AnimatePresence>
@@ -1038,6 +1066,20 @@ export default function ScanPage() {
           onClose={() => setCameraOpen(false)}
           onUnavailable={handleCameraUnavailable}
           onUsePhoto={handleCameraPhoto}
+        />
+      )}
+
+      {/* The reveal: staged analysis landing on the ascend countdown */}
+      {theatre && (
+        <AscendTheatre
+          measured={theatre.landmarksDetected}
+          psl={theatre.landmarksDetected ? pslScore(theatre) : null}
+          tier={
+            theatre.landmarksDetected
+              ? pslTier(pslScore(theatre)).label
+              : null
+          }
+          onDone={() => router.push("/plan")}
         />
       )}
     </main>
