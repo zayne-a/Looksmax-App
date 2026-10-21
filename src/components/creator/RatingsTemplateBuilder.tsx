@@ -99,8 +99,9 @@ export default function RatingsTemplateBuilder() {
       });
     });
 
-    // Photo last: the large circle overlaps the first card row.
-    drawPhotoCircle(ctx, img, t, 540, 448, 278);
+    // Photo last: the circle overlaps the first card row. His disc
+    // measures centre (540, 408), r 240 on his own export.
+    drawPhotoCircle(ctx, img, t, 540, 408, 240);
   }, [logo, img, t, gender, psl, potential, eyes, midface, lowerThird, upperThird]);
 
   const download = () => {

@@ -62,7 +62,7 @@ export default function AscendTemplateBuilder() {
 
     drawBackdrop(ctx, W, H, 540, 960);
     drawBrandHeader(ctx, logo, 540, 118, 168, 110);
-    drawPhotoCircle(ctx, img, t, 540, 452, 268);
+    drawPhotoCircle(ctx, img, t, 540, 432, 240);
 
     // Countdown ring — fills and shifts red → yellow → green → mint
     // as the days run down (progress = (90 − days) / 90).
