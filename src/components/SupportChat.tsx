@@ -1,15 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import { usePathname } from "next/navigation";
 import { SUPPORT_AVATAR } from "@/lib/support-avatar";
 
 /**
- * Max — the Ascend support guide (Zayne, 2026-10-21). A floating
- * support chat on every site page EXCEPT the dashboard, where the
- * in-app navigation and the Coach take over. Max answers questions
- * about the app (plans, pricing, protocols, troubleshooting) via
- * /api/support, which runs on its own dedicated AI key.
+ * Max — the Mewmax support guide (Zayne, 2026-10-21; homepage-only
+ * rework 2026-10-22). Max lives on the MAIN HOMEPAGE only: he pops in
+ * with a spring entrance a beat after load, waves a one-time greeting
+ * teaser, and his launcher can be dragged anywhere on screen — the
+ * spot persists in localStorage and the chat panel anchors to wherever
+ * the launcher currently sits. Answers come from /api/support, which
+ * runs on its own dedicated AI key (60 req/day/IP).
  */
 
 type Msg = { role: "user" | "model"; content: string };
@@ -24,23 +27,195 @@ const QUICK = [
 const GREETING =
   "Hey, I'm Max — I know Mewmax inside out. Ask me anything about the scan, plans, pricing or protocols.";
 
+const SIZE = 56; // launcher diameter (h-14 w-14)
+const MARGIN = 8; // min distance from any viewport edge
+const GAP = 12; // launcher ↔ panel gap
+const DRAG_SLOP = 6; // px of movement before a press becomes a drag
+const POS_KEY = "max-launcher-pos";
+const TEASER_KEY = "max-teaser-shown";
+
+const clampN = (v: number, lo: number, hi: number) =>
+  Math.min(Math.max(v, lo), Math.max(lo, hi));
+
+const defaultPos = (w: number, h: number) => ({
+  x: w - SIZE - 20,
+  y: h - SIZE - 20,
+});
+
 export default function SupportChat() {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false);
+  const [view, setView] = useState<"closed" | "open" | "closing">("closed");
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  const [teaser, setTeaser] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  const [vp, setVp] = useState({ w: 0, h: 0 });
   const scrollRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{
+    id: number;
+    sx: number;
+    sy: number;
+    ox: number;
+    oy: number;
+    cx: number;
+    cy: number;
+    moved: boolean;
+  } | null>(null);
+  const suppressClickRef = useRef(false);
+  const closeTimer = useRef<number | null>(null);
+
+  const onHome = pathname === "/";
+
+  /* Position: restore the saved spot (or the classic bottom-right),
+     keep it inside the viewport, and track viewport resizes. */
+  useEffect(() => {
+    if (!onHome) return;
+    try {
+      const raw = window.localStorage.getItem(POS_KEY);
+      if (raw) {
+        const p = JSON.parse(raw) as { x?: unknown; y?: unknown };
+        if (typeof p?.x === "number" && typeof p?.y === "number") {
+          setPos({ x: p.x, y: p.y });
+        }
+      }
+    } catch {
+      /* storage unavailable — fall through to the default spot */
+    }
+    const read = () => {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      setVp({ w, h });
+      setPos((p) => {
+        const base = p ?? defaultPos(w, h);
+        return {
+          x: clampN(base.x, MARGIN, w - SIZE - MARGIN),
+          y: clampN(base.y, MARGIN, h - SIZE - MARGIN),
+        };
+      });
+    };
+    read();
+    window.addEventListener("resize", read);
+    return () => window.removeEventListener("resize", read);
+  }, [onHome]);
+
+  /* One attention beat per session: a greeting teaser slides out a
+     few seconds after the entrance pop, then never repeats. */
+  useEffect(() => {
+    if (!onHome) return;
+    let already = false;
+    try {
+      already = window.sessionStorage.getItem(TEASER_KEY) === "1";
+    } catch {
+      /* ignore */
+    }
+    if (already) return;
+    let t2: number | undefined;
+    const t1 = window.setTimeout(() => {
+      setTeaser(true);
+      try {
+        window.sessionStorage.setItem(TEASER_KEY, "1");
+      } catch {
+        /* ignore */
+      }
+      t2 = window.setTimeout(() => setTeaser(false), 6000);
+    }, 4000);
+    return () => {
+      window.clearTimeout(t1);
+      if (t2) window.clearTimeout(t2);
+    };
+  }, [onHome]);
+
+  useEffect(() => {
+    if (view !== "closed") setTeaser(false);
+  }, [view]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
       top: scrollRef.current.scrollHeight,
       behavior: "smooth",
     });
-  }, [msgs, open, busy]);
+  }, [msgs, view, busy]);
 
-  // The dashboard has its own app chrome + Coach — Max stays out.
-  if (pathname?.startsWith("/dashboard")) return null;
+  useEffect(
+    () => () => {
+      if (closeTimer.current) window.clearTimeout(closeTimer.current);
+    },
+    [],
+  );
+
+  // Homepage only — Max is completely absent everywhere else.
+  if (!onHome) return null;
+
+  const close = () => {
+    setView("closing");
+    closeTimer.current = window.setTimeout(() => setView("closed"), 190);
+  };
+
+  /* ---- drag (pointer events; a clean press-release is a tap) ---- */
+  const onPointerDown = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    setTeaser(false);
+    const base = pos ?? defaultPos(vp.w || SIZE + 40, vp.h || SIZE + 40);
+    dragRef.current = {
+      id: e.pointerId,
+      sx: e.clientX,
+      sy: e.clientY,
+      ox: base.x,
+      oy: base.y,
+      cx: base.x,
+      cy: base.y,
+      moved: false,
+    };
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* capture unsupported — move/up on the button still work */
+    }
+  };
+
+  const onPointerMove = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    const d = dragRef.current;
+    if (!d || e.pointerId !== d.id) return;
+    const dx = e.clientX - d.sx;
+    const dy = e.clientY - d.sy;
+    if (!d.moved && Math.hypot(dx, dy) < DRAG_SLOP) return;
+    if (!d.moved) {
+      d.moved = true;
+      setDragging(true);
+    }
+    d.cx = clampN(d.ox + dx, MARGIN, vp.w - SIZE - MARGIN);
+    d.cy = clampN(d.oy + dy, MARGIN, vp.h - SIZE - MARGIN);
+    setPos({ x: d.cx, y: d.cy });
+  };
+
+  const onPointerEnd = (e: ReactPointerEvent<HTMLButtonElement>) => {
+    const d = dragRef.current;
+    if (!d || e.pointerId !== d.id) return;
+    dragRef.current = null;
+    if (d.moved) {
+      setDragging(false);
+      // The browser still fires a click after a drag — swallow it.
+      suppressClickRef.current = true;
+      try {
+        window.localStorage.setItem(
+          POS_KEY,
+          JSON.stringify({ x: d.cx, y: d.cy }),
+        );
+      } catch {
+        /* ignore */
+      }
+    }
+  };
+
+  const onLauncherClick = () => {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
+    setView("open");
+  };
 
   const send = async (text: string) => {
     const q = text.trim();
@@ -82,29 +257,91 @@ export default function SupportChat() {
     }
   };
 
+  /* ---- panel geometry, anchored to the launcher ---- */
+  const panelW = Math.min(380, Math.max(vp.w - 16, 0));
+  const panelH = Math.min(560, Math.max(vp.h - 16, 0));
+  let panelStyle: React.CSSProperties | undefined;
+  if (pos && vp.w > 0 && vp.h > 0) {
+    const cx = pos.x + SIZE / 2;
+    const cy = pos.y + SIZE / 2;
+    let left = cx * 2 >= vp.w ? pos.x + SIZE - panelW : pos.x;
+    let top = cy * 2 >= vp.h ? pos.y - GAP - panelH : pos.y + SIZE + GAP;
+    left = clampN(left, MARGIN, vp.w - panelW - MARGIN);
+    top = clampN(top, MARGIN, vp.h - panelH - MARGIN);
+    panelStyle = {
+      left,
+      top,
+      width: panelW,
+      height: panelH,
+      transformOrigin: `${clampN(cx - left, 0, panelW)}px ${clampN(cy - top, 0, panelH)}px`,
+    };
+  }
+
+  const teaserOnLeft = pos ? pos.x + SIZE / 2 >= vp.w / 2 : true;
+
   return (
     <>
-      {!open && (
-        <button
-          onClick={() => setOpen(true)}
-          aria-label="Chat with Max, the Mewmax support guide"
-          title="Chat with Max"
-          className="fixed bottom-5 right-5 z-50 block h-14 w-14 rounded-full border border-gold/40 bg-ink/95 shadow-[0_12px_36px_rgba(0,0,0,0.55)] backdrop-blur transition hover:border-gold"
+      {view === "closed" && pos && (
+        <div
+          className="fixed z-50"
+          style={{ left: pos.x, top: pos.y, width: SIZE, height: SIZE }}
         >
-          <span className="block h-full w-full overflow-hidden rounded-full">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={SUPPORT_AVATAR}
-              alt="Max"
-              className="h-full w-full object-cover"
-            />
-          </span>
-          <span className="absolute bottom-0.5 right-0.5 z-10 h-3.5 w-3.5 rounded-full border-2 border-ink bg-emerald-400" />
-        </button>
+          {teaser && (
+            <button
+              onClick={() => {
+                setTeaser(false);
+                setView("open");
+              }}
+              aria-label="Questions? Ask Max — open support chat"
+              className={`max-teaser-in absolute top-1/2 -translate-y-1/2 whitespace-nowrap rounded-full border border-gold/40 bg-ink-3/95 px-3.5 py-2 text-xs font-semibold text-bone shadow-[0_10px_30px_rgba(0,0,0,0.5)] backdrop-blur transition hover:border-gold ${
+                teaserOnLeft
+                  ? "right-[calc(100%+10px)]"
+                  : "left-[calc(100%+10px)]"
+              }`}
+              style={{
+                transformOrigin: teaserOnLeft ? "right center" : "left center",
+              }}
+            >
+              Questions? Ask Max
+            </button>
+          )}
+          <button
+            onPointerDown={onPointerDown}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerEnd}
+            onPointerCancel={onPointerEnd}
+            onClick={onLauncherClick}
+            aria-label="Chat with Max, the Mewmax support guide"
+            title="Chat with Max — drag to move"
+            className={`max-pop-in relative block h-14 w-14 touch-none select-none rounded-full border border-gold/40 bg-ink/95 backdrop-blur transition hover:border-gold ${
+              dragging
+                ? "cursor-grabbing shadow-[0_18px_44px_rgba(0,0,0,0.65)]"
+                : "cursor-grab shadow-[0_12px_36px_rgba(0,0,0,0.55)]"
+            }`}
+          >
+            <span className="pointer-events-none block h-full w-full overflow-hidden rounded-full">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={SUPPORT_AVATAR}
+                alt="Max"
+                draggable={false}
+                className="h-full w-full object-cover"
+              />
+            </span>
+            <span className="pointer-events-none absolute bottom-0.5 right-0.5 z-10 h-3.5 w-3.5 rounded-full border-2 border-ink bg-emerald-400" />
+          </button>
+        </div>
       )}
 
-      {open && (
-        <div className="fixed bottom-4 right-4 z-50 flex h-[min(560px,calc(100dvh-2rem))] w-[min(380px,calc(100vw-2rem))] flex-col overflow-hidden rounded-3xl border border-white/10 bg-ink shadow-[0_24px_60px_rgba(0,0,0,0.6)]">
+      {view !== "closed" && (
+        <div
+          className={`fixed z-50 flex flex-col overflow-hidden rounded-3xl border border-white/10 bg-ink shadow-[0_24px_60px_rgba(0,0,0,0.6)] ${
+            panelStyle
+              ? ""
+              : "bottom-4 right-4 h-[min(560px,calc(100dvh-2rem))] w-[min(380px,calc(100vw-2rem))]"
+          } ${view === "closing" ? "max-panel-out" : "max-panel-in"}`}
+          style={panelStyle}
+        >
           <div className="flex items-center gap-3 border-b border-white/10 px-4 py-3">
             <span className="relative block h-10 w-10 shrink-0">
               <span className="block h-full w-full overflow-hidden rounded-full">
@@ -124,7 +361,7 @@ export default function SupportChat() {
               </p>
             </div>
             <button
-              onClick={() => setOpen(false)}
+              onClick={close}
               aria-label="Close support chat"
               className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 text-muted transition hover:text-bone"
             >
