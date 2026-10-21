@@ -22,13 +22,13 @@ import {
   DownloadButton,
   GenderToggle,
   HowToItem,
+  PhotoAdjustPanel,
   ScoreSliderRow,
   UploadButton,
 } from "./BuilderShell";
 
 const W = 1080;
 const H = 1920;
-const POTENTIAL_YELLOW = "#FACC15";
 
 export default function RatingsTemplateBuilder() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -55,21 +55,18 @@ export default function RatingsTemplateBuilder() {
     if (!canvas || !ctx) return;
 
     drawBackdrop(ctx, W, H, 540, 960);
-    drawBrandHeader(ctx, logo, 540, 124, 156, 100);
-    drawPhotoCircle(ctx, img, t, 540, 460, 200);
+    drawBrandHeader(ctx, logo, 540, 118, 168, 110);
 
     const cards: Array<{
       label: string;
       score: number;
       tier: string;
-      labelColor?: string;
     }> = [
       { label: "PSL", score: psl, tier: scoreTierLabel(psl, gender) },
       {
         label: "POTENTIAL",
         score: potential,
         tier: scoreTierLabel(potential, gender),
-        labelColor: POTENTIAL_YELLOW,
       },
       { label: "EYES", score: eyes, tier: regionLabel(eyes) },
       { label: "MIDFACE", score: midface, tier: regionLabel(midface) },
@@ -84,29 +81,26 @@ export default function RatingsTemplateBuilder() {
         tier: regionLabel(upperThird),
       },
     ];
-    const xs = [45, 565];
-    const ys = [610, 960, 1310];
+    // Grid fills the frame like the reference: 74px outer margins,
+    // three rows running nearly to the bottom edge — no watermark.
+    const xs = [74, 556];
+    const ys = [580, 1033, 1486];
     cards.forEach((c, i) => {
       drawScoreCard(ctx, {
         x: xs[i % 2],
         y: ys[Math.floor(i / 2)],
-        w: 470,
-        h: 320,
+        w: 450,
+        h: 410,
         label: c.label,
         score: c.score,
         tier: c.tier,
         color: barColor(c.score),
         fraction: barFraction(c.score),
-        labelColor: c.labelColor,
       });
     });
 
-    ctx.save();
-    ctx.fillStyle = "rgba(255, 255, 255, 0.35)";
-    ctx.font = "600 34px Inter, system-ui, sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText("M E W M A X", 540, 1790);
-    ctx.restore();
+    // Photo last: the large circle overlaps the first card row.
+    drawPhotoCircle(ctx, img, t, 540, 448, 278);
   }, [logo, img, t, gender, psl, potential, eyes, midface, lowerThird, upperThird]);
 
   const download = () => {
@@ -126,6 +120,7 @@ export default function RatingsTemplateBuilder() {
         <>
           <GenderToggle gender={gender} onChange={setGender} />
           <UploadButton onFile={onFile} hasPhoto={!!img} />
+          {img && <PhotoAdjustPanel t={t} setT={setT} />}
           <ScoreSliderRow label="PSL Rating" value={psl} onChange={setPsl} min={1} max={8} step={0.1} />
           <ScoreSliderRow label="Potential Rating" value={potential} onChange={setPotential} min={1} max={8} step={0.1} />
           <ScoreSliderRow label="Eyes" value={eyes} onChange={setEyes} min={1} max={8} step={0.1} />
@@ -142,7 +137,7 @@ export default function RatingsTemplateBuilder() {
       }
       howTo={
         <>
-          <HowToItem>
+          <HowToItem icon="image">
             Upload an image and drag to reposition, scroll to zoom
           </HowToItem>
           <HowToItem>
@@ -152,7 +147,7 @@ export default function RatingsTemplateBuilder() {
           <HowToItem>
             Switch Male / Female to relabel the score tiers instantly
           </HowToItem>
-          <HowToItem>
+          <HowToItem icon="download">
             Download creates a 1080x1920 image perfect for social media
           </HowToItem>
         </>

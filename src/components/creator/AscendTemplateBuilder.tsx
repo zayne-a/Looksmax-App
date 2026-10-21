@@ -15,6 +15,7 @@ import {
   DownloadButton,
   HowToItem,
   MINT,
+  PhotoAdjustPanel,
   ScoreSliderRow,
   UploadButton,
 } from "./BuilderShell";
@@ -60,8 +61,8 @@ export default function AscendTemplateBuilder() {
     if (!canvas || !ctx) return;
 
     drawBackdrop(ctx, W, H, 540, 960);
-    drawBrandHeader(ctx, logo, 540, 124, 156, 100);
-    drawPhotoCircle(ctx, img, t, 540, 450, 220);
+    drawBrandHeader(ctx, logo, 540, 118, 168, 110);
+    drawPhotoCircle(ctx, img, t, 540, 452, 268);
 
     // Countdown ring — fills and shifts red → yellow → green → mint
     // as the days run down (progress = (90 − days) / 90).
@@ -121,6 +122,7 @@ export default function AscendTemplateBuilder() {
       customize={
         <>
           <UploadButton onFile={onFile} hasPhoto={!!img} />
+          {img && <PhotoAdjustPanel t={t} setT={setT} />}
           <ScoreSliderRow
             label="Days Until Ascend"
             value={days}
@@ -139,14 +141,14 @@ export default function AscendTemplateBuilder() {
       }
       howTo={
         <>
-          <HowToItem>
+          <HowToItem icon="image">
             Upload an image and drag to reposition, scroll to zoom
           </HowToItem>
           <HowToItem>Set the days left until you ascend (0–90)</HowToItem>
           <HowToItem>
             The ring fills and turns green as the deadline closes in
           </HowToItem>
-          <HowToItem>
+          <HowToItem icon="download">
             Download creates a 1080x1920 image perfect for social media
           </HowToItem>
         </>

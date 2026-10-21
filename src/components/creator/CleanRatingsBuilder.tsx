@@ -24,12 +24,12 @@ import {
   DownloadButton,
   GenderToggle,
   HowToItem,
+  PhotoAdjustPanel,
   ScoreSliderRow,
   UploadButton,
 } from "./BuilderShell";
 
 const SIZE = 1080;
-const POTENTIAL_YELLOW = "#FACC15";
 
 interface CleanState {
   logo: HTMLImageElement | null;
@@ -52,13 +52,14 @@ function drawClean(
   ctx.save();
   ctx.translate(0, yOff);
   drawBackdrop(ctx, SIZE, SIZE, 540, 540);
-  drawBrandHeader(ctx, s.logo, 540, 108, 120, 84);
-  drawPhotoCircle(ctx, s.img, s.t, 540, 430, 185);
+  drawBrandHeader(ctx, s.logo, 540, 102, 150, 100);
+  // Same card geometry as the full template: 74px margins, the pair
+  // running low in the square, the photo overlapping them on top.
   drawScoreCard(ctx, {
-    x: 45,
-    y: 580,
-    w: 470,
-    h: 340,
+    x: 74,
+    y: 560,
+    w: 450,
+    h: 415,
     label: "PSL",
     score: s.psl,
     tier: scoreTierLabel(s.psl, s.gender),
@@ -67,18 +68,18 @@ function drawClean(
     anim,
   });
   drawScoreCard(ctx, {
-    x: 565,
-    y: 580,
-    w: 470,
-    h: 340,
+    x: 556,
+    y: 560,
+    w: 450,
+    h: 415,
     label: "POTENTIAL",
     score: s.potential,
     tier: scoreTierLabel(s.potential, s.gender),
     color: barColor(s.potential),
     fraction: barFraction(s.potential),
     anim,
-    labelColor: POTENTIAL_YELLOW,
   });
+  drawPhotoCircle(ctx, s.img, s.t, 540, 395, 238);
   ctx.restore();
 }
 
@@ -207,6 +208,7 @@ export default function CleanRatingsBuilder() {
         <>
           <GenderToggle gender={gender} onChange={setGender} />
           <UploadButton onFile={onFile} hasPhoto={!!img} />
+          {img && <PhotoAdjustPanel t={t} setT={setT} />}
           <ScoreSliderRow
             label="PSL Rating"
             value={psl}
@@ -237,6 +239,7 @@ export default function CleanRatingsBuilder() {
                 busyLabel="Exporting Video..."
                 label="Download Video (.mp4)"
                 variant="outline"
+                icon="video"
               />
             </div>
             {videoDone && (
@@ -257,7 +260,7 @@ export default function CleanRatingsBuilder() {
       }
       howTo={
         <>
-          <HowToItem>
+          <HowToItem icon="image">
             Upload an image and drag to reposition, scroll to zoom
           </HowToItem>
           <HowToItem>
@@ -266,7 +269,7 @@ export default function CleanRatingsBuilder() {
           <HowToItem>
             Switch Male / Female to relabel the tiers instantly
           </HowToItem>
-          <HowToItem>
+          <HowToItem icon="download">
             Download creates a 1080x1080 image, or a 1080x1920 MP4 video
             with an animated intro
           </HowToItem>

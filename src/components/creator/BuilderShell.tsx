@@ -1,8 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import type { Dispatch, ReactNode, SetStateAction } from "react";
 import type { Gender } from "@/lib/creator-tiers";
+import {
+  IDENTITY_TRANSFORM,
+  PHOTO_OFFSET_LIMIT,
+  type PhotoTransform,
+} from "./canvas-kit";
 
 export const MINT = "#5EEAD4";
 
@@ -92,10 +97,33 @@ export function BuilderShell({
   );
 }
 
-export function HowToItem({ children }: { children: ReactNode }) {
+/** The small leading glyphs the reference's How to Use list uses. */
+export function HowToItem({
+  children,
+  icon = "bullet",
+}: {
+  children: ReactNode;
+  icon?: "image" | "bullet" | "download";
+}) {
   return (
     <li className="flex gap-2">
-      <span className="mt-0.5 shrink-0 text-[#5EEAD4]">✓</span>
+      <span className="mt-0.5 shrink-0 text-[#5EEAD4]">
+        {icon === "image" ? (
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <circle cx="9" cy="9" r="2" />
+            <path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21" />
+          </svg>
+        ) : icon === "download" ? (
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <path d="m7 10 5 5 5-5" />
+            <path d="M12 15V3" />
+          </svg>
+        ) : (
+          <span className="text-base leading-none">•</span>
+        )}
+      </span>
       <span>{children}</span>
     </li>
   );
@@ -158,6 +186,95 @@ export function UploadButton({
         Drag the photo on the preview to reposition it. Scroll over it to
         zoom.
       </p>
+    </div>
+  );
+}
+
+function AdjustSliderRow({
+  label,
+  display,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  label: string;
+  display: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (v: number) => void;
+}) {
+  const fill = ((value - min) / (max - min)) * 100;
+  return (
+    <div>
+      <div className="mb-1.5 flex items-baseline justify-between">
+        <label className="text-xs font-medium text-[#c9c9cf]">{label}</label>
+        <span className="text-xs text-[#9b9ba4]">{display}</span>
+      </div>
+      <input
+        type="range"
+        className="creator-range"
+        style={{ ["--fill" as string]: `${fill}%` }}
+        min={min}
+        max={max}
+        step={1}
+        value={value}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
+        aria-label={label}
+      />
+    </div>
+  );
+}
+
+/**
+ * Post-upload fine-tuning panel — the reference shows "Adjust Image
+ * Position & Size" once a photo exists: horizontal / vertical offset
+ * sliders (px), a zoom slider (%), and a reset button. It writes the
+ * same transform state the drag / scroll controls use, so the panel
+ * and the preview stay two-way synced.
+ */
+export function PhotoAdjustPanel({
+  t,
+  setT,
+}: {
+  t: PhotoTransform;
+  setT: Dispatch<SetStateAction<PhotoTransform>>;
+}) {
+  return (
+    <div className="space-y-4 rounded-lg border border-white/10 bg-white/[0.03] p-4">
+      <h3 className="text-sm font-semibold">Adjust Image Position &amp; Size</h3>
+      <AdjustSliderRow
+        label="Horizontal Position"
+        display={`${Math.round(t.x)}px`}
+        value={Math.round(t.x)}
+        min={-PHOTO_OFFSET_LIMIT}
+        max={PHOTO_OFFSET_LIMIT}
+        onChange={(v) => setT((p) => ({ ...p, x: v }))}
+      />
+      <AdjustSliderRow
+        label="Vertical Position"
+        display={`${Math.round(t.y)}px`}
+        value={Math.round(t.y)}
+        min={-PHOTO_OFFSET_LIMIT}
+        max={PHOTO_OFFSET_LIMIT}
+        onChange={(v) => setT((p) => ({ ...p, y: v }))}
+      />
+      <AdjustSliderRow
+        label="Zoom"
+        display={`${Math.round(t.scale * 100)}%`}
+        value={Math.round(t.scale * 100)}
+        min={100}
+        max={400}
+        onChange={(v) => setT((p) => ({ ...p, scale: v / 100 }))}
+      />
+      <button
+        type="button"
+        onClick={() => setT(IDENTITY_TRANSFORM)}
+        className="w-full rounded-lg border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-medium transition-colors hover:border-[#5EEAD4]/60 hover:text-[#5EEAD4]"
+      >
+        Reset Position &amp; Zoom
+      </button>
     </div>
   );
 }
@@ -229,12 +346,14 @@ export function DownloadButton({
   busyLabel,
   label,
   variant = "primary",
+  icon = "download",
 }: {
   onClick: () => void;
   busy?: boolean;
   busyLabel?: string;
   label: string;
   variant?: "primary" | "outline";
+  icon?: "download" | "video";
 }) {
   return (
     <button
@@ -253,7 +372,21 @@ export function DownloadButton({
           {busyLabel ?? "Working..."}
         </>
       ) : (
-        label
+        <>
+          {label}
+          {icon === "download" ? (
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <path d="m7 10 5 5 5-5" />
+              <path d="M12 15V3" />
+            </svg>
+          ) : (
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="m22 8-6 4 6 4V8Z" />
+              <rect x="2" y="6" width="14" height="12" rx="2" />
+            </svg>
+          )}
+        </>
       )}
     </button>
   );

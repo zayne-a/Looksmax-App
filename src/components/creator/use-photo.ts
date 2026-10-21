@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   IDENTITY_TRANSFORM,
+  PHOTO_OFFSET_LIMIT,
   loadImage,
   type PhotoTransform,
 } from "./canvas-kit";
@@ -67,7 +68,13 @@ export function useCanvasPhotoControls(
         e.clientY - drag.current.py
       );
       drag.current = { px: e.clientX, py: e.clientY };
-      setT((prev) => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
+      const clamp = (v: number) =>
+        Math.min(PHOTO_OFFSET_LIMIT, Math.max(-PHOTO_OFFSET_LIMIT, v));
+      setT((prev) => ({
+        ...prev,
+        x: clamp(prev.x + dx),
+        y: clamp(prev.y + dy),
+      }));
     };
     const up = () => {
       drag.current = null;
