@@ -290,21 +290,14 @@ export function drawScoreCard(
   ctx.fillStyle = "#ffffff";
   const tierX = dotCx + dotR + h * 0.055;
   const tierAvail = x + w - pad - tierX;
-  // The tier text zone is a FIXED two-line block, like the
-  // reference: line 1 rides the number line and line 2 sits one
-  // line height below it — the second line's slot is reserved
-  // whether or not the tier wraps, so the fixed bar below keeps
-  // the same clear gap to the text in every card of a row. (The
-  // wrapped line used to be placed from the number baseline
-  // instead, dropping it ~9px lower, onto the bar's glow.)
-  const tierLine1Y = baseY - h * 0.022;
-  const tierLine2Y = tierLine1Y + tierFont * 1.18;
+  // Split the tier into one or two lines, both inside the tier
+  // column beside the number (the reference keeps the wrapped word
+  // in the column, grouped with line 1 — it never drops to the
+  // card's left edge).
+  let tierLines: string[];
   if (ctx.measureText(opts.tier).width <= tierAvail) {
-    ctx.fillText(opts.tier, tierX, tierLine1Y);
+    tierLines = [opts.tier];
   } else {
-    // Long tier names wrap like the reference: first words ride the
-    // number line, the rest drop to the reserved second line at the
-    // left edge.
     const words = opts.tier.split(" ");
     let line1 = "";
     for (const word of words) {
@@ -313,9 +306,23 @@ export function drawScoreCard(
       line1 = next;
     }
     const line2 = opts.tier.slice(line1.length).trim();
-    ctx.fillText(line1, tierX, tierLine1Y);
-    if (line2) ctx.fillText(line2, x + pad, tierLine2Y);
+    tierLines = line2 ? [line1, line2] : [line1];
   }
+  // The tier block is anchored as a group, centred on the number
+  // line like the reference (measured from the reference card:
+  // the dot, the number and the tier block share one vertical
+  // centre; a wrapped line 1 rises by half the line height and
+  // line 2 lands on the number baseline, leaving the whole gap
+  // beneath the block, above the bar). Line height is a tight
+  // 0.95em — the previous 1.18em spread the lines so far apart
+  // that line 2 fell onto the bar's glow.
+  const tierCapH = tierFont * 0.76;
+  const tierLineH = tierFont * 0.95;
+  const tierBlockH = tierCapH + (tierLines.length - 1) * tierLineH;
+  const tierFirstY = dotCy - tierBlockH / 2 + tierCapH;
+  tierLines.forEach((line, i) => {
+    ctx.fillText(line, tierX, tierFirstY + i * tierLineH);
+  });
 
   // Progress bar: thick, rounded, tier-coloured, glowing.
   const barX = x + pad;
