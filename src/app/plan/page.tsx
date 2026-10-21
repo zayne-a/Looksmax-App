@@ -9,6 +9,7 @@ import { isOwnerTestMode, setOwnerTestMode } from "@/lib/admin";
 import { getSupabase } from "@/lib/supabase";
 import { listCheckins, savePlan, setActivePlanId } from "@/lib/account";
 import JourneyRoadmap from "@/components/JourneyRoadmap";
+import PslDeck from "@/components/PslDeck";
 import ChangePlan from "@/components/ChangePlan";
 import { SECTION_GUIDES, getGuide } from "@/lib/guides";
 import { getOrStartJourneyStart } from "@/lib/journey";
@@ -1369,6 +1370,13 @@ export default function PlanPage() {
           </p>
         </Reveal>
       </div>
+
+      {/* PSL DECK — the score in the community's own language */}
+      {measurements && measurements.landmarksDetected && (
+        <Reveal className="mx-auto mt-12 max-w-xl">
+          <PslDeck measurements={measurements} photoUrl={frontPhoto} />
+        </Reveal>
+      )}
 
       {/* GLOW-UP PREVIEW */}
       {frontPhoto && (
