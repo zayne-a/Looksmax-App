@@ -666,7 +666,9 @@ function UnlockCard({ total }: { total: number }) {
           </Button>
         </div>
         <p className="mt-3 text-xs text-muted">
-          {trialDays}-day free trial on Monthly &amp; Yearly · Cancel anytime
+          {trialDays > 0
+            ? `${trialDays}-day free trial on Monthly & Yearly · Cancel anytime`
+            : "Billed from day one · Cancel anytime"}
         </p>
       </Card>
     </div>
