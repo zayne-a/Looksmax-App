@@ -9,13 +9,15 @@ import {
   type FunnelMedia,
   type FunnelSlotDef,
 } from "@/lib/funnel-media";
+import { AdminChecking } from "@/components/admin/AdminGate";
+import NotFoundExperience from "@/components/NotFoundExperience";
 
 /**
  * /admin/funnel — Zayne's own console for the onboarding funnel's
  * media slots (2026-10-21). Everything here talks to the admin API
  * routes with the session's Bearer token; the server re-checks
  * is_admin on every call, so this page's gate is only cosmetic —
- * a non-admin simply gets 403s and sees the "Admins only" state.
+ * a non-admin simply gets 404s and sees the not-found state.
  */
 
 type Gate = "loading" | "denied" | "ready";
@@ -70,6 +72,12 @@ export default function AdminFunnelPage() {
 
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-12 sm:py-16">
+      {gate === "loading" && <AdminChecking />}
+
+      {gate === "denied" && <NotFoundExperience />}
+
+      {gate === "ready" && token && (
+        <>
       <Eyebrow>Funnel media · admin</Eyebrow>
       <h1 className="mt-3 font-display text-3xl font-extrabold tracking-tight text-bone sm:text-4xl">
         Funnel videos &amp; quotes
@@ -80,40 +88,25 @@ export default function AdminFunnelPage() {
         Upload a file or edit the text, hit Save, and the live funnel
         picks it up. A slot with no media (or switched off) simply
         doesn&apos;t render.{" "}
-        <Link href="/admin/portal" className="font-semibold text-gold hover:underline">
-          Portal review queues →
+        <Link href="/admin" className="font-semibold text-gold hover:underline">
+          Admin home →
         </Link>{" "}
         <Link href="/admin/content" className="font-semibold text-gold hover:underline">
           All content →
         </Link>{" "}
         <Link href="/admin/users" className="font-semibold text-gold hover:underline">
           Users &amp; Pro →
+        </Link>{" "}
+        <Link href="/admin/portal" className="font-semibold text-gold hover:underline">
+          Portal review queues →
+        </Link>{" "}
+        <Link href="/admin/forum" className="font-semibold text-gold hover:underline">
+          Forum →
+        </Link>{" "}
+        <Link href="/admin/settings" className="font-semibold text-gold hover:underline">
+          App settings →
         </Link>
       </p>
-
-      {gate === "loading" && (
-        <Card className="mt-10">
-          <p className="text-sm text-muted">Checking your admin access…</p>
-        </Card>
-      )}
-
-      {gate === "denied" && (
-        <Card className="mt-10">
-          <p className="font-display text-lg font-bold text-bone">
-            Admins only
-          </p>
-          <p className="mt-2 text-sm leading-relaxed text-muted">
-            This console is restricted to the site owner&apos;s admin
-            account. If that&apos;s you, sign in with the admin email
-            and reload this page.
-          </p>
-          <Button href="/login" className="mt-5">
-            Sign in
-          </Button>
-        </Card>
-      )}
-
-      {gate === "ready" && token && (
         <div className="mt-10 space-y-6">
           {FUNNEL_SLOTS.map((def) => (
             <SlotEditor
@@ -133,6 +126,7 @@ export default function AdminFunnelPage() {
             </Link>
           </p>
         </div>
+        </>
       )}
     </div>
   );
