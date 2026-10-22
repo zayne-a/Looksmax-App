@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  downloadBlob,
   downloadCanvas,
   drawBackdrop,
   drawBrandHeader,
@@ -11,10 +10,10 @@ import {
   loadImage,
   type PhotoTransform,
 } from "./canvas-kit";
+import { exportMp4Video } from "./video-export";
 import {
   barColor,
   barFraction,
-  easeOutCubic,
   scoreTierLabel,
   type Gender,
 } from "@/lib/creator-tiers";
@@ -132,73 +131,14 @@ export default function CleanRatingsBuilder() {
   const downloadVideo = async () => {
     setVideoError(null);
     setVideoDone(false);
-    if (typeof VideoEncoder === "undefined") {
-      setVideoError(
-        "Your browser does not support video encoding. Please use Chrome, Edge, or Safari 16.4+."
-      );
-      return;
-    }
     setBusyVid(true);
     try {
-      const { Muxer, ArrayBufferTarget } = await import("mp4-muxer");
-      const VW = 1080;
-      const VH = 1920;
-      const FPS = 30;
-      const FRAMES = 45; // 1.5s — intro animates over the first 0.5s
-      const off = new OffscreenCanvas(VW, VH);
-      const octx = off.getContext("2d");
-      if (!octx) throw new Error("Canvas is unavailable in this browser.");
-      const muxer = new Muxer({
-        target: new ArrayBufferTarget(),
-        video: { codec: "avc", width: VW, height: VH },
-        fastStart: "in-memory",
+      await exportMp4Video({
+        width: 1080,
+        height: 1920,
+        filename: "mewmax-clean-ratings.mp4",
+        drawFrame: (ctx, p) => drawClean(ctx, state, (1920 - SIZE) / 2, p),
       });
-      let encError: Error | null = null;
-      const encoder = new VideoEncoder({
-        output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
-        error: (e) => {
-          encError = e instanceof Error ? e : new Error(String(e));
-        },
-      });
-      const config: VideoEncoderConfig = {
-        codec: "avc1.640028",
-        width: VW,
-        height: VH,
-        bitrate: 5_000_000,
-        framerate: FPS,
-      };
-      const support = await VideoEncoder.isConfigSupported(config);
-      if (!support.supported) {
-        throw new Error(
-          "This browser cannot encode H.264 video at 1080x1920. Try Chrome or Edge."
-        );
-      }
-      encoder.configure(config);
-      const octx2d = octx as unknown as CanvasRenderingContext2D;
-      for (let i = 0; i < FRAMES; i++) {
-        const p = easeOutCubic(Math.min(1, i / (FPS * 0.5)));
-        drawClean(octx2d, state, (VH - SIZE) / 2, p);
-        const frame = new VideoFrame(off, {
-          timestamp: Math.round((i * 1_000_000) / FPS),
-          duration: Math.round(1_000_000 / FPS),
-        });
-        encoder.encode(frame, { keyFrame: i % 15 === 0 });
-        frame.close();
-        if (encoder.encodeQueueSize > 4) {
-          await new Promise((r) => setTimeout(r, 10));
-        }
-      }
-      await encoder.flush();
-      encoder.close();
-      if (encError) throw encError;
-      muxer.finalize();
-      const blob = new Blob([muxer.target.buffer], { type: "video/mp4" });
-      if (blob.size === 0) {
-        throw new Error(
-          "Video encoding produced an empty file. Please try again."
-        );
-      }
-      downloadBlob(blob, "mewmax-clean-ratings.mp4");
       setVideoDone(true);
     } catch (e) {
       setVideoError(
