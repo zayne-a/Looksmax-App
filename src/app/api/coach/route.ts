@@ -240,7 +240,7 @@ async function buildContext(admin: Admin, userId: string): Promise<string> {
     const fmtDay = (iso: string) => iso.slice(0, 10);
     const entries = history.map((s) => {
       const mm = s.measurements;
-      return `${fmtDay(s.created_at)}: overall ${s.overall_score ?? mm.overallScore}/100, symmetry ${Math.round(mm.symmetryScore)}, golden ${Math.round(mm.goldenRatioScore)}, jaw ${mm.jawToCheekbone.toFixed(2)}, tilt ${mm.canthalTiltDeg.toFixed(1)}°, skin redness ${Math.round(mm.skin.redness)}, texture ${Math.round(mm.skin.texture)}, under-eye ${Math.round(mm.skin.underEye)}, blemishes ~${mm.skin.blemishCount}`;
+      return `${fmtDay(s.created_at)}: overall ${s.overall_score ?? mm.overallScore}/100, symmetry ${Math.round(mm.symmetryScore)}, harmony ${Math.round(mm.goldenRatioScore)}, jaw ${mm.jawToCheekbone.toFixed(2)}, tilt ${mm.canthalTiltDeg.toFixed(1)}°, skin redness ${Math.round(mm.skin.redness)}, texture ${Math.round(mm.skin.texture)}, under-eye ${Math.round(mm.skin.underEye)}, blemishes ~${mm.skin.blemishCount}`;
     });
     lines.push(`SCAN HISTORY (${history.length} measured scans): ${entries.join(" | ")}`);
     const first = history[0];

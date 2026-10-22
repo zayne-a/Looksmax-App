@@ -314,7 +314,7 @@ VOICE & FORMAT — THIS READS LIKE A PAID PROTOCOL, NEVER A CHATBOT ANSWER:
 
 PERSONALISATION SATURATION — EVERY SECTION MUST EARN ITS PLACE:
 - Each of the 4 sections must visibly use at least 2–3 of THIS user's specific data points. Generic filler that could be pasted into anyone's plan is a failed plan.
-- Data points to draw from: measured canthal tilt (degrees), facial thirds (%), jaw:cheekbone ratio, fWHR, symmetry score, golden-ratio score, measured face shape BY NAME, skin readings (redness / texture / under-eye numbers, blemish count), body stats (maintenance kcal computed from their height/weight/age, protein grams from their bodyweight), ranked goals IN THEIR ORDER, budget tier (product framing), routine level, sun exposure, and their timeline (checkpoints paced to their horizon).
+- Data points to draw from: measured canthal tilt (degrees), facial thirds (%), jaw:cheekbone ratio, fWHR, symmetry score, harmony score, measured face shape BY NAME, skin readings (redness / texture / under-eye numbers, blemish count), body stats (maintenance kcal computed from their height/weight/age, protein grams from their bodyweight), ranked goals IN THEIR ORDER, budget tier (product framing), routine level, sun exposure, and their timeline (checkpoints paced to their horizon).
 - Style section: hairstyle and facial-hair picks MUST name the measured face shape ("for your square face shape…") and cite at least one measured ratio.
 - Diet section: state their actual maintenance kcal number and protein gram target, computed from their stats — never a generic range.
 - A chatbot could not produce these numbers. If a section reads like it could, rewrite it until it can't.

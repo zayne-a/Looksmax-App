@@ -19,7 +19,7 @@ WHAT MEWMAX IS
 THE SCAN (/scan)
 - The scan page opens the front camera; you take the photo inside the app (upload is a fallback if there's no camera / permission is denied).
 - A quality gate checks the photo before measuring: face visible and centred, big enough in frame, decent light, not blown out, not blurry. If rejected, the screen says exactly why and retakes are unlimited and free.
-- Measurements: symmetry, golden-ratio fit, facial thirds and fifths, canthal tilt, jaw-to-cheekbone ratio, FWHR, face shape — plus skin reads: redness, texture, a blemish estimate and under-eye darkness. Every scan result includes a full written read of what each number means and what can honestly move it.
+- Measurements: symmetry, harmony fit, facial thirds and fifths, canthal tilt, jaw-to-cheekbone ratio, FWHR, face shape — plus skin reads: redness, texture, a blemish estimate and under-eye darkness. Every scan result includes a full written read of what each number means and what can honestly move it.
 - Scores are estimates from one photo under your current lighting/angle — a tracking tool, not a medical or absolute judgment. Rescan in similar light for fair comparisons.
 
 PRIVACY (important, users ask a lot)
