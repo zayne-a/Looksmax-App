@@ -8,6 +8,11 @@ import {
   funnelMediaForSlot,
   type FunnelMedia,
 } from "@/lib/funnel-media";
+import {
+  contentForSlot,
+  fetchContent,
+  type ContentItem,
+} from "@/lib/content";
 import { PSL_TIERS } from "@/lib/psl";
 
 /**
@@ -71,37 +76,108 @@ const RESEARCH = [
   {
     title: "The halo effect is real",
     body: "In Dion, Berscheid & Walster's classic experiment, attractive people were judged more competent, more successful and happier — on no evidence beyond a photograph.",
+    source: "Dion, Berscheid & Walster (1972)",
   },
   {
     title: "919 studies. Same verdict.",
     body: "Langlois et al.'s meta-analysis of the entire field: attractive adults and children are treated better and judged better across nearly every social outcome ever measured.",
+    source: "Langlois et al. (2000)",
   },
   {
     title: "Looks pay. Literally.",
     body: "Economist Daniel Hamermesh's research puts the beauty premium at roughly 10–15% higher earnings across a career — a lifetime gap in the hundreds of thousands.",
+    source: "Hamermesh, Beauty Pays (2011)",
   },
 ];
+
+/** Map a unified content_items row onto the FunnelMedia shape the
+ *  step renderer already speaks. */
+function contentToFunnelMedia(item: ContentItem): FunnelMedia {
+  return {
+    id: item.id,
+    slot: item.slot ?? "",
+    kind:
+      item.type === "quote"
+        ? "quote"
+        : item.type === "image"
+          ? "image"
+          : "video",
+    url: item.mediaUrl,
+    headline: item.title,
+    body: item.caption,
+    sort: item.sort,
+    active: item.active,
+    updated_at: item.updatedAt,
+  };
+}
 
 export default function StartPage() {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [media, setMedia] = useState<FunnelMedia[]>([]);
+  const [content, setContent] = useState<ContentItem[]>([]);
+  const [researchItems, setResearchItems] = useState<ContentItem[]>([]);
+  const [omegleClips, setOmegleClips] = useState<ContentItem[]>([]);
+  const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
     void fetchFunnelMedia().then((rows) => {
       if (live) setMedia(rows);
     });
+    void fetchContent("funnel").then((rows) => {
+      if (live) setContent(rows);
+    });
+    void fetchContent("research").then((rows) => {
+      if (live) setResearchItems(rows);
+    });
+    void fetchContent("omegle-clips").then((rows) => {
+      if (live) setOmegleClips(rows);
+    });
     return () => {
       live = false;
     };
   }, []);
 
-  const chad = funnelMediaForSlot(media, "chad-reality");
-  const average = funnelMediaForSlot(media, "average-reality");
+  // Prefer a content_items row for a slot; fall back to the legacy
+  // funnel_media row when the slot doesn't exist there.
+  const resolveSlot = (slot: string): FunnelMedia | null => {
+    const item = contentForSlot(content, slot);
+    if (item) {
+      const mapped = contentToFunnelMedia(item);
+      if (mapped.kind === "quote" ? mapped.headline : mapped.url) {
+        return mapped;
+      }
+    }
+    return funnelMediaForSlot(media, slot);
+  };
+
+  const chad = resolveSlot("chad-reality");
+  const average = resolveSlot("average-reality");
   const quotes = ["quote-1", "quote-2", "quote-3"]
-    .map((s) => funnelMediaForSlot(media, s))
+    .map((s) => resolveSlot(s))
     .filter((q): q is FunnelMedia => q !== null);
+
+  // Omegle clips for the Chad's Reality step: playable videos only.
+  const clips = omegleClips.filter(
+    (c) => c.type === "video" && Boolean(c.mediaUrl)
+  );
+  const selectedClip = clips.find((c) => c.id === selectedClipId) ?? null;
+  const clipForBg =
+    selectedClip ?? (!chad?.url ? (clips[0] ?? null) : null);
+  const chadEffective: FunnelMedia | null = clipForBg
+    ? {
+        id: clipForBg.id,
+        slot: "chad-reality",
+        kind: "video",
+        url: clipForBg.mediaUrl,
+        headline: chad?.headline ?? null,
+        body: chad?.body ?? null,
+        sort: chad?.sort ?? 0,
+        active: true,
+        updated_at: clipForBg.updatedAt,
+      }
+    : chad;
 
   const LAST = 6;
   const next = () => setStep((s) => Math.min(LAST, s + 1));
@@ -113,7 +189,8 @@ export default function StartPage() {
     fallbackHeadline: string,
     copy: string,
     cta: string,
-    onCta: () => void
+    onCta: () => void,
+    extra?: React.ReactNode
   ) => (
     <div className="relative flex min-h-full flex-col">
       {row?.url ? (
@@ -139,6 +216,7 @@ export default function StartPage() {
         <p className="mt-4 max-w-md text-[15px] leading-relaxed text-white/75">
           {copy}
         </p>
+        {extra}
         <div className="mt-8">
           <Cta onClick={onCta}>{cta}</Cta>
         </div>
@@ -302,11 +380,52 @@ export default function StartPage() {
 
           {step === 3 &&
             videoStep(
-              chad,
+              chadEffective,
               "Chad's Reality",
               "He doesn't chase. He gets chosen. Numbers offered, doors opened, respect arriving before he says a single word. You think that's confidence. It's structure — plus everything trainable stacked ruthlessly on top of it.",
               "And the average man?",
-              next
+              next,
+              clips.length > 0 ? (
+                <div className="mt-6">
+                  <div className="flex gap-3 overflow-x-auto pb-2">
+                    {clips.map((clip) => {
+                      const isActive = clipForBg?.id === clip.id;
+                      return (
+                        <button
+                          key={clip.id}
+                          type="button"
+                          onClick={() => setSelectedClipId(clip.id)}
+                          className={`w-24 shrink-0 overflow-hidden rounded-xl border text-left transition ${
+                            isActive
+                              ? "border-[#5EEAD4]"
+                              : "border-white/15 hover:border-white/40"
+                          }`}
+                        >
+                          {clip.posterUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={clip.posterUrl}
+                              alt={clip.title ?? ""}
+                              className="aspect-[9/16] w-full object-cover"
+                            />
+                          ) : (
+                            <video
+                              src={clip.mediaUrl ?? undefined}
+                              muted
+                              playsInline
+                              preload="metadata"
+                              className="aspect-[9/16] w-full object-cover"
+                            />
+                          )}
+                          <span className="block truncate px-2 py-1.5 text-[11px] font-bold text-white/80">
+                            {clip.title}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : undefined
             )}
 
           {step === 4 &&
@@ -379,22 +498,47 @@ export default function StartPage() {
                 This isn&apos;t opinion. It&apos;s measured.
               </h2>
               <div className="mt-8 space-y-3">
-                {RESEARCH.map((r) => (
-                  <div
-                    key={r.title}
-                    className="rounded-2xl border border-white/10 bg-white/[0.04] p-5"
-                  >
-                    <p
-                      className="font-display text-lg font-black"
-                      style={{ color: MINT }}
-                    >
-                      {r.title}
-                    </p>
-                    <p className="mt-2 text-sm leading-relaxed text-white/65">
-                      {r.body}
-                    </p>
-                  </div>
-                ))}
+                {researchItems.length > 0
+                  ? researchItems.map((r) => (
+                      <div
+                        key={r.id}
+                        className="rounded-2xl border border-white/10 bg-white/[0.04] p-5"
+                      >
+                        <p
+                          className="font-display text-lg font-black"
+                          style={{ color: MINT }}
+                        >
+                          {r.title}
+                        </p>
+                        <p className="mt-2 text-sm leading-relaxed text-white/65">
+                          {r.caption}
+                        </p>
+                        {r.sourceName && (
+                          <p className="mt-2 text-xs text-white/40">
+                            Source: {r.sourceName}
+                          </p>
+                        )}
+                      </div>
+                    ))
+                  : RESEARCH.map((r) => (
+                      <div
+                        key={r.title}
+                        className="rounded-2xl border border-white/10 bg-white/[0.04] p-5"
+                      >
+                        <p
+                          className="font-display text-lg font-black"
+                          style={{ color: MINT }}
+                        >
+                          {r.title}
+                        </p>
+                        <p className="mt-2 text-sm leading-relaxed text-white/65">
+                          {r.body}
+                        </p>
+                        <p className="mt-2 text-xs text-white/40">
+                          Source: {r.source}
+                        </p>
+                      </div>
+                    ))}
                 {quotes.map((q) => (
                   <figure
                     key={q.slot}
