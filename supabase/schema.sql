@@ -729,3 +729,66 @@ where not exists (
   select 1 from public.content_items
   where collection = 'research' and title = '80% of men are rated below average'
 );
+
+-- ==================================================================
+-- Owner admins + Pro grants (2026-10-22) — also shipped as
+-- supabase/migrations/2026-10-22-admin-pro-grants.sql for existing
+-- projects.
+-- ==================================================================
+
+-- Owner admins + Pro grants (2026-10-22, Zayne's rule):
+-- cerxemm@gmail.com and zayneasad7@gmail.com are THE admins — every
+-- plan free for them (is_admin + is_premium), full panel access, and
+-- they can grant Pro to any other email from /admin/users. A grant
+-- for an email with no account yet applies automatically at signup.
+-- The two owner emails are hardcoded here and in the migration (SQL
+-- cannot import the app constant); the app-side source of truth is
+-- OWNER_ADMIN_EMAILS in src/lib/admin.ts — keep the lists in step.
+
+create table if not exists public.pro_grants (
+  email text primary key,
+  granted_by text,
+  created_at timestamptz not null default now()
+);
+
+-- RLS on with NO policies: service-role only (the service role
+-- bypasses RLS; clients can neither read nor write the grant list).
+alter table public.pro_grants enable row level security;
+
+create or replace function public.apply_profile_entitlements()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if lower(new.email) in ('cerxemm@gmail.com', 'zayneasad7@gmail.com') then
+    new.is_admin := true;
+    new.is_premium := true;
+  elsif exists (
+    select 1 from public.pro_grants g
+    where lower(g.email) = lower(new.email)
+  ) then
+    new.is_premium := true;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists profiles_apply_entitlements on public.profiles;
+create trigger profiles_apply_entitlements
+  before insert on public.profiles
+  for each row execute function public.apply_profile_entitlements();
+
+update public.profiles
+set is_admin = true, is_premium = true
+where lower(email) in ('cerxemm@gmail.com', 'zayneasad7@gmail.com')
+  and (is_admin is distinct from true or is_premium is distinct from true);
+
+update public.profiles p
+set is_premium = true
+where p.is_premium is distinct from true
+  and exists (
+    select 1 from public.pro_grants g
+    where lower(g.email) = lower(p.email)
+  );
