@@ -792,3 +792,30 @@ where p.is_premium is distinct from true
     select 1 from public.pro_grants g
     where lower(g.email) = lower(p.email)
   );
+
+-- ------------------------------------------------------------------
+-- App settings (2026-10-22): owner-controlled switches served from
+-- public.app_settings — see supabase/migrations/2026-10-22-app-settings.sql
+-- for the full rationale. Writes are service-role only via
+-- /api/admin/settings; reads are public via GET /api/settings.
+-- ------------------------------------------------------------------
+
+create table if not exists public.app_settings (
+  key text primary key,
+  value jsonb not null,
+  updated_at timestamptz not null default now(),
+  updated_by text
+);
+
+alter table public.app_settings enable row level security;
+
+drop policy if exists app_settings_public_read on public.app_settings;
+create policy app_settings_public_read on public.app_settings
+  for select to anon, authenticated using (true);
+
+insert into public.app_settings (key, value) values
+  ('maintenance', '{"on": false, "message": "Mewmax is briefly down for scheduled maintenance. We will be back shortly — your scans and plans are safe."}'::jsonb),
+  ('announcement', '{"on": false, "text": ""}'::jsonb),
+  ('features', '{"creator_program": true, "forum": true}'::jsonb),
+  ('trial_days', '3'::jsonb)
+on conflict (key) do nothing;
