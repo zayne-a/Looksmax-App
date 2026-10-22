@@ -17,14 +17,20 @@ import { serviceClient } from "./admin-api";
  *                    native app; there is no web forum surface)
  *   trial_days    → paywall + plan/dashboard/coach upsell copy, the
  *                    home/why-ascend/terms copy, and Max's prompt
- *                    (/api/support) — always Monthly & Yearly only.
+ *                    (/api/support). 0 = NO free trial anywhere
+ *                    (Zayne, 2026-10-23 — the reference app's model:
+ *                    plans bill from day one, "cancel anytime" is
+ *                    the only promise). 3 | 7 re-enable a trial on
+ *                    Monthly & Yearly only, from the admin panel.
  */
 
 export interface AppSettings {
   maintenance: { on: boolean; message: string };
   announcement: { on: boolean; text: string };
   features: { creator_program: boolean; forum: boolean };
-  trial_days: 3 | 7;
+  /** 0 = no free trial (current product rule); 3 | 7 = trial days
+   *  on Monthly & Yearly when the owner re-enables it. */
+  trial_days: 0 | 3 | 7;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -35,7 +41,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   announcement: { on: false, text: "" },
   features: { creator_program: true, forum: true },
-  trial_days: 3,
+  trial_days: 0,
 };
 
 export const SETTING_KEYS = [
@@ -80,7 +86,7 @@ export function resolveSettings(
       creator_program: asBool(f.creator_program, d.features.creator_program),
       forum: asBool(f.forum, d.features.forum),
     },
-    trial_days: t === 7 ? 7 : 3,
+    trial_days: t === 7 ? 7 : t === 3 ? 3 : 0,
   };
 }
 
@@ -91,7 +97,7 @@ export function validateSettingValue(
   value: unknown
 ): unknown | null {
   if (key === "trial_days") {
-    return value === 3 || value === 7 ? value : null;
+    return value === 0 || value === 3 || value === 7 ? value : null;
   }
   if (!isObj(value)) return null;
   if (key === "maintenance") {

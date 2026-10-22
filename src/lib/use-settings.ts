@@ -11,9 +11,9 @@ import {
  * Client read of GET /api/settings (2026-10-22). One fetch per page
  * load, shared by every hook consumer through a module-level cache.
  * Until the fetch lands, consumers render with DEFAULT_SETTINGS —
- * which is exactly the pre-settings product behaviour (no
- * maintenance, creator program on, 3-day trial), so nothing flashes
- * a wrong state that the owner didn't choose.
+ * the standing product defaults (no maintenance, creator program
+ * on, no free trial), so nothing flashes a wrong state that the
+ * owner didn't choose.
  */
 
 let cache: AppSettings | null = null;
