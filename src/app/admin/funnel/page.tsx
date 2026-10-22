@@ -85,6 +85,9 @@ export default function AdminFunnelPage() {
         </Link>{" "}
         <Link href="/admin/content" className="font-semibold text-gold hover:underline">
           All content →
+        </Link>{" "}
+        <Link href="/admin/users" className="font-semibold text-gold hover:underline">
+          Users &amp; Pro →
         </Link>
       </p>
 

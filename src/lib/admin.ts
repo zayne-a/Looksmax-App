@@ -13,6 +13,27 @@
 export const ADMIN_EMAIL = "zayneasad7@gmail.com";
 export const OWNER_CODE = "ASCENDOWNER";
 
+/**
+ * THE owner admins (Zayne's rule, 2026-10-22): these two emails get
+ * is_admin + is_premium — every plan free, full panel access — and
+ * they manage the Pro grant list (/admin/users → /api/admin/pro).
+ * This is the ONE app-side source of truth; the SQL side hardcodes
+ * the same two emails because SQL cannot import this constant:
+ * see supabase/migrations/2026-10-22-admin-pro-grants.sql (profiles
+ * INSERT trigger + backfill). Keep the two lists in step.
+ */
+export const OWNER_ADMIN_EMAILS = [
+  "cerxemm@gmail.com",
+  "zayneasad7@gmail.com",
+] as const;
+
+/** True when the input is one of the two owner admin emails. */
+export function isOwnerAdminEmail(input: string): boolean {
+  return (OWNER_ADMIN_EMAILS as readonly string[]).includes(
+    input.trim().toLowerCase()
+  );
+}
+
 /** True when a paywall-box entry is the admin email or the owner code. */
 export function isOwnerCredential(input: string): boolean {
   const v = input.trim().toLowerCase();

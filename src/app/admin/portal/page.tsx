@@ -160,6 +160,9 @@ export default function AdminPortalPage() {
         qualifies their referral ($20 to the referrer).{" "}
         <Link href="/admin/funnel" className="font-semibold text-gold hover:underline">
           Funnel media →
+        </Link>{" "}
+        <Link href="/admin/users" className="font-semibold text-gold hover:underline">
+          Users &amp; Pro →
         </Link>
       </p>
 
