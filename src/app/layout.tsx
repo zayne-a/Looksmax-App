@@ -4,6 +4,7 @@ import "./globals.css";
 import { AppProvider } from "@/lib/store";
 import SiteChrome from "@/components/SiteChrome";
 import SupportChat from "@/components/SupportChat";
+import AppSettingsGate from "@/components/AppSettingsGate";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -46,8 +47,10 @@ export default function RootLayout({
     <html lang="en" className={`${inter.variable} ${archivo.variable}`}>
       <body>
         <AppProvider>
-          <SiteChrome>{children}</SiteChrome>
-          <SupportChat />
+          <AppSettingsGate>
+            <SiteChrome>{children}</SiteChrome>
+            <SupportChat />
+          </AppSettingsGate>
         </AppProvider>
       </body>
     </html>

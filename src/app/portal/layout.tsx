@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import PortalShell from "@/components/portal/PortalShell";
+import CreatorProgramGate from "@/components/CreatorProgramGate";
 
 export const metadata: Metadata = {
   title: "Creator Portal — Mewmax",
@@ -9,5 +10,9 @@ export const metadata: Metadata = {
 };
 
 export default function PortalLayout({ children }: { children: ReactNode }) {
-  return <PortalShell>{children}</PortalShell>;
+  return (
+    <CreatorProgramGate>
+      <PortalShell>{children}</PortalShell>
+    </CreatorProgramGate>
+  );
 }
