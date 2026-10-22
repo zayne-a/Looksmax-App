@@ -356,7 +356,9 @@ export default function DashboardPage() {
                 <p className="mt-1 max-w-md text-sm leading-relaxed text-muted">
                   Pro unlocks every step of your plan in full, switches on
                   the deep-curated AI plan, and keeps unlimited rescans.
-                  Monthly and Yearly start with a {trialDays}-day free trial.
+                  {trialDays > 0
+                    ? `Monthly and Yearly start with a ${trialDays}-day free trial.`
+                    : "Every plan bills from day one — cancel anytime."}
                 </p>
               </div>
               <Button href="/paywall" className="shrink-0 px-7 py-3">
