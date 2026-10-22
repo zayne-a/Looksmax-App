@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Button, Card, Eyebrow } from "@/components/ui";
 import { Reveal } from "@/components/motion";
 import { useApp } from "@/lib/store";
+import { useAppSettings } from "@/lib/use-settings";
 import { supabaseConfigured, getSupabase } from "@/lib/supabase";
 import {
   fetchActivePlanId,
@@ -28,6 +29,7 @@ interface Bubble {
 
 export default function CoachPage() {
   const { user, profile } = useApp();
+  const { trial_days: trialDays } = useAppSettings();
   const isPro = Boolean(profile?.is_premium || profile?.is_admin);
 
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
@@ -277,7 +279,7 @@ export default function CoachPage() {
               Meet your coach
             </Button>
             <p className="mt-3 text-xs text-muted">
-              3-day free trial on Monthly &amp; Yearly · Weekly bills from day one
+              {trialDays}-day free trial on Monthly &amp; Yearly · Weekly bills from day one
             </p>
           </Card>
         </Reveal>

@@ -10,6 +10,12 @@ import {
   StaggerItem,
 } from "@/components/motion";
 import { IMAGES } from "@/lib/images";
+import { getAppSettings } from "@/lib/settings";
+
+// The trial length in the FAQ + pricing copy below is the owner's
+// trial_days app setting (/admin/settings) — rendered per-request
+// so a panel change rewrites this page without a deploy.
+export const instant = false;
 
 const steps = [
   {
@@ -64,7 +70,8 @@ const differentiators = [
   },
 ];
 
-const faqs = [
+function faqsFor(trialDays: number) {
+  return [
   {
     q: "How does the facial measurement actually work?",
     a: "On your device, a face model detects 478 facial landmarks on your photo and computes real geometric ratios — symmetry, facial thirds, canthal tilt, jaw-to-cheekbone width. The same photo always produces the same numbers. What it can't do is fix a bad photo: poor lighting or a tilted angle shows up as a low-confidence scan, and we'll tell you to retake it so your baseline is honest.",
@@ -75,7 +82,7 @@ const faqs = [
   },
   {
     q: "Do I pay to see my results?",
-    a: "No. Your first scan — real measurements and your core score — is completely free, no card required. Mewmax Pro starts your 12-week adaptive protocol: Phase 1 in full, weekly check-ins and progress scans, Phases 2–3 generated from your progress, and a weekly coach review. Monthly and Yearly start with a 3-day free trial; Weekly bills from day one.",
+    a: `No. Your first scan — real measurements and your core score — is completely free, no card required. Mewmax Pro starts your 12-week adaptive protocol: Phase 1 in full, weekly check-ins and progress scans, Phases 2–3 generated from your progress, and a weekly coach review. Monthly and Yearly start with a ${trialDays}-day free trial; Weekly bills from day one.`,
   },
   {
     q: "What is softmaxxing?",
@@ -89,7 +96,8 @@ const faqs = [
     q: "How is Mewmax different from rating apps?",
     a: "Rating apps hand you a number and upsell you on credits. Mewmax hands you measured geometry, unlimited rescans, and a structured plan that tells you exactly what to do this week — for half the weekly price.",
   },
-];
+  ];
+}
 
 function TrustItem({ title, text }: { title: string; text: string }) {
   return (
@@ -116,7 +124,9 @@ function TrustItem({ title, text }: { title: string; text: string }) {
   );
 }
 
-export default function Home() {
+export default async function Home() {
+  const { trial_days: trialDays } = await getAppSettings();
+  const faqs = faqsFor(trialDays);
   return (
     <div className="bg-ink text-bone">
       {/* ================= HERO ================= */}
@@ -489,7 +499,7 @@ export default function Home() {
             </p>
             <p className="mx-auto mt-4 max-w-xl text-sm sm:text-base leading-relaxed text-muted">
               Half the price of the rating apps. Monthly and Yearly start
-              with a 3-day free trial — and your first scan is free forever,
+              with a {trialDays}-day free trial — and your first scan is free forever,
               no card required.
             </p>
             <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">

@@ -12,10 +12,14 @@ import {
 import { Reveal, staggerParent, staggerChild } from "@/components/motion";
 import { motion } from "@/components/motion-client";
 import { useApp } from "@/lib/store";
+import { useAppSettings } from "@/lib/use-settings";
 
-// Trial rule (Zayne, 2026-10-20): the 3-day free trial exists ONLY on
+// Trial rule (Zayne, 2026-10-20): the free trial exists ONLY on
 // Monthly and Yearly. Weekly bills from day one — never advertise a
-// trial on it, in card copy, buttons, or anywhere else.
+// trial on it, in card copy, buttons, or anywhere else. The trial
+// LENGTH is the owner's trial_days app setting (/admin/settings):
+// the subs below are rebuilt from it at render, so flipping 3 → 7
+// in the panel rewrites this page's pricing copy everywhere.
 const plans = [
   {
     id: "weekly",
@@ -34,7 +38,7 @@ const plans = [
     price: "$4.99",
     per: "/month",
     note: "just $1.15/week",
-    sub: "starts after your 3-day free trial",
+    sub: "starts after your free trial",
     trial: true,
     highlight: false,
     best: false,
@@ -45,7 +49,7 @@ const plans = [
     price: "$29.99",
     per: "/year",
     note: "just $0.58/week — commit to the climb",
-    sub: "starts after your 3-day free trial",
+    sub: "starts after your free trial",
     trial: true,
     highlight: true,
     best: true,
@@ -93,6 +97,12 @@ export default function PaywallPage() {
   };
 
   const { plan } = useApp();
+  const { trial_days: trialDays } = useAppSettings();
+  const planCards = plans.map((p) =>
+    p.trial
+      ? { ...p, sub: `starts after your ${trialDays}-day free trial` }
+      : p
+  );
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6 sm:py-20">
@@ -102,13 +112,13 @@ export default function PaywallPage() {
           <h1 className="font-display mt-4 text-4xl sm:text-6xl font-extrabold tracking-tight leading-[1.05]">
             Lock in your glow-up.
             <br />
-            <span className="gold-text">3 days free.</span>
+            <span className="gold-text">{trialDays} days free.</span>
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-sm sm:text-base leading-relaxed text-muted">
             Your first scan is already free. Pro starts your 12-week
             adaptive protocol — Phase 1 in full today, then a plan that
             adjusts every week and grows with you. Monthly and Yearly
-            start with 3 free days, pay nothing if it's not for you.
+            start with {trialDays} free days, pay nothing if it's not for you.
           </p>
         </Reveal>
       </div>
@@ -168,7 +178,7 @@ export default function PaywallPage() {
         viewport={{ once: true, margin: "-60px" }}
         className="mt-12 grid gap-4 sm:grid-cols-3"
       >
-        {plans.map((p) => (
+        {planCards.map((p) => (
           <motion.div key={p.id} variants={staggerChild}>
             <Card
               glow={p.best}
@@ -201,7 +211,7 @@ export default function PaywallPage() {
                 {comingSoon === p.id
                   ? "Payments coming soon"
                   : p.trial
-                    ? `Start 3-day free trial — ${p.name}`
+                    ? `Start ${trialDays}-day free trial — ${p.name}`
                     : `Start ${p.name} — ${p.price}${p.per}`}
               </Button>
             </Card>
@@ -275,12 +285,12 @@ export default function PaywallPage() {
       <Reveal className="mt-6">
         <Card>
           <h3 className="font-display text-lg font-extrabold text-bone">
-            How the 3-day trial works — Monthly &amp; Yearly
+            How the {trialDays}-day trial works — Monthly &amp; Yearly
           </h3>
           <ol className="mt-4 space-y-3 text-sm text-muted list-none">
             {[
               ["Day 0", "Start your trial. Your 12-week protocol opens with Phase 1 in full, unlimited rescans, and weekly check-ins. No charge."],
-              ["Day 3", "Trial ends. Your Monthly or Yearly plan begins — or cancel in one tap before it does, no charge either way."],
+              [`Day ${trialDays}`, "Trial ends. Your Monthly or Yearly plan begins — or cancel in one tap before it does, no charge either way."],
               ["After", "Your plan adapts weekly; Phase 2 unlocks at week 5 and Phase 3 at week 9 — both generated from your check-ins and progress scans. Cancel anytime."],
             ].map(([day, text]) => (
               <li key={day} className="flex gap-3">

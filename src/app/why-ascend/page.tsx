@@ -2,6 +2,11 @@
 import Link from "next/link";
 import { Button, Card, Eyebrow, SectionHeading } from "@/components/ui";
 import { Reveal } from "@/components/motion";
+import { getAppSettings } from "@/lib/settings";
+
+// The trial length quoted below is the owner's trial_days app
+// setting (/admin/settings), rendered per-request.
+export const instant = false;
 
 /**
  * The public "what makes it worth it" page: an honest, checkable
@@ -69,7 +74,8 @@ function CompareTable({
   );
 }
 
-export default function WorthItPage() {
+export default async function WorthItPage() {
+  const { trial_days: trialDays } = await getAppSettings();
   return (
     <div className="mx-auto max-w-4xl px-4 py-14 sm:px-6 sm:py-20">
       <Reveal>
@@ -147,7 +153,7 @@ export default function WorthItPage() {
           <p className="mx-auto mt-3 max-w-lg text-sm leading-relaxed text-muted">
             Less than the other app charges for a single extra scan* — for
             a coach, a protocol that adapts weekly, and a system that keeps
-            you honest for the full 90 days. Monthly and Yearly start with a 3-day
+            you honest for the full 90 days. Monthly and Yearly start with a {trialDays}-day
             free trial. Cancel anytime, in one tap, no traps.
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-3">

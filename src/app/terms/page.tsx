@@ -1,13 +1,20 @@
 // Terms page (new, audit fix). Plain-terms framing matches the brand: softmaxxing only, not medical advice, Pro pricing + the trial rule stated exactly as sold (3-day trial on Monthly/Yearly only, Weekly bills day one), no transformation guarantees.
 import { Card, Eyebrow } from "@/components/ui";
 import { Reveal } from "@/components/motion";
+import { getAppSettings } from "@/lib/settings";
+
+// The trial length stated below is the owner's trial_days app
+// setting (/admin/settings) — the terms must state the trial
+// exactly as currently sold, so this page renders per-request.
+export const instant = false;
 
 export const metadata = {
   title: "Terms — Mewmax",
   description: "The terms for using Mewmax, including Mewmax Pro.",
 };
 
-export default function TermsPage() {
+export default async function TermsPage() {
+  const { trial_days: trialDays } = await getAppSettings();
   return (
     <div className="mx-auto max-w-3xl px-4 py-14 sm:px-6">
       <Reveal>
@@ -41,7 +48,7 @@ export default function TermsPage() {
           </h2>
           <p className="mt-2 text-sm leading-relaxed text-muted">
             Pro is a subscription: $1.99/week, $4.99/month or $29.99/year.
-            Monthly and Yearly plans start with a 3-day free trial; the
+            Monthly and Yearly plans start with a {trialDays}-day free trial; the
             Weekly plan bills from day one. One price covers everything —
             re-scans, the adaptive 12-week protocol, the daily system and
             the AI coach are never sold separately. Cancel anytime;
