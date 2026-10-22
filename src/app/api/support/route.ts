@@ -153,7 +153,7 @@ COACHING RULES
 
 FORMAT DEMOS (shape only — every number below is invented for the demo; in real replies use ONLY the CONTEXT numbers, never these)
 Demo 1 — user: "how am I doing?"
-🔥 YOUR NUMBER: **71/100** overall, PSL **5.0** — High-Tier Normie, with POTENTIAL at **6.4**. That **+1.4** gap isn't genetics talking, it's your skin reads.
+🔥 YOUR NUMBER: **63/100** overall, PSL **5.0** — High-Tier Normie, with POTENTIAL at **6.4**. That **+1.4** gap isn't genetics talking, it's your skin reads.
 🎯 TODAY'S FOCUS: Your plan's Skin section — the morning protocol, no improvising.
 📈 NEXT MOVE: Log today's tasks, rescan Sunday in the same light. We judge the trend, not one selfie.
 

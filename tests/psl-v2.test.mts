@@ -20,7 +20,6 @@
  */
 import { computeMeasurements, computeSideMetrics } from "../src/lib/face.ts";
 import {
-  PSL_TIERS,
   applyScoringV2,
   miscScores,
   pslPotential,
@@ -33,7 +32,6 @@ import {
   buildScoreView,
   regionDisplayScore,
   toDisplayScore,
-  toDisplayScoreV2,
 } from "../src/lib/score-view.ts";
 import { regionLabel, scoreTierLabel } from "../src/lib/creator-tiers.ts";
 
@@ -362,23 +360,112 @@ console.log("\n[8] Legacy v1 scans keep their numbers");
 
 // ------------------------------------------------------------------
 // [9] Display scale (lib/score-view.ts) — the web shows the template
-// 1–8 dialect, never a /10 number. The conversion is anchored on
-// the TIER floors, so a scan's displayed tier NAME must equal its
-// engine tier NAME at every boundary — the tier never changes, only
-// the numeral's dialect. Fixtures reuse the section-[1]/[8] faces.
+// 1–8 dialect, never a /10 number, VALUE-IDENTICAL to the native
+// app's scoreView. v2 is RAW: the display value IS the engine's
+// PSL8 (clamp(4.0 + (C − 50)/12.5, 0.5, 7.9), one decimal) and the
+// tier is the template ladder's lookup at that displayed number —
+// the numeral a creator card would show for the same person. v1
+// scans keep the legacy anchor conversion below (their recorded
+// meaning). Fixtures reuse the section-[1]/[8] faces plus the
+// reference-class face defined here.
+
+// Reference-class face: knobs tuned so the composite lands on
+// C ≈ 37.5 → engine PSL8 ≈ 3.0 (the class of the live reference
+// portrait: raw display 3.0, Low-Tier Normie).
+const REFERENCE = {
+  fw: 400, totalHW: 1.2874, esr: 0.4455, oneEye: 1.0135, tiltDeg: 0.9183,
+  thirds: [0.2919, 0.3409, 0.3672], fwhr: 1.8367, bigonial: 0.7675,
+  cheekSete: 0.7148, chinPhil: 1.8054, mouthNose: 1.3367,
+  lipRatio: 1.3689, eyeAspect: 3.4623, browSete: 0.7676, browTiltDeg: 7.3775,
+  bitemporal: 0.8311, eyeMouth: 0.3808, jitterScale: 1.3245,
+};
+const SKIN_REFERENCE = {
+  redness: 37.6, texture: 42.3, blemishCount: 5.9, underEye: 47.6,
+};
 {
-  console.log("\n[9] Display scale — web display == template lookup");
-  // v2 anchors: every engine tier floor displays on the template
-  // floor of the SAME tier.
-  for (const t of PSL_TIERS) {
-    if (t.min === 0) continue;
-    check(
-      `v2 floor ${t.min} displays as tier ${t.label}`,
-      scoreTierLabel(toDisplayScoreV2(t.min), "male") === t.label,
-      `${t.min} -> ${toDisplayScoreV2(t.min)}`
-    );
-  }
-  // v1 anchors: the legacy floors map the same way.
+  console.log("\n[9] Display scale — web display == native raw presentation");
+  const rawPsl8 = (m) => {
+    const b = scoreBreakdownV2(m);
+    return Math.min(7.9, Math.max(0.5, 4.0 + (b.composite - 50) / 12.5));
+  };
+  const round1 = (v) => Math.round(v * 10) / 10;
+
+  // v2 median: raw display 4.2, template tier Mid-Tier Normie.
+  const medianView = buildScoreView(median);
+  check(
+    "median v2 display is the RAW PSL8 (4.2)",
+    medianView.psl.display === round1(rawPsl8(median)) &&
+      medianView.psl.display === 4.2,
+    `C=${scoreBreakdownV2(median).composite.toFixed(1)} -> ${medianView.psl.display}`
+  );
+  check(
+    "median displayed tier is the template lookup at 4.2",
+    medianView.psl.verdict === scoreTierLabel(4.2, "male") &&
+      medianView.psl.verdict === "Mid-Tier Normie",
+    medianView.psl.verdict
+  );
+  check(
+    "median POTENTIAL follows the raw formula (4.6)",
+    medianView.potential.display ===
+      round1(
+        Math.min(
+          8,
+          Math.max(
+            0.5,
+            rawPsl8(median) +
+              (pslPotential(median) - pslScore(median)) / 1.25
+          )
+        )
+      ) && medianView.potential.display === 4.6,
+    `${medianView.potential.display}`
+  );
+  const idealView = buildScoreView(ideal);
+  check(
+    "ideal v2 display is the RAW PSL8 (7.8), True Adam",
+    idealView.psl.display === 7.8 && idealView.psl.verdict === "True Adam",
+    `${idealView.psl.display} ${idealView.psl.verdict}`
+  );
+  // v2 reference-class: engine PSL8 ≈ 3.0 displays 3.0, template LTN.
+  const reference = measure(REFERENCE, SKIN_REFERENCE);
+  const referenceView = buildScoreView(reference);
+  check(
+    "reference fixture engine PSL8 ≈ 3.0",
+    rawPsl8(reference) >= 2.95 && rawPsl8(reference) < 3.05,
+    `PSL8=${rawPsl8(reference).toFixed(3)}`
+  );
+  check(
+    "reference displays 3.0 with the template LTN label",
+    referenceView.psl.display === 3 &&
+      referenceView.psl.verdict === "Low-Tier Normie" &&
+      referenceView.psl.verdict ===
+        scoreTierLabel(referenceView.psl.display, "male"),
+    `${pslScore(reference)} -> ${referenceView.psl.display} ${referenceView.psl.verdict}`
+  );
+  check(
+    "reference POTENTIAL follows the raw formula (3.5)",
+    referenceView.potential.display === 3.5,
+    `${referenceView.potential.display}`
+  );
+  check(
+    "POTENTIAL display never exceeds 8.0",
+    idealView.potential.display <= 8.0 &&
+      medianView.potential.display <= 8.0,
+    `ideal ${idealView.potential.display}, median ${medianView.potential.display}`
+  );
+  check(
+    "POTENTIAL display >= PSL display",
+    idealView.potential.display >= idealView.psl.display &&
+      medianView.potential.display >= medianView.psl.display &&
+      referenceView.potential.display >= referenceView.psl.display
+  );
+  const medianFView = buildScoreView(medianF);
+  check(
+    "female median displays raw 4.0, template female tier",
+    medianFView.psl.display === 4 &&
+      medianFView.psl.verdict === "Mid-Tier Becky",
+    `${medianFView.psl.display} ${medianFView.psl.verdict}`
+  );
+  // v1 anchors: the legacy floors still map the same way.
   const LEGACY_FLOORS: [number, string][] = [
     [2.5, "Low-Tier Normie"],
     [3.5, "Mid-Tier Normie"],
@@ -394,48 +481,6 @@ console.log("\n[8] Legacy v1 scans keep their numbers");
       `${min} -> ${toDisplayScore(min)}`
     );
   }
-  const medianView = buildScoreView(median);
-  check(
-    "median display is the anchored v2 conversion",
-    medianView.psl.display === toDisplayScoreV2(pslScore(median)),
-    `${pslScore(median)} -> ${medianView.psl.display}`
-  );
-  check(
-    "median displayed tier == engine tier",
-    medianView.psl.verdict ===
-      tierForMeasurements(median, pslScore(median)).label,
-    medianView.psl.verdict
-  );
-  check(
-    "median display in Mid-Tier Normie territory (4.0–5.0)",
-    medianView.psl.display >= 4.0 && medianView.psl.display < 5.0,
-    `${medianView.psl.display}`
-  );
-  const idealView = buildScoreView(ideal);
-  check(
-    "ideal display ≈ 7.8, True Adam",
-    idealView.psl.display >= 7.6 &&
-      idealView.psl.display <= 7.9 &&
-      idealView.psl.verdict === "True Adam",
-    `${idealView.psl.display} ${idealView.psl.verdict}`
-  );
-  check(
-    "POTENTIAL display never exceeds 8.0",
-    idealView.potential.display <= 8.0 &&
-      medianView.potential.display <= 8.0,
-    `ideal ${idealView.potential.display}, median ${medianView.potential.display}`
-  );
-  check(
-    "POTENTIAL display >= PSL display",
-    idealView.potential.display >= idealView.psl.display &&
-      medianView.potential.display >= medianView.psl.display
-  );
-  const medianFView = buildScoreView(medianF);
-  check(
-    "female median displays the template female tier",
-    medianFView.psl.verdict === "Mid-Tier Becky",
-    medianFView.psl.verdict
-  );
   {
     const v1 = {
       facialThirds: { upper: 0.33, mid: 0.34, lower: 0.33 },

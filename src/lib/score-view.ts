@@ -1,27 +1,29 @@
 /**
  * scoreView (web) — the ONE place measurement -> DISPLAY values are
  * computed for the web app. Mirrors the native app's
- * src/lib/scoreView.ts and the display-scale section of its
- * creatorTiers.ts, value for value, so the same scan shows the
- * IDENTICAL numeral + tier on the web, in the app, and on a creator
- * card.
+ * src/lib/scoreView.ts function-for-function, so the same scan shows
+ * the IDENTICAL numeral + tier on the web, in the app, and on a
+ * creator card (owner: "score same as template").
  *
- * Why a display scale: the engine (src/lib/psl.ts) scores on its
- * internal /10 ladder, but the product speaks the community's PSL
- * scale — 1–8, the template's scale (owner: "till 8 not 10 — 10 is
- * just myth; keep as template as it is"). The ladder tables live in
- * src/lib/creator-tiers.ts, the extracted reference tables; this
- * layer reads them, it never edits them.
+ * The engine (src/lib/psl.ts) scores on its internal /10 ladder, but
+ * the product speaks the community's PSL scale — till 8, never /10
+ * ("10 is just myth; keep as template as it is"). The ladder tables
+ * live in src/lib/creator-tiers.ts, the extracted reference tables;
+ * this layer reads them, it never edits them.
  *
- * The conversion is piecewise-linear through the TIER FLOORS, so
- * the tier NAME the engine assigns a score is the tier name the
- * template ladder gives the displayed number, at every boundary.
- * Only the numeral's dialect changes — never the tier, never the
- * engine, never a stored row.
+ * Engine v2 (2026-10-22): RAW presentation, exactly as the native
+ * view. For v2 scans the display value IS the engine's PSL8 —
+ * clamp(4.0 + (C − 50)/12.5, 0.5, 7.9), one decimal — and the tier
+ * name is read off the template ladder at that displayed number.
+ * POTENTIAL keeps the engine's headroom over PSL, expressed on the
+ * 8-scale. (An earlier web build converted v2 through tier anchors
+ * and inflated the numerals — e.g. the reference face showed 4.0
+ * where the raw score is 3.0. That conversion is gone for v2.)
  *
- * Engine-aware, like the native view: v2 scans convert through the
- * v2 tier floors (lib/psl.ts PSL_TIERS); v1 scans keep converting
- * through the v1 floors they were recorded under.
+ * Engine v1: scans recorded under the legacy engine keep converting
+ * through the v1 tier-floor anchors below — the same values as the
+ * native app's creatorTiers DISPLAY_ANCHORS — so their stored
+ * numbers keep their recorded meaning.
  *
  * NOTE: the imports below carry .ts extensions on purpose — the
  * Node fixture suite (tests/psl-v2.test.mts) loads this module
@@ -41,10 +43,24 @@ import {
   pslPotential,
   pslScore,
   regionScores,
+  scoreBreakdownV2,
 } from "./psl.ts";
 import type { FaceMeasurements } from "./types.ts";
 
 const round1 = (v: number) => Math.round(v * 10) / 10;
+
+const clampNum = (v: number, lo: number, hi: number) =>
+  Math.min(hi, Math.max(lo, v));
+
+/** The v2 engine's PSL8 for a scan — under the owner's scale rule
+ *  this IS the display value (presented till 8, never /10). Computed
+ *  straight from the v2 composite, exactly as lib/psl.ts anchors it.
+ *  Null when the payload isn't v2-scorable. */
+function psl8Of(m: FaceMeasurements): number | null {
+  const b = scoreBreakdownV2(m);
+  if (!b) return null;
+  return clampNum(4.0 + (b.composite - 50) / 12.5, 0.5, 7.9);
+}
 
 function piecewise(
   anchors: [number, number][],
@@ -71,7 +87,8 @@ function piecewise(
  *    /10 5.5 = Chadlite floor  -> 5.5
  *    /10 6.5 = Chad floor      -> 6.0
  *    /10 8.5 = True Adam floor -> 7.5 (template True Adam/Eve floor)
- *  Engine floor 0.5 -> 1.0; engine cap 9.9 -> 8.0. */
+ *  Engine floor 0.5 -> 1.0; engine cap 9.9 -> 8.0.
+ *  v1 ONLY — v2 displays raw PSL8 (see psl8Of). */
 const DISPLAY_ANCHORS: [number, number][] = [
   [0.5, 1.0],
   [2.5, 3.0],
@@ -88,33 +105,8 @@ export function toDisplayScore(psl10: number): number {
   return piecewise(DISPLAY_ANCHORS, psl10);
 }
 
-/** v2 engine PSL (/10) -> template display score (1–8) anchors,
- *  piecewise-linear through the v2 TIER floors so the tier name is
- *  identical on both scales at every boundary:
- *    /10 1.9  = LTN floor       -> 3.0 (template LTN floor)
- *    /10 3.75 = MTN floor       -> 4.0
- *    /10 5.6  = HTN floor       -> 5.0
- *    /10 6.9  = Chadlite floor  -> 5.5
- *    /10 7.5  = Chad floor      -> 6.0
- *    /10 9.7  = True Adam floor -> 7.5 (template True Adam/Eve floor)
- *  Engine floor 0.5 -> 1.0; engine cap 9.9 -> 8.0. */
-const DISPLAY_ANCHORS_V2: [number, number][] = [
-  [0.5, 1.0],
-  [1.9, 3.0],
-  [3.75, 4.0],
-  [5.6, 5.0],
-  [6.9, 5.5],
-  [7.5, 6.0],
-  [9.7, 7.5],
-  [9.9, 8.0],
-];
-
-/** v2 engine PSL (/10) -> template display score (1–8, one decimal). */
-export function toDisplayScoreV2(psl10: number): number {
-  return piecewise(DISPLAY_ANCHORS_V2, psl10);
-}
-
-/** Region / misc reads (/10, no tier ladder to align) -> 1–8 linear. */
+/** Region / misc reads (/10, no tier ladder to align) -> 1–8 linear.
+ *  Same formula as the native creatorTiers regionDisplayScore. */
 export function regionDisplayScore(score10: number): number {
   return round1(Math.min(8, Math.max(1, 1 + (score10 / 10) * 7)));
 }
@@ -154,10 +146,24 @@ export function buildScoreView(
   gender?: Gender
 ): ScoreView {
   const effGender: Gender = m.gender ?? gender ?? "male";
-  const toDisplay = isV2(m) ? toDisplayScoreV2 : toDisplayScore;
+  const eff: FaceMeasurements = m.gender ? m : { ...m, gender: effGender };
+  const v2 = isV2(eff);
 
-  const headline = (label: string, engine10: number): ScoreCardView => {
-    const display = toDisplay(engine10);
+  const psl10 = pslScore(eff);
+  const potential10 = pslPotential(eff);
+
+  // Headline display values. v2: PSL8 IS the display (owner's scale
+  // rule — till 8, never /10); POTENTIAL keeps the engine's headroom
+  // over PSL, expressed on the 8-scale. v1: the legacy template
+  // conversion, untouched.
+  const psl8 = v2 ? psl8Of(eff) : null;
+  const pslDisplay = psl8 !== null ? round1(psl8) : toDisplayScore(psl10);
+  const potentialDisplay =
+    psl8 !== null
+      ? round1(clampNum(psl8 + (potential10 - psl10) / 1.25, 0.5, 8))
+      : toDisplayScore(potential10);
+
+  const headline = (label: string, display: number): ScoreCardView => {
     return {
       label,
       display,
@@ -186,9 +192,9 @@ export function buildScoreView(
   };
 
   return {
-    psl: headline("PSL", pslScore(m)),
-    potential: headline("POTENTIAL", pslPotential(m)),
-    regions: regionScores(m).map((r) => read(r.label, r.score, r.note, r.key)),
-    misc: miscScores(m).map((s) => read(s.label, s.score, s.note)),
+    psl: headline("PSL", pslDisplay),
+    potential: headline("POTENTIAL", potentialDisplay),
+    regions: regionScores(eff).map((r) => read(r.label, r.score, r.note, r.key)),
+    misc: miscScores(eff).map((s) => read(s.label, s.score, s.note)),
   };
 }
