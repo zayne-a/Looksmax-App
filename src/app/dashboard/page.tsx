@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { Button, Card, Eyebrow } from "@/components/ui";
 import { Reveal } from "@/components/motion";
 import { useApp } from "@/lib/store";
+import { useAppSettings } from "@/lib/use-settings";
 import JourneyRoadmap from "@/components/JourneyRoadmap";
 import AscendHero from "@/components/AscendHero";
 import ProtocolLibrary from "@/components/ProtocolLibrary";
@@ -64,6 +65,7 @@ function fmtDate(iso: string): string {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { trial_days: trialDays } = useAppSettings();
   const {
     user,
     profile,
@@ -354,7 +356,7 @@ export default function DashboardPage() {
                 <p className="mt-1 max-w-md text-sm leading-relaxed text-muted">
                   Pro unlocks every step of your plan in full, switches on
                   the deep-curated AI plan, and keeps unlimited rescans.
-                  Monthly and Yearly start with a 3-day free trial.
+                  Monthly and Yearly start with a {trialDays}-day free trial.
                 </p>
               </div>
               <Button href="/paywall" className="shrink-0 px-7 py-3">
