@@ -1,16 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import {
-  ascendByDate,
-  formatAscendDate,
-  miscScores,
-  pslPotential,
-  pslScore,
-  regionScores,
-  regionVerdict,
-  tierForMeasurements,
-} from "@/lib/psl";
+import { ascendByDate, formatAscendDate } from "@/lib/psl";
+import { buildScoreView } from "@/lib/score-view";
 import type { FaceMeasurements } from "@/lib/types";
 
 /**
@@ -30,11 +22,11 @@ const MINT = "#5EEAD4";
 const GOLD_BAR = "#FACC15";
 
 function Bar({
-  value10,
+  fraction,
   color,
   gradient = false,
 }: {
-  value10: number;
+  fraction: number;
   color: string;
   gradient?: boolean;
 }) {
@@ -43,7 +35,7 @@ function Bar({
       <div
         className="h-full rounded-full"
         style={{
-          width: `${Math.min(100, value10 * 10)}%`,
+          width: `${Math.min(100, Math.max(0, fraction) * 100)}%`,
           background: gradient
             ? "linear-gradient(90deg, #FACC15, #4ADE80)"
             : color,
@@ -55,14 +47,16 @@ function Bar({
 
 function ScoreCard({
   label,
-  score,
+  formatted,
   verdict,
+  fraction,
   note,
   big = false,
 }: {
   label: string;
-  score: number;
+  formatted: string;
   verdict: string;
+  fraction: number;
   note?: string;
   big?: boolean;
 }) {
@@ -79,12 +73,12 @@ function ScoreCard({
           big ? "text-4xl" : "text-3xl"
         }`}
       >
-        {score.toFixed(1)}
+        {formatted}
         <span className="ml-2 align-middle text-xs font-bold text-white/60">
           · {verdict}
         </span>
       </p>
-      <Bar value10={score} color={GOLD_BAR} gradient />
+      <Bar fraction={fraction} color={GOLD_BAR} gradient />
       {note && (
         <p className="mt-2.5 text-[11px] leading-relaxed text-white/45">
           {note}
@@ -104,13 +98,13 @@ export default function PslDeck({
   const [deck, setDeck] = useState(0);
   if (!measurements.landmarksDetected) return null;
 
-  const psl = pslScore(measurements);
-  const tier = tierForMeasurements(measurements, psl);
-  const potential = pslPotential(measurements);
-  const potentialTier = tierForMeasurements(measurements, potential);
-  const regions = regionScores(measurements);
-  const misc = miscScores(measurements);
-  const gap = Math.round((potential - psl) * 10) / 10;
+  // Display values come from the one display layer (lib/score-view):
+  // the template 1–8 scale + template tier/verdict names, identical
+  // to the app and the creator cards. The engine's /10 numbers never
+  // reach the screen.
+  const view = buildScoreView(measurements);
+  const gap =
+    Math.round((view.potential.display - view.psl.display) * 10) / 10;
   const by = ascendByDate(new Date());
 
   return (
@@ -152,8 +146,9 @@ export default function PslDeck({
           <div className="mt-3 grid grid-cols-2 gap-3">
             <ScoreCard
               label="PSL"
-              score={psl}
-              verdict={tier.label}
+              formatted={view.psl.formatted}
+              verdict={view.psl.verdict}
+              fraction={view.psl.fraction}
               big
             />
             <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
@@ -164,12 +159,12 @@ export default function PslDeck({
                 Potential
               </p>
               <p className="mt-1.5 font-display text-4xl font-black text-white">
-                {potential.toFixed(1)}
+                {view.potential.formatted}
                 <span className="ml-2 align-middle text-xs font-bold text-white/60">
-                  · {potentialTier.label}
+                  · {view.potential.verdict}
                 </span>
               </p>
-              <Bar value10={potential} color="#4ADE80" />
+              <Bar fraction={view.potential.fraction} color="#4ADE80" />
             </div>
           </div>
 
@@ -185,12 +180,13 @@ export default function PslDeck({
 
           {/* Region grid */}
           <div className="mt-4 grid grid-cols-2 gap-3">
-            {regions.map((r) => (
+            {view.regions.map((r) => (
               <ScoreCard
                 key={r.key}
                 label={r.label}
-                score={r.score}
-                verdict={regionVerdict(r.score)}
+                formatted={r.formatted}
+                verdict={r.verdict}
+                fraction={r.fraction}
                 note={r.note}
               />
             ))}
@@ -198,12 +194,13 @@ export default function PslDeck({
         </>
       ) : (
         <div className="mt-3 grid grid-cols-2 gap-3">
-          {misc.map((s) => (
+          {view.misc.map((s) => (
             <ScoreCard
               key={s.label}
               label={s.label}
-              score={s.score}
-              verdict={regionVerdict(s.score)}
+              formatted={s.formatted}
+              verdict={s.verdict}
+              fraction={s.fraction}
               note={s.note}
             />
           ))}

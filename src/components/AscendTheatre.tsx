@@ -6,6 +6,7 @@ import {
   ascendByDate,
   formatAscendDate,
 } from "@/lib/psl";
+import { formatRating } from "@/lib/creator-tiers";
 
 /**
  * The analysis theatre (Zayne, 2026-10-21 — the PSL mechanism):
@@ -35,7 +36,9 @@ export default function AscendTheatre({
   onDone,
 }: {
   measured: boolean;
+  /** The DISPLAY score (template 1–8 scale, via lib/score-view). */
   psl: number | null;
+  /** The template tier name for that display score. */
   tier: string | null;
   onDone: () => void;
 }) {
@@ -186,7 +189,7 @@ export default function AscendTheatre({
             <p className="mt-7 text-sm font-semibold text-white/85">
               Your PSL rating is in —{" "}
               <span style={{ color: MINT }}>
-                {psl.toFixed(1)} · {tier}
+                {formatRating(psl)} · {tier}
               </span>
             </p>
           )}

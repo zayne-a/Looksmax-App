@@ -7,11 +7,8 @@ import { useApp } from "@/lib/store";
 import { saveScan } from "@/lib/account";
 import { saveScanPhoto } from "@/lib/scan-photos";
 import AscendTheatre from "@/components/AscendTheatre";
-import {
-  applyScoringV2,
-  pslScore,
-  tierForMeasurements,
-} from "@/lib/psl";
+import { applyScoringV2 } from "@/lib/psl";
+import { buildScoreView } from "@/lib/score-view";
 import {
   analyzeSkin,
   checkPhotoQuality,
@@ -1110,10 +1107,14 @@ export default function ScanPage() {
       {theatre && (
         <AscendTheatre
           measured={theatre.landmarksDetected}
-          psl={theatre.landmarksDetected ? pslScore(theatre) : null}
+          psl={
+            theatre.landmarksDetected
+              ? buildScoreView(theatre).psl.display
+              : null
+          }
           tier={
             theatre.landmarksDetected
-              ? tierForMeasurements(theatre, pslScore(theatre)).label
+              ? buildScoreView(theatre).psl.verdict
               : null
           }
           onDone={() => router.push("/plan")}

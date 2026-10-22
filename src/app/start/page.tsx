@@ -13,7 +13,7 @@ import {
   fetchContent,
   type ContentItem,
 } from "@/lib/content";
-import { PSL_TIERS } from "@/lib/psl";
+import { barFraction, scoreTierLabel } from "@/lib/creator-tiers";
 
 /**
  * The persuasion onboarding (Zayne, 2026-10-21) — "that's what the
@@ -31,6 +31,19 @@ import { PSL_TIERS } from "@/lib/psl";
  */
 
 const MINT = "#5EEAD4";
+
+/** The PSL ladder in the template's own dialect (lib/creator-tiers):
+ *  floors on the 1–8 scale, tier names from scoreTierLabel itself.
+ *  The scale tops at 8 — there is no 10. */
+const LADDER: { floor: number; range: string }[] = [
+  { floor: 7.5, range: "7.5–8.0" },
+  { floor: 6, range: "6.0–7.5" },
+  { floor: 5.5, range: "5.5–6.0" },
+  { floor: 5, range: "5.0–5.5" },
+  { floor: 4, range: "4.0–5.0" },
+  { floor: 3, range: "3.0–4.0" },
+  { floor: 1, range: "< 3.0" },
+];
 
 function Cta({
   children,
@@ -448,33 +461,31 @@ export default function StartPage() {
                 met placed you on this scale in seconds:
               </p>
               <div className="mt-8 space-y-2">
-                {[...PSL_TIERS].reverse().map((t, i, arr) => {
-                  const nextMin = i === 0 ? 10 : arr[i - 1].min;
-                  const isTop = t.label === "True Adam" || t.label === "Chad";
+                {LADDER.map((row) => {
+                  const label = scoreTierLabel(row.floor, "male");
+                  const isTop = label === "True Adam" || label === "Chad";
                   return (
                     <div
-                      key={t.label}
+                      key={label}
                       className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2.5"
                     >
                       <span
                         className="w-32 shrink-0 text-sm font-black uppercase tracking-wide"
                         style={{ color: isTop ? MINT : "#fff" }}
                       >
-                        {t.label}
+                        {label}
                       </span>
                       <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
                         <div
                           className="h-full rounded-full"
                           style={{
-                            width: `${(t.min / 10) * 100}%`,
+                            width: `${barFraction(row.floor) * 100}%`,
                             background: isTop ? MINT : "rgba(255,255,255,0.4)",
                           }}
                         />
                       </div>
                       <span className="w-16 shrink-0 text-right text-xs font-bold text-white/50">
-                        {t.min === 0
-                          ? "< 2.5"
-                          : `${t.min.toFixed(1)}–${nextMin.toFixed(1)}`}
+                        {row.range}
                       </span>
                     </div>
                   );

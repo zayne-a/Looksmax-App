@@ -1,12 +1,7 @@
 "use client";
 
-import {
-  ASCEND_PROGRAM_DAYS,
-  daysUntilAscend,
-  pslPotential,
-  pslScore,
-  tierForMeasurements,
-} from "@/lib/psl";
+import { ASCEND_PROGRAM_DAYS, daysUntilAscend } from "@/lib/psl";
+import { buildScoreView } from "@/lib/score-view";
 import type { FaceMeasurements } from "@/lib/types";
 
 /**
@@ -82,10 +77,9 @@ export default function AscendHero({
 }) {
   const start = new Date(journeyStartIso);
   const days = daysUntilAscend(start);
-  const psl = pslScore(measurements);
-  const tier = tierForMeasurements(measurements, psl);
-  const potential = pslPotential(measurements);
-  const potentialTier = tierForMeasurements(measurements, potential);
+  // Twin rings show the DISPLAY values (lib/score-view): the template
+  // 1–8 scale + template tier names, identical to the app.
+  const view = buildScoreView(measurements);
 
   return (
     <section
@@ -119,29 +113,29 @@ export default function AscendHero({
 
       <div className="mt-6 flex items-start justify-center gap-10">
         <div className="flex flex-col items-center">
-          <Ring size={92} stroke={5} fraction={psl / 10} color={MINT}>
+          <Ring size={92} stroke={5} fraction={view.psl.fraction} color={MINT}>
             <span className="font-display text-2xl font-black">
-              {psl.toFixed(1)}
+              {view.psl.formatted}
             </span>
             <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/50">
               PSL
             </span>
           </Ring>
           <span className="mt-2 text-[11px] font-bold text-white/60">
-            · {tier.label}
+            · {view.psl.verdict}
           </span>
         </div>
         <div className="flex flex-col items-center">
-          <Ring size={92} stroke={5} fraction={potential / 10} color="#FACC15">
+          <Ring size={92} stroke={5} fraction={view.potential.fraction} color="#FACC15">
             <span className="font-display text-2xl font-black">
-              {potential.toFixed(1)}
+              {view.potential.formatted}
             </span>
             <span className="text-[9px] font-bold uppercase tracking-[0.2em] text-white/50">
               Potential
             </span>
           </Ring>
           <span className="mt-2 text-[11px] font-bold text-white/60">
-            · {potentialTier.label}
+            · {view.potential.verdict}
           </span>
         </div>
       </div>
