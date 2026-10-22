@@ -82,7 +82,7 @@ function faqsFor(trialDays: number) {
   },
   {
     q: "Do I pay to see my results?",
-    a: `No. Your first scan — real measurements and your core score — is completely free, no card required. Mewmax Pro starts your 12-week adaptive protocol: Phase 1 in full, weekly check-ins and progress scans, Phases 2–3 generated from your progress, and a weekly coach review. Monthly and Yearly start with a ${trialDays}-day free trial; Weekly bills from day one.`,
+    a: `No. Your first scan — real measurements and your core score — is completely free, no card required. Mewmax Pro starts your 12-week adaptive protocol: Phase 1 in full, weekly check-ins and progress scans, Phases 2–3 generated from your progress, and a weekly coach review. ${trialDays > 0 ? `Monthly and Yearly start with a ${trialDays}-day free trial; Weekly bills from day one.` : "There is no free trial — every plan bills from day one, and you can cancel anytime."}`,
   },
   {
     q: "What is softmaxxing?",
@@ -320,7 +320,7 @@ export default async function Home() {
                     ["One plan = the whole journey.", "No stacked upsells, no second paywall for your “true potential” — every phase, check-in and review is in the one plan."],
                     ["A protocol built from your numbers.", "Your jaw ratio, your skin signals, your goals — sequenced week by week, not copied from a poster."],
                     ["Measured on your phone.", "Your photo never leaves your device for measurement. Nothing to leak, sell, or train on."],
-                    ["Cancel in one tap.", "Leave during the trial and you pay nothing. No maze, no begging support."],
+                    ["Cancel in one tap.", trialDays > 0 ? "Leave during the trial and you pay nothing. No maze, no begging support." : "Cancel stops future billing instantly. No maze, no begging support."],
                   ].map(([lead, text]) => (
                     <li key={lead} className="flex items-start gap-3 text-sm">
                       <svg
@@ -498,9 +498,10 @@ export default async function Home() {
               <span className="text-2xl font-bold text-muted">/week</span>
             </p>
             <p className="mx-auto mt-4 max-w-xl text-sm sm:text-base leading-relaxed text-muted">
-              Half the price of the rating apps. Monthly and Yearly start
-              with a {trialDays}-day free trial — and your first scan is free forever,
-              no card required.
+              Half the price of the rating apps.{" "}
+              {trialDays > 0
+                ? `Monthly and Yearly start with a ${trialDays}-day free trial — and your first scan is free forever, no card required.`
+                : "No free trial, no lock-in — cancel anytime, and your first scan is free forever, no card required."}
             </p>
             <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
               <Button href="/paywall" className="w-full sm:w-auto px-9 py-3.5">
