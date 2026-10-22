@@ -37,19 +37,87 @@ export interface SkinMetrics {
   underEye: number; // 0-100, higher = darker under-eyes
 }
 
+/** Frontal metrics added by scoring engine v2 (2026-10-22) — every one
+ *  computed from the same 478 landmarks v1 already captured, per the
+ *  benchmark table in research_notes/psl-scoring/psl-scoring-spec.md.
+ *  Raw values only; all scoring lives in lib/psl.ts. */
+export interface FrontalMetricsV2 {
+  /** F1 — interpupillary distance ÷ bizygomatic width. */
+  esr: number;
+  /** Intercanthal distance ÷ bizygomatic width. */
+  intercanthalRatio: number;
+  /** F13 — intercanthal distance ÷ one eye width ("one-eye test"). */
+  oneEyeRatio: number;
+  /** F7 — total face height (mesh top → chin) ÷ bizygomatic width. */
+  totalHeightWidth: number;
+  /** F10 — interpupillary distance ÷ (glabella → upper lip). */
+  midfaceRatio: number;
+  /** F21 (Pallett) — eye-line → mouth vertical distance ÷ face length. */
+  eyeMouthRatio: number;
+  /** F9 — chin height ÷ philtrum length. */
+  chinPhiltrumRatio: number;
+  /** F11 — mouth width ÷ alar (nose) width. */
+  mouthNoseRatio: number;
+  /** F15 — lower ÷ upper vermilion height. */
+  lipRatio: number;
+  /** F14 — eye width ÷ fissure height. */
+  eyeAspectRatio: number;
+  /** F12 — brow→eye vertical distance ÷ eye width (lower = lower-set). */
+  browSetedness: number;
+  /** F17 — brow line angle vs horizontal, degrees (outer end higher = +). */
+  browTiltDeg: number;
+  /** F18 — bitemporal width ÷ bizygomatic width. */
+  bitemporalRatio: number;
+  /** F6 — cheekbone height within the eye-line→nose-base span, 0..1
+   *  (1 = cheekbone at eye level; higher-set scores better). */
+  cheekboneSetedness: number;
+  /** F5 — frontal jaw angle at the jaw corner, degrees. */
+  jawFrontalAngleDeg: number;
+}
+
+/** Side-profile metrics (spec §2.2 subset S1/S3/S5/S10) — present ONLY
+ *  when the side capture passed the confidence gate in lib/face.ts.
+ *  Absent/null means "not measured", never an estimate. */
+export interface SideMetricsV2 {
+  /** S1 — gonial angle, degrees. */
+  gonialAngleDeg: number;
+  /** S3 — mandibular plane angle vs horizontal, degrees. */
+  mandibularPlaneDeg: number;
+  /** S5 — facial convexity at the nose tip (glabella–tip–chin), degrees. */
+  convexityGlabellaDeg: number;
+  /** S10 — total facial convexity at the subnasale, degrees. */
+  totalConvexityDeg: number;
+}
+
 export interface FaceMeasurements {
   facialThirds: { upper: number; mid: number; lower: number }; // proportions summing to ~1
   fifths: number[]; // 5 horizontal proportions summing to ~1
   canthalTiltDeg: number; // degrees, positive = upturned
-  jawToCheekbone: number; // ratio
-  fwhr: number; // facial width-to-height ratio
+  jawToCheekbone: number; // ratio (F8 bigonial ÷ bizygomatic in v2 terms)
+  /** v2: TRUE FWHR — bizygomatic width ÷ (glabella → upper lip).
+   *  v1 rows hold the legacy faceW ÷ full-face-height ratio (~0.7);
+   *  the two are different quantities and must never be compared. */
+  fwhr: number;
   symmetryScore: number; // 0-100
-  goldenRatioScore: number; // 0-100 composite vs ideal proportions
+  /** Legacy field name, kept so stored rows and their readers stay
+   *  valid. v1: the φ golden-ratio composite (removed in v2 — the
+   *  1.618 target is debunked). v2: the Harmony bucket score 0–100,
+   *  stamped by lib/psl.ts when the scan is finalised. */
+  goldenRatioScore: number;
   overallScore: number; // 0-100 deterministic composite (anchored, never LLM vibes)
   faceShape: "oval" | "round" | "square" | "oblong" | "heart" | "diamond" | "unknown";
   skin: SkinMetrics;
   landmarksDetected: boolean;
   notes: string[]; // e.g. warnings about photo quality
+  /** Scoring engine version. Absent = v1 scan: its numbers are kept
+   *  exactly as recorded (history is never rescored). 2 = v2. */
+  engineVersion?: 2;
+  /** From the quiz; drives the sex-specific bands in v2 scoring. */
+  gender?: "male" | "female";
+  /** v2 frontal metrics (present on v2 scans only). */
+  frontal?: FrontalMetricsV2;
+  /** v2 side metrics — null/absent when the side gate didn't pass. */
+  side?: SideMetricsV2 | null;
 }
 
 // ---- Plan JSON (Layer-3 output schema) ----

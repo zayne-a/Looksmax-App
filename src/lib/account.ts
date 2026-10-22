@@ -177,6 +177,17 @@ export function normaliseMeasurements(
     skin: m.skin ?? { redness: 0, texture: 0, blemishCount: 0, underEye: 0 },
     landmarksDetected: m.landmarksDetected ?? false,
     notes: m.notes ?? [],
+    // v2 fields — pass through verbatim when present; v1 rows simply
+    // don't have them (absent engineVersion = v1 scan, numbers kept).
+    ...(m.engineVersion === 2 ? { engineVersion: 2 as const } : {}),
+    ...(m.gender === "male" || m.gender === "female"
+      ? { gender: m.gender }
+      : {}),
+    ...(m.frontal && typeof m.frontal === "object"
+      ? { frontal: m.frontal }
+      : {}),
+    side:
+      m.side && typeof m.side === "object" ? m.side : null,
   };
 }
 

@@ -1,8 +1,21 @@
 // Project Ascend — face measurement engine (pure functions, no React).
 // All geometry is computed from MediaPipe FaceLandmarker 478 normalized
 // landmarks (x,y in 0..1). Deterministic: same landmarks -> same numbers.
+//
+// Engine v2 (2026-10-22): the metric set follows the benchmark table in
+// research_notes/psl-scoring/psl-scoring-spec.md. The v1 "golden ratio"
+// composite (scored against 1.618 — a debunked universal target) and the
+// mislabelled v1 "fwhr" (face width ÷ FULL face height, ~0.7) are gone:
+// v2's fwhr is the true FWHR, bizygomatic ÷ (glabella → upper lip).
+// This module returns raw geometry only — composite scores are stamped
+// by lib/psl.ts (applyScoringV2) once skin is merged, in the scan flow.
 
-import type { FaceMeasurements, SkinMetrics } from "./types";
+import type {
+  FaceMeasurements,
+  FrontalMetricsV2,
+  SideMetricsV2,
+  SkinMetrics,
+} from "./types";
 
 /** One landmark point. Structurally matches MediaPipe NormalizedLandmark. */
 export type Landmark = { x: number; y: number; z: number };
@@ -28,15 +41,38 @@ const dist = (
   h: number
 ): number => Math.hypot((a.x - b.x) * w, (a.y - b.y) * h);
 
-/** Penalty of a measured ratio vs an ideal, 0 (perfect) .. 1 (bad). */
-const ratioPenalty = (measured: number, ideal: number): number =>
-  clamp(Math.abs(measured - ideal) / ideal, 0, 1);
-
 function get(landmarks: Landmark[], i: number): Landmark {
   const p = landmarks[i];
   if (!p) throw new Error(`Missing landmark ${i}`);
   return p;
 }
+
+/** Angle (degrees) at `vertex` between the rays to `a` and `b`, in
+ *  pixel space. */
+function angleAt(
+  vertex: Landmark,
+  a: Landmark,
+  b: Landmark,
+  w: number,
+  h: number
+): number {
+  const v1x = (a.x - vertex.x) * w;
+  const v1y = (a.y - vertex.y) * h;
+  const v2x = (b.x - vertex.x) * w;
+  const v2y = (b.y - vertex.y) * h;
+  const m1 = Math.hypot(v1x, v1y) || 1;
+  const m2 = Math.hypot(v2x, v2y) || 1;
+  const cos = clamp((v1x * v2x + v1y * v2y) / (m1 * m2), -1, 1);
+  return (Math.acos(cos) * 180) / Math.PI;
+}
+
+/** The trichion (hairline) sits above the face mesh's top point (10):
+ *  the mesh ends on the upper forehead, short of the anatomical
+ *  hairline the facial-thirds ideals are defined against (spec §4.2).
+ *  We estimate the hairline by extending the brow→mesh-top segment by
+ *  this fraction. Named and documented because it is an estimate —
+ *  the one free parameter in the thirds measurement. */
+export const HAIRLINE_EXTENSION = 0.22;
 
 // ---------------------------------------------------------------------------
 // computeMeasurements
@@ -53,10 +89,20 @@ export function computeMeasurements(
     );
   }
 
-  // ---- facial thirds (vertical segments between 10 -> 168 -> 2 -> 152) ----
-  const upper = yDist(get(landmarks, 10), get(landmarks, 168), imgH);
-  const mid = yDist(get(landmarks, 168), get(landmarks, 2), imgH);
-  const lower = yDist(get(landmarks, 2), get(landmarks, 152), imgH);
+  const L = (i: number) => get(landmarks, i);
+  const faceWE = dist(L(234), L(454), imgW, imgH) || 1; // bizygomatic, euclidean
+  const faceW = xDist(L(234), L(454), imgW) || 1; // bizygomatic, horizontal (v1 convention)
+  const faceH = yDist(L(10), L(152), imgH) || 1; // mesh top -> chin
+
+  // ---- facial thirds, from the ESTIMATED hairline (spec §4.2) ----
+  // The mesh top (10) is not the trichion; the upper third is measured
+  // from the estimated hairline (see HAIRLINE_EXTENSION).
+  const browY = L(168).y * imgH;
+  const meshTopY = L(10).y * imgH;
+  const hairlineY = meshTopY - HAIRLINE_EXTENSION * (browY - meshTopY);
+  const upper = browY - hairlineY;
+  const mid = yDist(L(168), L(2), imgH);
+  const lower = yDist(L(2), L(152), imgH);
   const tSum = upper + mid + lower || 1;
   const facialThirds = {
     upper: upper / tSum,
@@ -65,32 +111,31 @@ export function computeMeasurements(
   };
 
   // ---- facial fifths (horizontal segments across 234 -> 454) ----
-  const faceW = xDist(get(landmarks, 234), get(landmarks, 454), imgW) || 1;
   const segIdx = [234, 33, 133, 362, 263, 454]; // cheek -> outer eye -> inner eye ... (both eyes)
   const fifths: number[] = [];
   for (let i = 0; i < 5; i++) {
     fifths.push(
-      xDist(get(landmarks, segIdx[i]), get(landmarks, segIdx[i + 1]), imgW) /
-        faceW
+      xDist(L(segIdx[i]), L(segIdx[i + 1]), imgW) / faceW
     );
   }
 
   // ---- canthal tilt: angle of inner->outer eye corner line vs horizontal ----
   // y grows downward, so outerHigher => inner.y - outer.y > 0.
   const tiltOf = (inner: number, outer: number): number => {
-    const dy = (get(landmarks, inner).y - get(landmarks, outer).y) * imgH;
-    const dx = xDist(get(landmarks, inner), get(landmarks, outer), imgW) || 1;
+    const dy = (L(inner).y - L(outer).y) * imgH;
+    const dx = xDist(L(inner), L(outer), imgW) || 1;
     return (Math.atan2(dy, dx) * 180) / Math.PI;
   };
   const canthalTiltDeg = (tiltOf(133, 33) + tiltOf(362, 263)) / 2;
 
   // ---- width ratios ----
-  const jawW = xDist(get(landmarks, 132), get(landmarks, 361), imgW);
-  const jawToCheekbone = jawW / faceW;
-  const faceH = yDist(get(landmarks, 10), get(landmarks, 152), imgH) || 1;
-  const fwhr = faceW / faceH;
+  const jawW = xDist(L(132), L(361), imgW);
+  const jawToCheekbone = jawW / faceW; // F8: bigonial ÷ bizygomatic
+  /** TRUE FWHR (F4): bizygomatic ÷ (glabella → upper lip). v1's field
+   *  held faceW ÷ full height (~0.7) — a different quantity entirely. */
+  const fwhr = faceWE / (dist(L(168), L(0), imgW, imgH) || 1);
 
-  // ---- symmetry: mirror pairs across the vertical midline (x of 168) ----
+  // ---- symmetry: 16 mirror pairs across the vertical midline (x of 168) ----
   const pairs: [number, number][] = [
     [33, 263], // outer eye corners
     [133, 362], // inner eye corners
@@ -100,13 +145,21 @@ export function computeMeasurements(
     [70, 300], // temples
     [105, 334], // brow
     [52, 282], // mid brow
+    [172, 397], // jaw corners (ramus)
+    [109, 338], // bitemporal
+    [49, 279], // nose alae
+    [129, 409], // nostrils
+    [159, 386], // upper eyelids
+    [145, 374], // lower eyelids
+    [58, 288], // jaw contour
+    [93, 323], // cheek contour
   ];
-  const x0 = get(landmarks, 168).x;
+  const x0 = L(168).x;
   let symErr = 0;
   let symN = 0;
   for (const [li, ri] of pairs) {
-    const l = get(landmarks, li);
-    const r = get(landmarks, ri);
+    const l = L(li);
+    const r = L(ri);
     const rMirroredX = 2 * x0 - r.x;
     symErr += (Math.abs(l.x - rMirroredX) * imgW) / faceW;
     symErr += (Math.abs(l.y - r.y) * imgH) / faceH;
@@ -115,46 +168,61 @@ export function computeMeasurements(
   const avgSymErr = symErr / (symN || 1);
   const symmetryScore = clamp(100 * (1 - 4 * avgSymErr), 0, 100);
 
-  // ---- golden ratio composite vs ideals ----
-  const thirdIdeal = 1 / 3;
-  const thirdsPen = clamp(
-    (Math.abs(facialThirds.upper - thirdIdeal) +
-      Math.abs(facialThirds.mid - thirdIdeal) +
-      Math.abs(facialThirds.lower - thirdIdeal)) /
-      3 /
-      thirdIdeal,
-    0,
-    1
-  );
-  const fifthsPen = clamp(
-    fifths.reduce((s, f) => s + Math.abs(f - 0.2), 0) / 5 / 0.2,
-    0,
-    1
-  );
-  const mouthW = dist(get(landmarks, 61), get(landmarks, 291), imgW, imgH);
-  const noseW = dist(get(landmarks, 129), get(landmarks, 409), imgW, imgH) || 1;
-  const mouthNosePen = ratioPenalty(mouthW / noseW, 1.618);
-  const lenWidthPen = ratioPenalty(faceH / faceW, 1.618);
-  const goldenRatioScore = clamp(
-    100 * (1 - (thirdsPen + fifthsPen + mouthNosePen + lenWidthPen) / 4),
-    0,
-    100
-  );
+  // ---- v2 frontal metrics (spec §5.1; raw values, scored in psl.ts) ----
+  const ipd = dist(L(468), L(473), imgW, imgH);
+  const eyeWidthA = dist(L(33), L(133), imgW, imgH);
+  const eyeWidthB = dist(L(362), L(263), imgW, imgH);
+  const meanEyeWidth = (eyeWidthA + eyeWidthB) / 2 || 1;
+  const intercanthal = dist(L(133), L(362), imgW, imgH);
 
-  // ---- deterministic sub-scores, each 0..100 vs its ideal ----
-  const thirdsBalance = clamp(100 * (1 - thirdsPen), 0, 100);
-  const canthalTiltScore = clamp(100 * (1 - Math.abs(canthalTiltDeg - 5) / 10), 0, 100);
-  const fwhrScore = clamp(100 * (1 - Math.abs(fwhr - 0.68) / 0.18), 0, 100);
+  // Brow tilt: inner end = brow point nearest the midline, outer end =
+  // farthest, per brow chain (chains from the FaceLandmarker topology).
+  const browChainA = [46, 52, 53, 55, 63, 65, 66, 70, 105, 107];
+  const browChainB = [276, 282, 283, 285, 293, 295, 296, 300, 334, 336];
+  const browTiltOf = (chain: number[]): number => {
+    let inner = chain[0];
+    let outer = chain[0];
+    for (const i of chain) {
+      if (Math.abs(L(i).x - x0) < Math.abs(L(inner).x - x0)) inner = i;
+      if (Math.abs(L(i).x - x0) > Math.abs(L(outer).x - x0)) outer = i;
+    }
+    const dy = (L(inner).y - L(outer).y) * imgH; // outer higher => positive
+    const dx = Math.abs(L(outer).x - L(inner).x) * imgW || 1;
+    return (Math.atan2(dy, dx) * 180) / Math.PI;
+  };
 
-  const overallScore =
-    Math.round(
-      (0.25 * symmetryScore +
-        0.25 * goldenRatioScore +
-        0.2 * thirdsBalance +
-        0.15 * canthalTiltScore +
-        0.15 * fwhrScore) *
-        10
-    ) / 10;
+  const frontal: FrontalMetricsV2 = {
+    esr: ipd / faceWE,
+    intercanthalRatio: intercanthal / faceWE,
+    oneEyeRatio: intercanthal / meanEyeWidth,
+    totalHeightWidth: faceH / faceWE,
+    midfaceRatio: ipd / (dist(L(168), L(0), imgW, imgH) || 1),
+    eyeMouthRatio:
+      (Math.abs((L(0).y + L(13).y) / 2 - (L(468).y + L(473).y) / 2) * imgH) /
+      faceH,
+    chinPhiltrumRatio:
+      dist(L(17), L(152), imgW, imgH) / (dist(L(2), L(0), imgW, imgH) || 1),
+    mouthNoseRatio:
+      dist(L(61), L(291), imgW, imgH) / (dist(L(49), L(279), imgW, imgH) || 1),
+    lipRatio:
+      yDist(L(14), L(17), imgH) / (yDist(L(0), L(13), imgH) || 1),
+    eyeAspectRatio:
+      meanEyeWidth /
+      (((yDist(L(159), L(145), imgH) + yDist(L(386), L(374), imgH)) / 2) || 1),
+    browSetedness:
+      ((((L(133).y + L(33).y) / 2 - L(105).y) * imgH) / (eyeWidthA || 1) +
+        (((L(362).y + L(263).y) / 2 - L(334).y) * imgH) / (eyeWidthB || 1)) /
+      2,
+    browTiltDeg: (browTiltOf(browChainA) + browTiltOf(browChainB)) / 2,
+    bitemporalRatio: dist(L(109), L(338), imgW, imgH) / faceWE,
+    cheekboneSetedness:
+      (L(2).y - (L(234).y + L(454).y) / 2) /
+      ((L(2).y - (L(468).y + L(473).y) / 2) || 1),
+    jawFrontalAngleDeg:
+      (angleAt(L(132), L(172), L(152), imgW, imgH) +
+        angleAt(L(361), L(397), L(152), imgW, imgH)) /
+      2,
+  };
 
   // ---- face shape classification ----
   const faceShape = classifyFaceShape(landmarks, imgW, imgH, faceW, faceH, jawW);
@@ -166,10 +234,96 @@ export function computeMeasurements(
     jawToCheekbone,
     fwhr,
     symmetryScore,
-    goldenRatioScore,
-    overallScore,
+    // Stamped by lib/psl.ts applyScoringV2 once skin is merged (the
+    // composite needs the skin suite for its Misc bucket).
+    goldenRatioScore: 0,
+    overallScore: 0,
     faceShape,
+    engineVersion: 2,
+    frontal,
+    side: null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// computeSideMetrics — side-profile reads behind a confidence gate.
+// Spec §5.4: landmark quality in true profile is materially worse than
+// frontal, so the gate checks the capture actually IS a profile and the
+// fitted outline is plausible. Any doubt -> null, and the scorer
+// renormalises weights. A side metric is NEVER estimated silently.
+// ---------------------------------------------------------------------------
+
+export function computeSideMetrics(
+  landmarks: Landmark[],
+  imgW: number,
+  imgH: number
+): SideMetricsV2 | null {
+  try {
+    if (!landmarks || landmarks.length < 478) return null;
+    const L = (i: number) => get(landmarks, i);
+
+    let minX = 1;
+    let maxX = 0;
+    let minY = 1;
+    let maxY = 0;
+    for (const p of landmarks) {
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.y > maxY) maxY = p.y;
+    }
+    const spanX = (maxX - minX) * imgW || 1;
+    const spanY = (maxY - minY) * imgH || 1;
+
+    // Gate 1 — profile-ness: in profile the two irises nearly coincide
+    // horizontally (frontal: ~0.4 of the span apart).
+    if (Math.abs(L(468).x - L(473).x) * imgW > 0.22 * spanX) return null;
+    // Gate 2 — the nose tip must protrude clearly from the brow line,
+    // and be the foremost midline point on the facing side.
+    const noseDir = Math.sign(L(1).x - L(168).x);
+    if (noseDir === 0) return null;
+    if (Math.abs(L(1).x - L(168).x) * imgW < 0.06 * spanX) return null;
+    const foremost = noseDir > 0 ? maxX : minX;
+    if (Math.abs(L(1).x - foremost) * imgW > 0.25 * spanX) return null;
+
+    // The visible outline chain lives on the side the nose points to.
+    const temple = noseDir < 0 ? 127 : 356;
+    const jawSide = noseDir < 0 ? 132 : 361;
+    const corner = noseDir < 0 ? 172 : 397;
+
+    // Gate 3 — jaw chain plausibility: temple above jaw corner above
+    // chin, in order (small tolerance for landmark jitter).
+    const tol = 0.02 * spanY;
+    if (!(L(temple).y < L(corner).y + tol)) return null;
+    if (!(L(corner).y < L(152).y + tol)) return null;
+    if (L(jawSide).y > L(corner).y + 0.05 * spanY) return null;
+
+    const gonialAngleDeg = angleAt(L(corner), L(temple), L(152), imgW, imgH);
+    const mandibularPlaneDeg =
+      (Math.atan2(
+        Math.abs(L(152).y - L(corner).y) * imgH,
+        Math.abs(L(152).x - L(corner).x) * imgW || 1
+      ) *
+        180) /
+      Math.PI;
+    const convexityGlabellaDeg = angleAt(L(1), L(168), L(152), imgW, imgH);
+    const totalConvexityDeg = angleAt(L(2), L(168), L(152), imgW, imgH);
+
+    // Gate 4 — fitted values inside anatomical plausibility ranges.
+    if (gonialAngleDeg < 60 || gonialAngleDeg > 170) return null;
+    if (mandibularPlaneDeg < 0 || mandibularPlaneDeg > 60) return null;
+    if (totalConvexityDeg < 100 || totalConvexityDeg > 175) return null;
+    if (convexityGlabellaDeg < 120 || convexityGlabellaDeg > 179) return null;
+
+    return {
+      gonialAngleDeg,
+      mandibularPlaneDeg,
+      convexityGlabellaDeg,
+      totalConvexityDeg,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function classifyFaceShape(
