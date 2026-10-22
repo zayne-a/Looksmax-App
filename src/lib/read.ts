@@ -58,16 +58,16 @@ export function buildMeasurementRead(m: FaceMeasurements): MeasurementRead {
   });
 
   items.push({
-    label: "Golden ratio fit",
+    label: "Harmony fit",
     value: `${Math.round(m.goldenRatioScore)}/100`,
     detail:
       (m.goldenRatioScore >= 80
-        ? "Your proportions sit close to the classical ideals this score is benchmarked against — the ratios between facial length and width, eye spacing, nose and mouth widths land near the values artists and surgeons have used as reference points for centuries."
+        ? "Your proportions sit close to the researched ideal bands this score is benchmarked against — eye spacing, facial thirds, mouth-to-nose and face height-to-width all land near the values the rating community measures by."
         : m.goldenRatioScore >= 65
-          ? "Proportions sit near the classical benchmarks, with one or two ratios doing most of the pulling away. The thirds and jaw reads below identify which — the fit score itself is deliberately a summary, and the detail always lives in the components."
+          ? "Proportions sit near the researched bands, with one or two ratios doing most of the pulling away. The thirds and jaw reads below identify which — the fit score itself is deliberately a summary, and the detail always lives in the components."
           : m.goldenRatioScore >= 50
-            ? "Several ratios sit outside the classical band. It's worth being precise about what this score is: a comparison against a template, not a measurement of attractiveness. Plenty of faces read striking with proportions far from this template — the template describes one kind of harmony, not the only one."
-            : "Proportions sit well outside the classical template. Read this as a styling brief rather than a verdict: when the underlying ratios aren't the classical kind, presence is built from condition, grooming, hair and expression — the things entirely in your control.") +
+            ? "Several ratios sit outside their ideal band. It's worth being precise about what this score is: a comparison against researched proportion bands, not a measurement of attractiveness. Plenty of faces read striking with proportions far from these bands — they describe one kind of harmony, not the only one."
+            : "Proportions sit well outside the researched bands. Read this as a styling brief rather than a verdict: when the underlying ratios aren't the textbook kind, presence is built from condition, grooming, hair and expression — the things entirely in your control.") +
       "\n\nWhy it's in your read at all: not as a grade to chase — this score is mostly bone and moves least of anything here — but because it tells the plan where to aim. A high fit means styling should stay quiet and let structure speak. A lower fit means the deliberate work is optical: hairstyle geometry, facial-hair lines and frame widths chosen to lend the eye a different set of ratios than the ones measured. Either way, the score's job is direction, not judgement.",
   });
 

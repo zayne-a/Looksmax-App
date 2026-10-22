@@ -1,4 +1,4 @@
-// Face breakdown for the dashboard (new): the trait-by-trait results pattern (cf. Umax) done honestly — bars only for true 0-100 scores (golden ratio, symmetry), values + plain-language readings for ratios (thirds, canthal tilt, jaw, FWHR), plus the skin readout (redness/texture/under-eye, lower is better) for parity with the plan page’s measurements section. All from the latest scan’s on-device measurements.
+// Face breakdown for the dashboard (new): the trait-by-trait results pattern (cf. Umax) done honestly — bars only for true 0-100 scores (harmony, symmetry), values + plain-language readings for ratios (thirds, canthal tilt, jaw, FWHR), plus the skin readout (redness/texture/under-eye, lower is better) for parity with the plan page’s measurements section. All from the latest scan’s on-device measurements.
 import { Card } from "@/components/ui";
 import type { FaceMeasurements } from "@/lib/types";
 import { buildMeasurementRead } from "@/lib/read";
@@ -131,9 +131,9 @@ export default function FaceBreakdown({
 
       <div className="mt-5 space-y-5">
         <ScoreRow
-          name="Golden ratio"
+          name="Harmony"
           score={m.goldenRatioScore}
-          note="How closely your proportions sit to the classical ideals across the whole face."
+          note="Every measured ratio scored against its researched ideal band, across the whole face."
         />
         <ScoreRow
           name="Symmetry"

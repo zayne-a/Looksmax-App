@@ -5,7 +5,7 @@ import {
   daysUntilAscend,
   pslPotential,
   pslScore,
-  pslTier,
+  tierForMeasurements,
 } from "@/lib/psl";
 import type { FaceMeasurements } from "@/lib/types";
 
@@ -83,9 +83,9 @@ export default function AscendHero({
   const start = new Date(journeyStartIso);
   const days = daysUntilAscend(start);
   const psl = pslScore(measurements);
-  const tier = pslTier(psl);
+  const tier = tierForMeasurements(measurements, psl);
   const potential = pslPotential(measurements);
-  const potentialTier = pslTier(potential);
+  const potentialTier = tierForMeasurements(measurements, potential);
 
   return (
     <section

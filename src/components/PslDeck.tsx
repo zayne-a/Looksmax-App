@@ -7,9 +7,9 @@ import {
   miscScores,
   pslPotential,
   pslScore,
-  pslTier,
   regionScores,
   regionVerdict,
+  tierForMeasurements,
 } from "@/lib/psl";
 import type { FaceMeasurements } from "@/lib/types";
 
@@ -105,9 +105,9 @@ export default function PslDeck({
   if (!measurements.landmarksDetected) return null;
 
   const psl = pslScore(measurements);
-  const tier = pslTier(psl);
+  const tier = tierForMeasurements(measurements, psl);
   const potential = pslPotential(measurements);
-  const potentialTier = pslTier(potential);
+  const potentialTier = tierForMeasurements(measurements, potential);
   const regions = regionScores(measurements);
   const misc = miscScores(measurements);
   const gap = Math.round((potential - psl) * 10) / 10;

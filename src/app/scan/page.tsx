@@ -7,16 +7,21 @@ import { useApp } from "@/lib/store";
 import { saveScan } from "@/lib/account";
 import { saveScanPhoto } from "@/lib/scan-photos";
 import AscendTheatre from "@/components/AscendTheatre";
-import { pslScore, pslTier } from "@/lib/psl";
+import {
+  applyScoringV2,
+  pslScore,
+  tierForMeasurements,
+} from "@/lib/psl";
 import {
   analyzeSkin,
   checkPhotoQuality,
   computeMeasurements,
+  computeSideMetrics,
   evaluatePhotoQuality,
   type Landmark,
   type PhotoQualityGateResult,
 } from "@/lib/face";
-import type { FaceMeasurements } from "@/lib/types";
+import type { FaceMeasurements, SideMetricsV2 } from "@/lib/types";
 import { Button, Card, Eyebrow } from "@/components/ui";
 import { Reveal, ScanFrame } from "@/components/motion";
 
@@ -40,8 +45,8 @@ const WHAT_WE_MEASURE = [
   ["Facial fifths", "Five horizontal segments across the cheekbones, checked for evenness."],
   ["Canthal tilt", "The angle of your eye corners — positive tilt reads alert and youthful."],
   ["Symmetry", "Left/right mirroring across your face's vertical midline."],
-  ["Golden ratio", "Mouth-to-nose and face length-to-width against 1.618."],
-  ["Width ratios", "Jaw vs cheekbone width and your facial width-to-height ratio."],
+  ["Harmony ratios", "Eye spacing, mouth-to-nose and face height-to-width against researched ideal bands."],
+  ["Width ratios", "Jaw vs cheekbone width and your facial width-to-height ratio (brow to upper lip)."],
   ["Face shape", "Oval, round, square, oblong, heart or diamond."],
   ["Skin", "Redness, texture, blemish estimate and under-eye darkness from the photo."],
 ];
@@ -731,14 +736,46 @@ export default function ScanPage() {
       const skin = analyzeSkin(canvas);
       const quality = checkPhotoQuality(landmarks, { width: cw, height: ch }, canvas);
 
-      const measurements: FaceMeasurements = {
+      // Side profile — measured only when the capture passes the
+      // confidence gate in lib/face.ts (a true profile with a
+      // plausible jaw chain). Any failure leaves side = null and the
+      // scorer renormalises frontal-only; nothing is estimated.
+      let side: SideMetricsV2 | null = null;
+      if (sidePhoto) {
+        try {
+          setStatusText("Reading your side profile...");
+          const img = await loadImage(sidePhoto);
+          const MAX = 1024;
+          const sc = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
+          const sw = Math.max(1, Math.round(img.naturalWidth * sc));
+          const sh = Math.max(1, Math.round(img.naturalHeight * sc));
+          const sCanvas = document.createElement("canvas");
+          sCanvas.width = sw;
+          sCanvas.height = sh;
+          const sCtx = sCanvas.getContext("2d");
+          if (sCtx) {
+            sCtx.drawImage(img, 0, 0, sw, sh);
+            const sFaces = landmarker.detect(sCanvas).faceLandmarks ?? [];
+            if (sFaces[0]) side = computeSideMetrics(sFaces[0], sw, sh);
+          }
+        } catch {
+          side = null;
+        }
+      }
+
+      // v2 scoring is stamped here — once skin is merged and the
+      // quiz gender (sex-specific bands) is known. Deterministic:
+      // same landmarks -> same numbers, every scan, every time.
+      const measurements: FaceMeasurements = applyScoringV2({
         ...m,
+        side,
+        gender: quiz?.gender,
         skin,
         landmarksDetected: true,
         notes: quality.ok
           ? ["Measured on your device from 478 facial landmarks."]
           : quality.issues,
-      };
+      });
       setMeasurements(measurements);
       persistScan(measurements);
       setPhase("idle");
@@ -1076,7 +1113,7 @@ export default function ScanPage() {
           psl={theatre.landmarksDetected ? pslScore(theatre) : null}
           tier={
             theatre.landmarksDetected
-              ? pslTier(pslScore(theatre)).label
+              ? tierForMeasurements(theatre, pslScore(theatre)).label
               : null
           }
           onDone={() => router.push("/plan")}
