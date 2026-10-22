@@ -671,26 +671,26 @@ export default function QuizPage() {
                   {selfRating}
                 </motion.p>
               </AnimatePresence>
-              <p className="mt-1 text-sm text-muted">out of 10</p>
+              <p className="mt-1 text-sm text-muted">out of 8</p>
             </div>
             <input
               type="range"
               min={1}
-              max={10}
+              max={8}
               step={1}
               value={selfRating}
               onChange={(e) => setSelfRating(Number(e.target.value))}
               className="slider-gold w-full"
               style={
                 {
-                  "--fill": `${((selfRating - 1) / 9) * 100}%`,
+                  "--fill": `${((selfRating - 1) / 7) * 100}%`,
                 } as CSSProperties
               }
-              aria-label="Self rating from 1 to 10"
+              aria-label="Self rating from 1 to 8"
             />
             <div className="flex justify-between text-xs text-muted">
               <span>1 — starting out</span>
-              <span>10 — already there</span>
+              <span>8 — already there</span>
             </div>
           </div>
         );

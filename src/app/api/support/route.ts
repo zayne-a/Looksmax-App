@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { serviceClient } from "@/lib/admin-api";
-import { pslPotential, pslScore, tierForMeasurements } from "@/lib/psl";
+import { buildScoreView } from "@/lib/score-view";
 import type { FaceMeasurements } from "@/lib/types";
 
 /**
@@ -55,6 +55,7 @@ THE SCAN (/scan)
 - A quality gate checks the photo before measuring: face visible and centred, big enough in frame, decent light, not blown out, not blurry. If rejected, the screen says exactly why and retakes are unlimited and free.
 - Measurements: symmetry, harmony fit, facial thirds and fifths, canthal tilt, jaw-to-cheekbone ratio, FWHR, face shape — plus skin reads: redness, texture, a blemish estimate and under-eye darkness. Every scan result includes a full written read of what each number means and what can honestly move it.
 - Scores are estimates from one photo under your current lighting/angle — a tracking tool, not a medical or absolute judgment. Rescan in similar light for fair comparisons.
+- The PSL score runs 1–8 — that is the community's scale; there is no 10, and 8 is the practical ceiling nobody actually touches. Tiers, low to high: Sub-3, Low-Tier Normie, Mid-Tier Normie, High-Tier Normie, Chadlite, Chad, True Adam (female ladder: Sub-3, Low-Tier Becky, Mid-Tier Becky, High-Tier Becky, Stacylite, Stacy, True Eve). POTENTIAL is on the same 1–8 scale. If a user quotes a score out of 10, correct it once, lightly: our numbers are out of 8.
 
 PRIVACY (important, users ask a lot)
 - Face analysis runs ON THE DEVICE in the browser — photos are never uploaded for analysis.
@@ -152,7 +153,7 @@ COACHING RULES
 
 FORMAT DEMOS (shape only — every number below is invented for the demo; in real replies use ONLY the CONTEXT numbers, never these)
 Demo 1 — user: "how am I doing?"
-🔥 YOUR NUMBER: **71/100** overall, PSL **5.6** — High-Tier Normie, with POTENTIAL at **7.0**. That **+1.4** gap isn't genetics talking, it's your skin reads.
+🔥 YOUR NUMBER: **71/100** overall, PSL **5.0** — High-Tier Normie, with POTENTIAL at **6.4**. That **+1.4** gap isn't genetics talking, it's your skin reads.
 🎯 TODAY'S FOCUS: Your plan's Skin section — the morning protocol, no improvising.
 📈 NEXT MOVE: Log today's tasks, rescan Sunday in the same light. We judge the trend, not one selfie.
 
@@ -358,13 +359,17 @@ async function buildCoachContext(
     if (overall !== null) bits.push(`overall ${round1(overall)}/100`);
     if (m?.landmarksDetected && m.skin) {
       try {
-        const psl = pslScore(m);
-        const potential = pslPotential(m);
-        bits.push(
-          `PSL ${psl.toFixed(1)} (${tierForMeasurements(m, psl).label})`
+        // Quote the user the numbers they actually SEE: the display
+        // scale (1–8, template tiers) from lib/score-view — never the
+        // engine's internal /10 values.
+        const qg = (scan.quiz as { gender?: unknown } | null)?.gender;
+        const view = buildScoreView(
+          m,
+          qg === "female" ? "female" : qg === "male" ? "male" : undefined
         );
+        bits.push(`PSL ${view.psl.formatted} (${view.psl.verdict})`);
         bits.push(
-          `POTENTIAL ${potential.toFixed(1)} (${tierForMeasurements(m, potential).label})`
+          `POTENTIAL ${view.potential.formatted} (${view.potential.verdict})`
         );
       } catch {
         // Partial legacy measurements — quote the stored reads only.
