@@ -7,6 +7,7 @@ import { Button, Card } from "@/components/ui";
 import type { AscendPlan, QuizAnswers } from "@/lib/types";
 import type { DailyLog } from "@/lib/account";
 import {
+  CONSOLIDATION_JOURNEY_WEEK,
   currentStreak,
   dayKey,
   personalTargets,
@@ -153,7 +154,19 @@ export default function TodayHome({
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <p className="font-display text-xl font-extrabold leading-none text-bone">
-                Week {week} <span className="text-sm font-bold text-muted">of 12</span>
+                {week >= CONSOLIDATION_JOURNEY_WEEK ? (
+                  <>
+                    Final stretch{" "}
+                    <span className="text-sm font-bold text-muted">
+                      days 85–90 of 90
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    Week {week}{" "}
+                    <span className="text-sm font-bold text-muted">of 12</span>
+                  </>
+                )}
               </p>
               {scoreDelta !== null && scoreDelta !== 0 && (
                 <span
@@ -213,7 +226,9 @@ export default function TodayHome({
               Today&apos;s protocol
             </p>
             <h3 className="font-display mt-1.5 text-2xl font-extrabold text-bone">
-              Week {((week - 1) % 4) + 1} focus, in your hands
+              {week >= CONSOLIDATION_JOURNEY_WEEK
+                ? "Consolidation week focus, in your hands"
+                : `Week ${((week - 1) % 4) + 1} focus, in your hands`}
             </h3>
           </div>
           <p className="text-xs text-muted">

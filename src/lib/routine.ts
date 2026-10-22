@@ -1,4 +1,5 @@
 // Guided routine picks its focus task from open tasks only — server-side locked tasks (real titles, instructions stubbed out) are skipped.
+import { isConsolidationStretch } from "./daily";
 import type { AscendPlan, QuizAnswers } from "./types";
 
 /**
@@ -21,7 +22,12 @@ export function buildRoutine(
   week: number
 ): RoutineStep[] {
   const skin = plan.sections.find((s) => s.id === "skin");
-  const planWeek = ((Math.max(1, week) - 1) % 4) + 1;
+  // Same week read as todaysSections: the 4-week cycle during the
+  // protocol, the plan's last (consolidation) week from journey
+  // week 13 — the final stretch, days 85–90.
+  const planWeek = isConsolidationStretch(week)
+    ? Math.max(1, ...(skin?.weeks.map((w) => w.week) ?? [1]))
+    : ((Math.max(1, week) - 1) % 4) + 1;
   const wk = skin?.weeks.find((w) => w.week === planWeek) ?? skin?.weeks[0];
   const focusTask =
     wk?.tasks.find((t) => !t.locked)?.title ?? "Your treatment step";

@@ -1,12 +1,16 @@
 // AUDIT FIX: a phase reads "complete" only when its check-ins were actually done; a lapsed window with unmet check-ins stays "locked" — time passing alone earns nothing, per the file’s own rule.
 /**
- * The 12-week journey model (retention core).
+ * The journey model (retention core) for the 90-day ascend programme.
  *
  * Ascend is not a one-time protocol dump: Phase 1 (weeks 1–4) ships in
  * full with the first plan, and Phases 2 and 3 unlock later — gated on
  * BOTH time and weekly check-ins, because those phases are generated
  * from how the user actually responded (progress scans, irritation,
- * adherence, weight trend), not pre-written for everyone.
+ * adherence, weight trend), not pre-written for everyone. The phased
+ * protocol spans 12 weeks (84 days); Phase 3 then carries a final
+ * consolidation stretch (days 85–90, inside journey week 13) that runs
+ * the plan's own consolidation week to the ascend date — so the
+ * programme is 90 days end to end (ASCEND_PROGRAM_DAYS in psl.ts).
  */
 
 export interface JourneyPhase {
@@ -15,6 +19,10 @@ export interface JourneyPhase {
   weeksLabel: string;
   /** First week of the phase (1-based). */
   unlockWeek: number;
+  /** Last journey week inside the phase (1-based). Phase 3 runs to
+   *  week 13 because the final consolidation stretch (days 85–90)
+   *  belongs to it. */
+  endWeek: number;
   /** Weekly check-ins required before the phase can unlock. */
   checkinsRequired: number;
   tagline: string;
@@ -28,6 +36,7 @@ export const JOURNEY_PHASES: JourneyPhase[] = [
     name: "Foundation",
     weeksLabel: "Weeks 1–4",
     unlockWeek: 1,
+    endWeek: 4,
     checkinsRequired: 0,
     tagline: "Rebuild the base — barrier, basics, baselines.",
     inside: [
@@ -41,6 +50,7 @@ export const JOURNEY_PHASES: JourneyPhase[] = [
     name: "Intensify",
     weeksLabel: "Weeks 5–8",
     unlockWeek: 5,
+    endWeek: 8,
     checkinsRequired: 4,
     tagline: "Built from your Phase 1 response — not pre-written.",
     inside: [
@@ -53,14 +63,16 @@ export const JOURNEY_PHASES: JourneyPhase[] = [
   {
     n: 3,
     name: "Consolidate",
-    weeksLabel: "Weeks 9–12",
+    weeksLabel: "Weeks 9–12 + final stretch",
     unlockWeek: 9,
+    endWeek: 13,
     checkinsRequired: 8,
     tagline: "Keep the gains — and finish the transformation arc.",
     inside: [
       "Maintenance dosing — the minimum routine that holds your results",
       "Event & photo prep: skin, hair and fit finishing protocol",
       "Final comparison scan + full score-journey review",
+      "Days 85–90: the final consolidation stretch — this phase's maintenance week runs to your ascend date (day 90)",
       "Next-cycle goals set from your data: cut, bulk, or hold",
     ],
   },
@@ -90,7 +102,7 @@ export function phaseState(
   checkins: number
 ): PhaseState {
   if (week === null) return phase.n === 1 ? "active" : "locked";
-  const phaseEnd = phase.unlockWeek + 3;
+  const phaseEnd = phase.endWeek;
   // "Complete" must be earned, not aged into (audit fix): a phase whose
   // check-ins were never done was never unlocked, so a lapsed window
   // reads "locked", not "complete" — time passing alone earns nothing.

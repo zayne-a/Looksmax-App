@@ -205,7 +205,7 @@ export default function StartPage() {
               </h1>
               <p className="mt-6 max-w-sm text-lg leading-relaxed text-white/70">
                 Get your PSL rating and ascend in{" "}
-                <span className="font-bold text-white">84 days</span> or less.
+                <span className="font-bold text-white">90 days</span> or less.
               </p>
               <div className="mt-auto pt-12">
                 <Cta onClick={next}>Get my PSL rating</Cta>

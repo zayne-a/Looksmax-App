@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ASCEND_PROGRAM_DAYS,
   daysUntilAscend,
   pslPotential,
   pslScore,
@@ -16,7 +17,7 @@ import type { FaceMeasurements } from "@/lib/types";
  * the whole product.
  *
  * Days left derive from the REAL journey start (first saved scan or
- * plan) against the 84-day programme — the same mechanism as the
+ * plan) against the 90-day programme — the same mechanism as the
  * theatre, counting down as the user actually progresses.
  */
 
@@ -100,7 +101,7 @@ export default function AscendHero({
       )}
 
       <div className="mt-4 flex justify-center">
-        <Ring size={208} stroke={7} fraction={days / 84} color={MINT}>
+        <Ring size={208} stroke={7} fraction={days / ASCEND_PROGRAM_DAYS} color={MINT}>
           <span className="font-display text-6xl font-black leading-none">
             {days}
           </span>

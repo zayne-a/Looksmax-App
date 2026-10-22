@@ -196,10 +196,14 @@ export function miscScores(m: FaceMeasurements): MiscScore[] {
   ];
 }
 
-/** The ascend countdown: our programme is 12 weeks = 84 days. The
- *  finish date and days-left derive from the journey start, exactly
- *  like the mechanism this mirrors — never a random date. */
-export const ASCEND_PROGRAM_DAYS = 84;
+/** The ascend countdown: our programme is 90 days (Zayne, 2026-10-22
+ *  — aligned with the category leader and the native app). The 90
+ *  days are the 12 protocol weeks (84 days) plus a final 6-day
+ *  consolidation stretch (days 85–90) that runs the plan's own
+ *  consolidation week — see todaysSections in daily.ts. The finish
+ *  date and days-left derive from the journey start, exactly like
+ *  the mechanism this mirrors — never a random date. */
+export const ASCEND_PROGRAM_DAYS = 90;
 
 export function ascendByDate(start: Date): Date {
   const d = new Date(start);

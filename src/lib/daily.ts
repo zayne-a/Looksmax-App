@@ -134,17 +134,38 @@ export interface TodaySection {
   tasks: PlanTask[];
 }
 
+/** First journey week of the final consolidation stretch (days
+ *  85–90 of the 90-day programme). */
+export const CONSOLIDATION_JOURNEY_WEEK = 13;
+
+/** True from journey week 13 on — the final consolidation stretch
+ *  (days 85–90) and the maintenance days after the ascend date. */
+export function isConsolidationStretch(journeyWeekNumber: number): boolean {
+  return Math.max(1, journeyWeekNumber) >= CONSOLIDATION_JOURNEY_WEEK;
+}
+
 /** The plan's 4-week cycle repeats across the 12-week journey until the
  *  next phase is generated, so journey week N reads plan week
- *  ((N-1) mod 4) + 1. */
+ *  ((N-1) mod 4) + 1. From journey week 13 the programme is in its
+ *  final consolidation stretch (days 85–90 of 90): instead of cycling
+ *  back to week 1, each section serves its own LAST week — the plan's
+ *  consolidation/maintenance week — so the final days run the plan's
+ *  most settled routine, labelled as the consolidation stretch in
+ *  the UI. The same read serves the maintenance days after day 90. */
 export function todaysSections(
   plan: AscendPlan,
   journeyWeekNumber: number
 ): TodaySection[] {
   const planWeek = ((Math.max(1, journeyWeekNumber) - 1) % 4) + 1;
+  const consolidation = isConsolidationStretch(journeyWeekNumber);
   return plan.sections
     .map((s): TodaySection | null => {
-      const wk = s.weeks.find((w) => w.week === planWeek) ?? s.weeks[0];
+      const wk = consolidation
+        ? s.weeks.reduce(
+            (latest, w) => (latest === null || w.week > latest.week ? w : latest),
+            null as (typeof s.weeks)[number] | null
+          )
+        : (s.weeks.find((w) => w.week === planWeek) ?? s.weeks[0]);
       if (!wk) return null;
       return {
         sectionId: s.id as string,

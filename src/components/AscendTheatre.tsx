@@ -12,7 +12,8 @@ import {
  * after the scan, a staged analysis sequence with a climbing
  * percentage, landing on the commitment device — the countdown ring
  * and the ascend-by date. Both derive from the REAL programme: our
- * 12-week protocol = 84 days from today. Nothing here is decoration
+ * 90-day programme (12 protocol weeks + the final consolidation
+ * stretch) from today. Nothing here is decoration
  * pretending to be computation — the measurement already happened on
  * device; this is the reveal, paced like one.
  */

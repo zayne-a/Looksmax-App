@@ -80,7 +80,7 @@ export default function WorthItPage() {
           </h1>
           <p className="mx-auto mt-4 max-w-xl text-base leading-relaxed text-muted">
             The leading rating app sells you a scan — then charges again for
-            re-scans and upgraded results. Mewmax runs your next 12 weeks:
+            re-scans and upgraded results. Mewmax runs your next 90 days:
             the protocol, the coach, the daily system, the adjustments.
             Compare for yourself.
           </p>
@@ -147,7 +147,7 @@ export default function WorthItPage() {
           <p className="mx-auto mt-3 max-w-lg text-sm leading-relaxed text-muted">
             Less than the other app charges for a single extra scan* — for
             a coach, a protocol that adapts weekly, and a system that keeps
-            you honest for 12 weeks. Monthly and Yearly start with a 3-day
+            you honest for the full 90 days. Monthly and Yearly start with a 3-day
             free trial. Cancel anytime, in one tap, no traps.
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-3">
