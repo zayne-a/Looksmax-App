@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Button, Card, Eyebrow } from "@/components/ui";
+import ContentPreview, {
+  liveSurfaceFor,
+} from "@/components/admin/ContentPreview";
 import { getSupabase } from "@/lib/supabase";
 import type { ContentItem } from "@/lib/content";
 
@@ -206,12 +209,16 @@ function UploadField({
   accept,
   label,
   onUploaded,
+  onLocalFile,
 }: {
   token: string;
   collection: string;
   accept: string;
   label: string;
   onUploaded: (url: string) => void;
+  /** Fires the moment a file is picked (before any upload), so the
+   *  live preview can show the local file immediately. */
+  onLocalFile?: (file: File | null) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -247,6 +254,7 @@ function UploadField({
           ref={fileRef}
           type="file"
           accept={accept}
+          onChange={(e) => onLocalFile?.(e.target.files?.[0] ?? null)}
           className="max-w-full text-xs text-muted file:mr-3 file:rounded-full file:border file:border-gold/40 file:bg-gold/10 file:px-4 file:py-2 file:text-xs file:font-bold file:text-gold-soft"
         />
         <Button
@@ -267,6 +275,38 @@ function UploadField({
 
 const labelCls =
   "mb-1.5 block text-[11px] font-bold uppercase tracking-[0.22em] text-gold";
+
+/**
+ * Local file preview state for the live preview pane: picking a file
+ * produces an object URL immediately (before upload), so the preview
+ * shows the chosen file at once. Object URLs are revoked on replace,
+ * on clear (e.g. after a successful upload hands back the hosted
+ * URL) and on unmount.
+ */
+function useLocalPreview() {
+  const [url, setUrl] = useState<string | null>(null);
+  const ref = useRef<string | null>(null);
+
+  const setFile = useCallback((file: File | null) => {
+    if (ref.current) URL.revokeObjectURL(ref.current);
+    ref.current = file ? URL.createObjectURL(file) : null;
+    setUrl(ref.current);
+  }, []);
+
+  const clear = useCallback(() => {
+    if (ref.current) URL.revokeObjectURL(ref.current);
+    ref.current = null;
+    setUrl(null);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (ref.current) URL.revokeObjectURL(ref.current);
+    };
+  }, []);
+
+  return { url, setFile, clear };
+}
 
 export default function AdminContentPage() {
   const [gate, setGate] = useState<Gate>("loading");
@@ -365,7 +405,7 @@ export default function AdminContentPage() {
   const activeDef = COLLECTIONS.find((c) => c.id === collection);
 
   return (
-    <div className="mx-auto w-full max-w-4xl px-4 py-12 sm:py-16">
+    <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:py-16">
       <Eyebrow>Content system · admin</Eyebrow>
       <h1 className="mt-3 font-display text-3xl font-extrabold tracking-tight text-bone sm:text-4xl">
         All content
@@ -376,6 +416,9 @@ export default function AdminContentPage() {
         Add or edit a row, hit Save, and every surface picks it up.{" "}
         <Link href="/admin/funnel" className="font-semibold text-gold hover:underline">
           Funnel media (legacy console) →
+        </Link>{" "}
+        <Link href="/admin/users" className="font-semibold text-gold hover:underline">
+          Users &amp; Pro →
         </Link>
       </p>
 
@@ -549,6 +592,9 @@ function FunnelSlotEditor({
   const [active, setActive] = useState(item?.active ?? true);
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [savedOnce, setSavedOnce] = useState(false);
+  const mediaPreview = useLocalPreview();
+  const posterPreview = useLocalPreview();
 
   useEffect(() => {
     setTitle(item?.title ?? "");
@@ -556,6 +602,10 @@ function FunnelSlotEditor({
     setMediaUrl(item?.mediaUrl ?? "");
     setPosterUrl(item?.posterUrl ?? "");
     setActive(item?.active ?? true);
+    mediaPreview.clear();
+    posterPreview.clear();
+    // Local-preview clears are stable callbacks; only the item matters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item]);
 
   const save = async () => {
@@ -577,6 +627,9 @@ function FunnelSlotEditor({
         active,
       });
       setStatus("Saved — live now.");
+      setSavedOnce(true);
+      mediaPreview.clear();
+      posterPreview.clear();
       onSaved();
     } catch (e) {
       setStatus(e instanceof Error ? e.message : "Save failed — try again.");
@@ -587,6 +640,8 @@ function FunnelSlotEditor({
 
   return (
     <Card>
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(300px,350px)]">
+        <div>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-display text-lg font-extrabold text-bone">
           {def.label}
@@ -597,37 +652,6 @@ function FunnelSlotEditor({
       </div>
       <p className="mt-1.5 text-xs leading-relaxed text-muted">{def.hint}</p>
 
-      {/* Current preview */}
-      <div className="mt-4">
-        {!isQuote && mediaUrl ? (
-          <video
-            src={mediaUrl}
-            poster={posterUrl || undefined}
-            controls
-            muted
-            loop
-            playsInline
-            className="aspect-[9/16] max-h-80 w-full rounded-2xl bg-black object-cover"
-          />
-        ) : isQuote && title ? (
-          <figure className="rounded-2xl border border-white/8 bg-white/[0.03] px-5 py-4">
-            <blockquote className="text-sm leading-relaxed text-bone">
-              “{title}”
-            </blockquote>
-            {caption && (
-              <figcaption className="mt-2 text-xs font-semibold text-gold-soft">
-                {caption}
-              </figcaption>
-            )}
-          </figure>
-        ) : (
-          <p className="rounded-2xl border border-white/8 bg-white/[0.02] px-4 py-3 text-xs text-muted">
-            Nothing here yet — this slot renders nothing until you add{" "}
-            {isQuote ? "a quote" : "a video"} and save.
-          </p>
-        )}
-      </div>
-
       {!isQuote && (
         <div className="mt-4 space-y-4">
           <UploadField
@@ -635,7 +659,11 @@ function FunnelSlotEditor({
             collection="funnel"
             accept="video/*,image/*"
             label="Media file"
-            onUploaded={setMediaUrl}
+            onUploaded={(url) => {
+              setMediaUrl(url);
+              mediaPreview.clear();
+            }}
+            onLocalFile={mediaPreview.setFile}
           />
           <label className="block">
             <span className={labelCls}>…or paste a media URL</span>
@@ -651,7 +679,11 @@ function FunnelSlotEditor({
             collection="funnel"
             accept="image/*"
             label="Poster image"
-            onUploaded={setPosterUrl}
+            onUploaded={(url) => {
+              setPosterUrl(url);
+              posterPreview.clear();
+            }}
+            onLocalFile={posterPreview.setFile}
           />
           <label className="block">
             <span className={labelCls}>…or paste a poster URL</span>
@@ -720,6 +752,28 @@ function FunnelSlotEditor({
           <span className="text-xs font-semibold text-gold-soft">{status}</span>
         )}
       </div>
+        </div>
+
+        <div className="lg:sticky lg:top-6">
+          <ContentPreview
+            item={{
+              collection: "funnel",
+              slot: def.slot,
+              type: isQuote ? "quote" : "video",
+              title,
+              caption,
+              sourceName: "",
+              mediaUrl,
+              posterUrl,
+              linkUrl: "",
+              active,
+            }}
+            localMediaUrl={mediaPreview.url}
+            localPosterUrl={posterPreview.url}
+            liveHref={item?.id || savedOnce ? "/start" : null}
+          />
+        </div>
+      </div>
     </Card>
   );
 }
@@ -743,6 +797,7 @@ function ListCollection({
   const [formKey, setFormKey] = useState(0);
   const [status, setStatus] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const liveSurface = liveSurfaceFor(collection);
 
   const startNew = () => {
     const nextSort =
@@ -881,6 +936,15 @@ function ListCollection({
                   >
                     ↓
                   </Button>
+                  {liveSurface && item.id && (
+                    <Link
+                      href={liveSurface.href}
+                      target="_blank"
+                      className="px-2 py-2 text-xs font-bold text-gold hover:underline"
+                    >
+                      View live ↗
+                    </Link>
+                  )}
                   <Button
                     variant="ghost"
                     onClick={() => startEdit(item)}
@@ -955,6 +1019,8 @@ function ListItemForm({
   const [active, setActive] = useState(initial.active);
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const mediaPreview = useLocalPreview();
+  const posterPreview = useLocalPreview();
 
   const save = async () => {
     setBusy(true);
@@ -984,6 +1050,8 @@ function ListItemForm({
 
   return (
     <Card>
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(300px,350px)]">
+        <div>
       <h2 className="font-display text-lg font-extrabold text-bone">
         {initial.id ? "Edit item" : "Add item"}
       </h2>
@@ -1049,7 +1117,11 @@ function ListItemForm({
           collection={collection}
           accept="video/*,image/*"
           label="Media file"
-          onUploaded={setMediaUrl}
+          onUploaded={(url) => {
+            setMediaUrl(url);
+            mediaPreview.clear();
+          }}
+          onLocalFile={mediaPreview.setFile}
         />
         <label className="block">
           <span className={labelCls}>…or media URL</span>
@@ -1075,7 +1147,11 @@ function ListItemForm({
           collection={collection}
           accept="image/*"
           label="Poster image"
-          onUploaded={setPosterUrl}
+          onUploaded={(url) => {
+            setPosterUrl(url);
+            posterPreview.clear();
+          }}
+          onLocalFile={posterPreview.setFile}
         />
         <label className="block">
           <span className={labelCls}>…or poster URL</span>
@@ -1127,6 +1203,28 @@ function ListItemForm({
         {status && (
           <span className="text-xs font-semibold text-gold-soft">{status}</span>
         )}
+      </div>
+        </div>
+
+        <div className="lg:sticky lg:top-6">
+          <ContentPreview
+            item={{
+              collection,
+              slot: initial.slot,
+              type,
+              title,
+              caption,
+              sourceName,
+              mediaUrl,
+              posterUrl,
+              linkUrl,
+              active,
+            }}
+            localMediaUrl={mediaPreview.url}
+            localPosterUrl={posterPreview.url}
+            liveHref={initial.id ? liveSurfaceFor(collection)?.href ?? null : null}
+          />
+        </div>
       </div>
     </Card>
   );
