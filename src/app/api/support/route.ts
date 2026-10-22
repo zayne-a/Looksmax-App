@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { serviceClient } from "@/lib/admin-api";
 import { buildScoreView } from "@/lib/score-view";
+import { getAppSettings } from "@/lib/settings";
 import type { FaceMeasurements } from "@/lib/types";
 
 /**
@@ -616,11 +617,20 @@ export async function POST(req: Request) {
     { role: "user", parts: [{ text: message }] },
   ];
 
+  // The trial length Max quotes is the owner's trial_days app
+  // setting (/admin/settings) — the prompt's facts carry the
+  // shipped default (3), rewritten here when the owner changed it.
+  const { trial_days: trialDays } = await getAppSettings();
+  const system =
+    trialDays === 3
+      ? SYSTEM
+      : SYSTEM.replaceAll("3-day", `${trialDays}-day`);
+
   // Rotate across Max's dedicated keys; a quota hit or outage on one
   // key falls through to the next key, then the next model.
   for (const key of keys) {
     for (const model of MODELS) {
-      const reply = await askGemini(key, model, contents);
+      const reply = await askGemini(key, model, contents, system);
       if (reply) return NextResponse.json({ reply });
     }
   }

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { useApp } from "@/lib/store";
+import { useAppSettings } from "@/lib/use-settings";
 import { isOwnerTestMode, setOwnerTestMode } from "@/lib/admin";
 import { getSupabase } from "@/lib/supabase";
 import { listCheckins, savePlan, setActivePlanId } from "@/lib/account";
@@ -637,6 +638,7 @@ function sectionTaskCount(section: PlanSection): number {
 }
 
 function UnlockCard({ total }: { total: number }) {
+  const { trial_days: trialDays } = useAppSettings();
   return (
     <div className="mt-6">
       <Card glow className="text-center">
@@ -664,7 +666,7 @@ function UnlockCard({ total }: { total: number }) {
           </Button>
         </div>
         <p className="mt-3 text-xs text-muted">
-          3-day free trial on Monthly &amp; Yearly · Cancel anytime
+          {trialDays}-day free trial on Monthly &amp; Yearly · Cancel anytime
         </p>
       </Card>
     </div>
