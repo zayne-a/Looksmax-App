@@ -51,7 +51,7 @@ FREE vs PRO
 
 PRICING (exact — never quote other numbers)
 - Weekly $1.99 · Monthly $4.99 · Yearly $29.99.
-- 3-day free trial on Monthly and Yearly only. Weekly has NO trial — it bills from day one.
+- TRIAL: 3-day free trial on Monthly and Yearly only. Weekly has NO trial — it bills from day one.
 - Influencer/creator coupon codes give 20% off.
 - Checkout status: if the paywall on their screen says payments are coming soon, that's accurate — checkout is being switched on; pricing above is final. Their free scan, score and preview work fully in the meantime.
 
@@ -571,14 +571,24 @@ export async function POST(req: Request) {
     { role: "user", parts: [{ text: message }] },
   ];
 
-  // The trial length Max quotes is the owner's trial_days app
-  // setting (/admin/settings) — the prompt's facts carry the
-  // shipped default (3), rewritten here when the owner changed it.
+  // The trial Max quotes is the owner's trial_days app setting
+  // (/admin/settings). 0 = NO free trial (the product rule since
+  // 2026-10-23): both trial mentions in the prompt are swapped for
+  // the no-trial facts. 3 keeps the prompt as written; 7 rewrites
+  // the length.
   const { trial_days: trialDays } = await getAppSettings();
   const system =
-    trialDays === 3
-      ? SYSTEM
-      : SYSTEM.replaceAll("3-day", `${trialDays}-day`);
+    trialDays === 0
+      ? SYSTEM.replace(
+          "- TRIAL: 3-day free trial on Monthly and Yearly only. Weekly has NO trial — it bills from day one.",
+          "- TRIAL: there is NO free trial. Every plan — Weekly, Monthly, Yearly — bills from day one. Never tell anyone a trial exists."
+        ).replace(
+          "• Risk-free angle: Monthly and Yearly start with a 3-day free trial — they can see the entire plan before paying anything.",
+          "• Low-risk angle: there is no free trial — but the first scan, the score and the preview plan are free forever before they pay anything, and cancelling is one tap and stops future billing."
+        )
+      : trialDays === 3
+        ? SYSTEM
+        : SYSTEM.replaceAll("3-day", `${trialDays}-day`);
 
   // Rotate across Max's dedicated keys; a quota hit or outage on one
   // key falls through to the next key, then the next model.
