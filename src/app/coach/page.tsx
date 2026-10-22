@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { renderRichText } from "@/components/max-text";
 import Link from "next/link";
 import { Button, Card, Eyebrow } from "@/components/ui";
 import { Reveal } from "@/components/motion";
@@ -352,7 +353,7 @@ export default function CoachPage() {
                     : "border border-white/8 bg-white/[0.04] text-bone"
               }`}
             >
-              {b.content}
+              {b.role === "user" || b.system ? b.content : renderRichText(b.content)}
             </div>
           </div>
         ))}
@@ -382,7 +383,7 @@ export default function CoachPage() {
         {streamText !== null && streamText.length > 0 && (
           <div className="flex justify-start">
             <div className="max-w-[85%] whitespace-pre-wrap rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-3 text-sm leading-relaxed text-bone">
-              {streamText}
+              {renderRichText(streamText)}
               <span className="ml-0.5 animate-pulse text-gold">▍</span>
             </div>
           </div>
@@ -391,7 +392,7 @@ export default function CoachPage() {
         {sending && streamText === null && (
           <div className="flex justify-start">
             <div className="rounded-2xl border border-white/8 bg-white/[0.04] px-4 py-3 text-sm text-muted">
-              Your coach is reading your plan…
+              Max is reading your plan…
             </div>
           </div>
         )}
