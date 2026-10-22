@@ -39,7 +39,7 @@ function inferKind(file: File): UploadKind | null {
 export async function POST(req: Request) {
   const auth = await requireAdmin(req);
   if (!auth) {
-    return NextResponse.json({ error: "Admins only" }, { status: 403 });
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
   let form: FormData;

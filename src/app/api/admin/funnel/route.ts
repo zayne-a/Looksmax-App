@@ -11,7 +11,7 @@ import { FUNNEL_SLOT_IDS } from "@/lib/funnel-media";
  */
 
 function forbidden() {
-  return NextResponse.json({ error: "Admins only" }, { status: 403 });
+  return NextResponse.json({ error: "Not found" }, { status: 404 });
 }
 
 /** GET — every funnel_media row, including inactive ones. */

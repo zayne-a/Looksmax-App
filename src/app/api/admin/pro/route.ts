@@ -16,7 +16,7 @@ import { OWNER_ADMIN_EMAILS, isOwnerAdminEmail } from "@/lib/admin";
  */
 
 function forbidden() {
-  return NextResponse.json({ error: "Admins only" }, { status: 403 });
+  return NextResponse.json({ error: "Not found" }, { status: 404 });
 }
 
 /** Normalise + validate an email from a request body. Null = invalid. */

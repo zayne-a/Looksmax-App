@@ -14,7 +14,7 @@ import { ladderCents, type Tier } from "@/lib/portal";
  */
 
 function forbidden() {
-  return NextResponse.json({ error: "Admins only" }, { status: 403 });
+  return NextResponse.json({ error: "Not found" }, { status: 404 });
 }
 
 interface JoinedRefs {

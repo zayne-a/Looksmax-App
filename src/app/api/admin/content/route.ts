@@ -21,7 +21,7 @@ const SELECT =
 const BUCKET = "content-media";
 
 function forbidden() {
-  return NextResponse.json({ error: "Admins only" }, { status: 403 });
+  return NextResponse.json({ error: "Not found" }, { status: 404 });
 }
 
 const str = (v: unknown, max: number): string | null =>

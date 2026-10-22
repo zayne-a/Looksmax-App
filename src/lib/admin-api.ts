@@ -21,7 +21,7 @@ export type AdminClient = NonNullable<ReturnType<typeof serviceClient>>;
 /**
  * Resolve the request's Bearer token to an admin, or null. Null for:
  * no service client, no/invalid token, no profile, or
- * is_admin !== true — callers answer 403 for all of them (no oracle
+ * is_admin !== true — callers answer 404 for all of them (no oracle
  * about which check failed).
  */
 export async function requireAdmin(
