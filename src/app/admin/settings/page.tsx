@@ -34,7 +34,7 @@ function SettingsConsole({ token }: { token: string }) {
   const [annText, setAnnText] = useState("");
   const [featCreator, setFeatCreator] = useState(true);
   const [featForum, setFeatForum] = useState(true);
-  const [trialDays, setTrialDays] = useState<3 | 7>(3);
+  const [trialDays, setTrialDays] = useState<0 | 3 | 7>(0);
 
   const applyLoaded = useCallback((s: AppSettings) => {
     setSettings(s);
@@ -303,12 +303,14 @@ function SettingsConsole({ token }: { token: string }) {
             </h2>
             <p className="mt-1.5 text-xs leading-relaxed text-muted">
               The trial on Monthly &amp; Yearly (Weekly never has one).
-              This rewrites the trial length quoted on the paywall, the
-              plan + dashboard + coach upsells, the home page, the
-              comparison and terms pages, and in Max&apos;s answers.
+              &ldquo;No trial&rdquo; = every plan bills from day one and the
+              site sells &ldquo;cancel anytime&rdquo; only. This rewrites the
+              trial copy quoted on the paywall, the plan + dashboard + coach
+              upsells, the home page, the comparison and terms pages, and in
+              Max&apos;s answers.
             </p>
             <div className="mt-4 flex gap-2">
-              {([3, 7] as const).map((d) => (
+              {([0, 3, 7] as const).map((d) => (
                 <button
                   key={d}
                   type="button"
@@ -319,7 +321,7 @@ function SettingsConsole({ token }: { token: string }) {
                       : "border-white/10 bg-white/[0.03] text-muted hover:text-bone"
                   }`}
                 >
-                  {d} days
+                  {d === 0 ? "No trial" : `${d} days`}
                 </button>
               ))}
             </div>
