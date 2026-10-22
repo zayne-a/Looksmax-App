@@ -38,32 +38,48 @@ const TEASER_KEY = "max-teaser-shown";
 const clampN = (v: number, lo: number, hi: number) =>
   Math.min(Math.max(v, lo), Math.max(lo, hi));
 
-/* Render an assistant message with clickable links: bare http(s) URLs
-   and markdown-style [label](url) become real anchors (new tab, mint,
-   underlined). Built purely from text + <a> elements — no raw HTML —
-   and only http/https ever linkifies. */
+/* Render an assistant message in Max's formatted voice (2026-10-22):
+   - bare http(s) URLs and markdown-style [label](url) become real
+     anchors (new tab, underlined) — link behaviour unchanged, and
+     only http/https ever linkifies;
+   - **bold** segments become <strong>; a segment holding a digit
+     (a stat: a score, a price, a count) also gets the accent
+     highlight so numbers pop;
+   - a line opening with a SHORT CAPS label ("THE FIX:", "YOUR
+     NUMBER:"), optionally after a leading emoji, renders the label
+     mint / semibold / uppercase;
+   - line breaks and blank-line sections are preserved as blocks.
+   Built purely from text + elements — no raw HTML, no dangerouslySet
+   HTML. Raw "**" is NEVER shown: unmatched markers are stripped, and
+   any parse failure falls back to plain text. */
 const LINK_RE = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<]+)/g;
+const BOLD_RE = /\*\*([^*]+)\*\*/g;
+const LABEL_RE = /^([A-Z][A-Z0-9 '&/+.-]{1,40}:)\s*(.*)$/;
+const EMOJI_LABEL_RE =
+  /^([^\p{L}\p{N}\s]{1,4}\s+)([A-Z][A-Z0-9 '&/+.-]{1,40}:)\s*(.*)$/u;
 
-function renderRichText(text: string): ReactNode {
+const stripMarks = (s: string) => s.replace(/\*\*/g, "");
+
+function linkify(text: string, keyBase: string): ReactNode[] {
   const parts: ReactNode[] = [];
   let last = 0;
   let k = 0;
   let m: RegExpExecArray | null;
   LINK_RE.lastIndex = 0;
   while ((m = LINK_RE.exec(text)) !== null) {
-    if (m.index > last) parts.push(text.slice(last, m.index));
+    if (m.index > last) parts.push(stripMarks(text.slice(last, m.index)));
     const anchorCls =
       "font-semibold text-gold-soft underline decoration-gold/50 underline-offset-2 transition hover:text-gold";
     if (m[1] && m[2]) {
       parts.push(
         <a
-          key={k++}
+          key={`${keyBase}-a${k++}`}
           href={m[2]}
           target="_blank"
           rel="noopener noreferrer"
           className={anchorCls}
         >
-          {m[1]}
+          {stripMarks(m[1])}
         </a>,
       );
     } else if (m[3]) {
@@ -79,7 +95,7 @@ function renderRichText(text: string): ReactNode {
       }
       parts.push(
         <a
-          key={k++}
+          key={`${keyBase}-a${k++}`}
           href={url}
           target="_blank"
           rel="noopener noreferrer"
@@ -92,8 +108,83 @@ function renderRichText(text: string): ReactNode {
     }
     last = m.index + m[0].length;
   }
-  if (last < text.length) parts.push(text.slice(last));
+  if (last < text.length) parts.push(stripMarks(text.slice(last)));
   return parts;
+}
+
+/* One line's inline content: **bold** → <strong> (stat-like content —
+   anything holding a digit — gets the accent highlight), everything
+   else through the linkifier exactly as before. */
+function renderInline(text: string, keyBase: string): ReactNode[] {
+  const out: ReactNode[] = [];
+  let last = 0;
+  let k = 0;
+  let m: RegExpExecArray | null;
+  BOLD_RE.lastIndex = 0;
+  while ((m = BOLD_RE.exec(text)) !== null) {
+    if (m.index > last)
+      out.push(...linkify(text.slice(last, m.index), `${keyBase}-p${k++}`));
+    const inner = m[1];
+    const statLike = /\d/.test(inner);
+    out.push(
+      <strong
+        key={`${keyBase}-b${k++}`}
+        className={
+          statLike
+            ? "rounded bg-gold/15 px-1 py-px font-bold text-gold-soft"
+            : "font-bold text-bone"
+        }
+      >
+        {linkify(inner, `${keyBase}-bi${k}`)}
+      </strong>,
+    );
+    last = m.index + m[0].length;
+  }
+  if (last < text.length)
+    out.push(...linkify(text.slice(last), `${keyBase}-t${k++}`));
+  return out;
+}
+
+const isLabel = (label: string) =>
+  (label.match(/[A-Z]/g) ?? []).length >= 2;
+
+const LABEL_CLS = "font-semibold uppercase tracking-wide text-teal-300";
+
+function renderRichText(text: string): ReactNode {
+  try {
+    return text.split("\n").map((line, i) => {
+      if (line.trim() === "") {
+        return <span key={i} className="block h-2" aria-hidden="true" />;
+      }
+      const direct = line.match(LABEL_RE);
+      if (direct && isLabel(direct[1])) {
+        return (
+          <span key={i} className="block">
+            <span className={LABEL_CLS}>{direct[1]}</span>
+            {direct[2] ? <> {renderInline(direct[2], `l${i}`)}</> : null}
+          </span>
+        );
+      }
+      const emojiLed = line.match(EMOJI_LABEL_RE);
+      if (emojiLed && isLabel(emojiLed[2])) {
+        return (
+          <span key={i} className="block">
+            {emojiLed[1]}
+            <span className={LABEL_CLS}>{emojiLed[2]}</span>
+            {emojiLed[3] ? <> {renderInline(emojiLed[3], `l${i}`)}</> : null}
+          </span>
+        );
+      }
+      return (
+        <span key={i} className="block">
+          {renderInline(line, `l${i}`)}
+        </span>
+      );
+    });
+  } catch {
+    // Parse edge case — plain text, markers stripped, never raw "**".
+    return stripMarks(text);
+  }
 }
 
 const defaultPos = (w: number, h: number) => ({
