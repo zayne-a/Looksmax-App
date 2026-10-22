@@ -280,7 +280,9 @@ export default function CoachPage() {
               Meet your coach
             </Button>
             <p className="mt-3 text-xs text-muted">
-              {trialDays}-day free trial on Monthly &amp; Yearly · Weekly bills from day one
+              {trialDays > 0
+                ? `${trialDays}-day free trial on Monthly & Yearly · Weekly bills from day one`
+                : "Every plan bills from day one · Cancel anytime"}
             </p>
           </Card>
         </Reveal>
