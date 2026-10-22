@@ -82,6 +82,9 @@ export default function AdminFunnelPage() {
         doesn&apos;t render.{" "}
         <Link href="/admin/portal" className="font-semibold text-gold hover:underline">
           Portal review queues →
+        </Link>{" "}
+        <Link href="/admin/content" className="font-semibold text-gold hover:underline">
+          All content →
         </Link>
       </p>
 
