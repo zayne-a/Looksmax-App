@@ -48,8 +48,10 @@ export default async function TermsPage() {
           </h2>
           <p className="mt-2 text-sm leading-relaxed text-muted">
             Pro is a subscription: $1.99/week, $4.99/month or $29.99/year.
-            Monthly and Yearly plans start with a {trialDays}-day free trial; the
-            Weekly plan bills from day one. One price covers everything —
+            {trialDays > 0
+              ? ` Monthly and Yearly plans start with a ${trialDays}-day free trial; the Weekly plan bills from day one.`
+              : " There is no free trial — every plan bills from day one."}{" "}
+            One price covers everything —
             re-scans, the adaptive 12-week protocol, the daily system and
             the AI coach are never sold separately. Cancel anytime;
             cancelling stops future billing, and there are no retention
