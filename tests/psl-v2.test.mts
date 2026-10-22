@@ -20,13 +20,22 @@
  */
 import { computeMeasurements, computeSideMetrics } from "../src/lib/face.ts";
 import {
+  PSL_TIERS,
   applyScoringV2,
   miscScores,
+  pslPotential,
   pslScore,
   regionScores,
   scoreBreakdownV2,
   tierForMeasurements,
 } from "../src/lib/psl.ts";
+import {
+  buildScoreView,
+  regionDisplayScore,
+  toDisplayScore,
+  toDisplayScoreV2,
+} from "../src/lib/score-view.ts";
+import { regionLabel, scoreTierLabel } from "../src/lib/creator-tiers.ts";
 
 // ---------------------------------------------------------------------------
 // Synthetic landmark generator — builds a 478-point face whose measured
@@ -349,6 +358,122 @@ console.log("\n[8] Legacy v1 scans keep their numbers");
     miscScores(v1)[1].note.includes("classical")
   );
   check("v1 has no v2 breakdown", scoreBreakdownV2(v1) === null);
+}
+
+// ------------------------------------------------------------------
+// [9] Display scale (lib/score-view.ts) — the web shows the template
+// 1–8 dialect, never a /10 number. The conversion is anchored on
+// the TIER floors, so a scan's displayed tier NAME must equal its
+// engine tier NAME at every boundary — the tier never changes, only
+// the numeral's dialect. Fixtures reuse the section-[1]/[8] faces.
+{
+  console.log("\n[9] Display scale — web display == template lookup");
+  // v2 anchors: every engine tier floor displays on the template
+  // floor of the SAME tier.
+  for (const t of PSL_TIERS) {
+    if (t.min === 0) continue;
+    check(
+      `v2 floor ${t.min} displays as tier ${t.label}`,
+      scoreTierLabel(toDisplayScoreV2(t.min), "male") === t.label,
+      `${t.min} -> ${toDisplayScoreV2(t.min)}`
+    );
+  }
+  // v1 anchors: the legacy floors map the same way.
+  const LEGACY_FLOORS: [number, string][] = [
+    [2.5, "Low-Tier Normie"],
+    [3.5, "Mid-Tier Normie"],
+    [4.5, "High-Tier Normie"],
+    [5.5, "Chadlite"],
+    [6.5, "Chad"],
+    [8.5, "True Adam"],
+  ];
+  for (const [min, label] of LEGACY_FLOORS) {
+    check(
+      `v1 floor ${min} displays as tier ${label}`,
+      scoreTierLabel(toDisplayScore(min), "male") === label,
+      `${min} -> ${toDisplayScore(min)}`
+    );
+  }
+  const medianView = buildScoreView(median);
+  check(
+    "median display is the anchored v2 conversion",
+    medianView.psl.display === toDisplayScoreV2(pslScore(median)),
+    `${pslScore(median)} -> ${medianView.psl.display}`
+  );
+  check(
+    "median displayed tier == engine tier",
+    medianView.psl.verdict ===
+      tierForMeasurements(median, pslScore(median)).label,
+    medianView.psl.verdict
+  );
+  check(
+    "median display in Mid-Tier Normie territory (4.0–5.0)",
+    medianView.psl.display >= 4.0 && medianView.psl.display < 5.0,
+    `${medianView.psl.display}`
+  );
+  const idealView = buildScoreView(ideal);
+  check(
+    "ideal display ≈ 7.8, True Adam",
+    idealView.psl.display >= 7.6 &&
+      idealView.psl.display <= 7.9 &&
+      idealView.psl.verdict === "True Adam",
+    `${idealView.psl.display} ${idealView.psl.verdict}`
+  );
+  check(
+    "POTENTIAL display never exceeds 8.0",
+    idealView.potential.display <= 8.0 &&
+      medianView.potential.display <= 8.0,
+    `ideal ${idealView.potential.display}, median ${medianView.potential.display}`
+  );
+  check(
+    "POTENTIAL display >= PSL display",
+    idealView.potential.display >= idealView.psl.display &&
+      medianView.potential.display >= medianView.psl.display
+  );
+  const medianFView = buildScoreView(medianF);
+  check(
+    "female median displays the template female tier",
+    medianFView.psl.verdict === "Mid-Tier Becky",
+    medianFView.psl.verdict
+  );
+  {
+    const v1 = {
+      facialThirds: { upper: 0.33, mid: 0.34, lower: 0.33 },
+      fifths: [0.2, 0.2, 0.2, 0.2, 0.2],
+      canthalTiltDeg: 5,
+      jawToCheekbone: 0.88,
+      fwhr: 0.72,
+      symmetryScore: 90,
+      goldenRatioScore: 78,
+      overallScore: 71,
+      faceShape: "oval",
+      skin: SKIN_MEDIAN,
+      landmarksDetected: true,
+      notes: [],
+    };
+    const v = buildScoreView(v1);
+    check(
+      "v1 scan displays through the v1 anchors, tier preserved",
+      v.psl.display === 5.7 && v.psl.verdict === "Chadlite",
+      `${pslScore(v1)} -> ${v.psl.display} ${v.psl.verdict}`
+    );
+  }
+  check(
+    "region display scale endpoints (0->1, 5->4.5, 10->8)",
+    regionDisplayScore(0) === 1 &&
+      regionDisplayScore(5) === 4.5 &&
+      regionDisplayScore(10) === 8
+  );
+  {
+    const r0 = regionScores(median)[0];
+    const rv = buildScoreView(median).regions[0];
+    check(
+      "region display == template region lookup",
+      rv.display === regionDisplayScore(r0.score) &&
+        rv.verdict === regionLabel(rv.display),
+      `${r0.score} -> ${rv.display} ${rv.verdict}`
+    );
+  }
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

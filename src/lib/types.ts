@@ -10,7 +10,7 @@ export interface QuizAnswers {
   ageRange: "18-24" | "25-34" | "35-44" | "45+";
   focus: string[]; // improvement areas, e.g. "skin", "jawline", "hairstyle"
   goalRanking: string[]; // top goals ranked 1-3, drives plan ordering
-  selfRating: number; // 1-10
+  selfRating: number; // 1-8 — the PSL scale (there is no 10)
   goals: string[]; // e.g. "clearer skin", "leaner face"
   skinType: "oily" | "dry" | "combination" | "sensitive" | "normal" | "unknown";
   skinConcerns: string[];
