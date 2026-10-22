@@ -8,6 +8,8 @@ import ContentPreview, {
 } from "@/components/admin/ContentPreview";
 import { getSupabase } from "@/lib/supabase";
 import type { ContentItem } from "@/lib/content";
+import { AdminChecking } from "@/components/admin/AdminGate";
+import NotFoundExperience from "@/components/NotFoundExperience";
 
 /**
  * /admin/content — the unified content console (2026-10-22). The
@@ -17,8 +19,8 @@ import type { ContentItem } from "@/lib/content";
  *
  * Everything talks to /api/admin/content with the session's Bearer
  * token; the server re-checks is_admin on every call, so this page's
- * gate is only cosmetic — a non-admin gets 403s and sees the
- * "Admins only" state (same pattern as /admin/funnel).
+ * gate is presentation only — a non-admin gets 404s and sees the
+ * not-found state (same pattern as /admin/funnel).
  *
  * Rows arrive as ContentItem-shaped objects; the normaliser below
  * also tolerates raw snake_case DB rows, so the console keeps working
@@ -347,7 +349,7 @@ export default function AdminContentPage() {
   );
 
   // Gate: same pattern as /admin/funnel — session token, then a probe
-  // load of the current collection; a 403 lands on "Admins only".
+  // load of the current collection; a 404 lands on the not-found state.
   useEffect(() => {
     let live = true;
     void (async () => {
@@ -406,6 +408,12 @@ export default function AdminContentPage() {
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:py-16">
+      {gate === "loading" && <AdminChecking />}
+
+      {gate === "denied" && <NotFoundExperience />}
+
+      {gate === "ready" && token && (
+        <>
       <Eyebrow>Content system · admin</Eyebrow>
       <h1 className="mt-3 font-display text-3xl font-extrabold tracking-tight text-bone sm:text-4xl">
         All content
@@ -414,36 +422,25 @@ export default function AdminContentPage() {
         One console for everything the site and the app render — funnel
         media, clips, replays, creator examples, research and animations.
         Add or edit a row, hit Save, and every surface picks it up.{" "}
-        <Link href="/admin/funnel" className="font-semibold text-gold hover:underline">
-          Funnel media (legacy console) →
+        <Link href="/admin" className="font-semibold text-gold hover:underline">
+          Admin home →
         </Link>{" "}
         <Link href="/admin/users" className="font-semibold text-gold hover:underline">
           Users &amp; Pro →
+        </Link>{" "}
+        <Link href="/admin/portal" className="font-semibold text-gold hover:underline">
+          Portal review →
+        </Link>{" "}
+        <Link href="/admin/forum" className="font-semibold text-gold hover:underline">
+          Forum →
+        </Link>{" "}
+        <Link href="/admin/settings" className="font-semibold text-gold hover:underline">
+          App settings →
+        </Link>{" "}
+        <Link href="/admin/funnel" className="font-semibold text-gold hover:underline">
+          Funnel media (legacy console) →
         </Link>
       </p>
-
-      {gate === "loading" && (
-        <Card className="mt-10">
-          <p className="text-sm text-muted">Checking your admin access…</p>
-        </Card>
-      )}
-
-      {gate === "denied" && (
-        <Card className="mt-10">
-          <p className="font-display text-lg font-bold text-bone">Admins only</p>
-          <p className="mt-2 text-sm leading-relaxed text-muted">
-            This console is restricted to the site owner&apos;s admin
-            account. If that&apos;s you, sign in with the admin email
-            and reload this page.
-          </p>
-          <Button href="/login" className="mt-5">
-            Sign in
-          </Button>
-        </Card>
-      )}
-
-      {gate === "ready" && token && (
-        <>
           {/* Collection switcher */}
           <div className="mt-10 flex flex-wrap gap-2">
             {COLLECTIONS.map((c) => (

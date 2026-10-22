@@ -5,6 +5,8 @@ import Link from "next/link";
 import { Button, Card, Eyebrow } from "@/components/ui";
 import { getSupabase } from "@/lib/supabase";
 import { formatMoney, formatViews, ladderCents, type Tier } from "@/lib/portal";
+import { AdminChecking } from "@/components/admin/AdminGate";
+import NotFoundExperience from "@/components/NotFoundExperience";
 
 /**
  * /admin/portal — review queues for the Creator Portal (2026-10-22):
@@ -149,6 +151,12 @@ export default function AdminPortalPage() {
 
   return (
     <div className="mx-auto w-full max-w-5xl px-4 py-12 sm:py-16">
+      {gate === "loading" && <AdminChecking />}
+
+      {gate === "denied" && <NotFoundExperience />}
+
+      {gate === "ready" && queues ? (
+        <>
       <Eyebrow>Creator portal · admin</Eyebrow>
       <h1 className="mt-3 font-display text-3xl font-extrabold tracking-tight text-bone sm:text-4xl">
         Portal review queues
@@ -158,30 +166,27 @@ export default function AdminPortalPage() {
         tier. Approving a video freezes its ladder amount at the
         account&apos;s tier — and a creator&apos;s first approved video
         qualifies their referral ($20 to the referrer).{" "}
-        <Link href="/admin/funnel" className="font-semibold text-gold hover:underline">
-          Funnel media →
+        <Link href="/admin" className="font-semibold text-gold hover:underline">
+          Admin home →
+        </Link>{" "}
+        <Link href="/admin/content" className="font-semibold text-gold hover:underline">
+          All content →
         </Link>{" "}
         <Link href="/admin/users" className="font-semibold text-gold hover:underline">
           Users &amp; Pro →
+        </Link>{" "}
+        <Link href="/admin/forum" className="font-semibold text-gold hover:underline">
+          Forum →
+        </Link>{" "}
+        <Link href="/admin/settings" className="font-semibold text-gold hover:underline">
+          App settings →
+        </Link>{" "}
+        <Link href="/admin/funnel" className="font-semibold text-gold hover:underline">
+          Funnel media →
         </Link>
       </p>
 
       {error ? <p className="mt-4 text-sm text-red-300">{error}</p> : null}
-
-      {gate === "loading" ? (
-        <p className="mt-10 text-sm text-muted">Loading queues…</p>
-      ) : gate === "denied" ? (
-        <Card className="mt-10 p-8">
-          <p className="font-semibold text-bone">Admins only</p>
-          <p className="mt-1 text-sm text-muted">
-            Sign in with the admin account to review the creator portal.
-          </p>
-          <Button href="/login" className="mt-4 px-6 py-2.5">
-            Go to login
-          </Button>
-        </Card>
-      ) : queues ? (
-        <>
           <h2 className="mt-10 font-display text-xl font-extrabold text-bone">
             Verification requests ({queues.verifications.pending.length} pending)
           </h2>
