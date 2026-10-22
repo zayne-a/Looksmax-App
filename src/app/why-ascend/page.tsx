@@ -153,8 +153,11 @@ export default async function WorthItPage() {
           <p className="mx-auto mt-3 max-w-lg text-sm leading-relaxed text-muted">
             Less than the other app charges for a single extra scan* — for
             a coach, a protocol that adapts weekly, and a system that keeps
-            you honest for the full 90 days. Monthly and Yearly start with a {trialDays}-day
-            free trial. Cancel anytime, in one tap, no traps.
+            you honest for the full 90 days.{" "}
+            {trialDays > 0
+              ? `Monthly and Yearly start with a ${trialDays}-day free trial.`
+              : "Every plan bills from day one."}{" "}
+            Cancel anytime, in one tap, no traps.
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-3">
             <Button href="/paywall" className="px-8 py-3.5">
