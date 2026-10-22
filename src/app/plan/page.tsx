@@ -209,10 +209,10 @@ function MeasurementsSection({ m }: { m: FaceMeasurements }) {
             hint="Left/right mirroring across your midline. Small asymmetries are normal — big ones are fixable with posture, chewing balance, and sleep side."
           />
           <MeterBar
-            label="Golden ratio fit"
+            label="Harmony fit"
             value={m.goldenRatioScore}
             delay={0.12}
-            hint="How your key proportions sit against 1.618 — mouth-to-nose, face length-to-width."
+            hint="Every measured ratio scored against its researched ideal band — eye spacing, thirds, mouth-to-nose, face height-to-width."
           />
           <ThirdsBar m={m} />
         </Card>

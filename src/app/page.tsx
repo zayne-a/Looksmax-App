@@ -202,7 +202,7 @@ export default function Home() {
                 >
                   <div className="rounded-2xl border border-gold/30 bg-ink/85 px-4 py-2.5 backdrop-blur-md">
                     <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted">
-                      Golden ratio
+                      Harmony
                     </p>
                     <p className="font-display text-xl font-extrabold text-gold-soft">
                       91.7
