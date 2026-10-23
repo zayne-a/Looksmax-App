@@ -54,6 +54,11 @@ const SECTIONS: {
     text: "Maintenance mode, the home announcement, feature switches and the free-trial length.",
   },
   {
+    href: "/admin/coupons",
+    title: "Coupons",
+    text: "Discount codes and their % off — create, switch and re-price. Monthly + Yearly plans only.",
+  },
+  {
     href: "/admin/funnel",
     title: "Funnel media (legacy)",
     text: "The original funnel-slot console. The Content section covers the same slots now; this stays for the classic view.",
