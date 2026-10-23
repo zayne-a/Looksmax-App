@@ -3,17 +3,30 @@ import { requireAdmin } from "@/lib/admin-api";
 import { CONTENT_COLLECTION_IDS } from "@/lib/content";
 
 /**
- * /api/admin/content/upload — admin-only media upload for content
- * items (2026-10-22). Multipart form-data: field "file" (the media),
- * field "collection" (a canonical collection id). The file goes into
- * the PUBLIC "content-media" Storage bucket via the service-role
- * client. Unlike the funnel upload, this does NOT create a row —
+ * /api/admin/content/upload — admin-only media upload ticket for
+ * content items. The client POSTs JSON metadata ({ collection,
+ * fileName, mimeType?, size? }) and receives a one-shot signed
+ * upload URL for the PUBLIC "content-media" Storage bucket,
+ * created with the service-role client. The client then uploads
+ * the file bytes DIRECTLY to Supabase Storage with that URL.
+ *
+ * Why not upload the bytes through this route (the original
+ * design)? Vercel Functions reject request bodies over ~4.5 MB
+ * with 413 FUNCTION_PAYLOAD_TOO_LARGE before the handler runs —
+ * which is exactly why admin VIDEO uploads always failed while
+ * images (usually under the cap) went through. Direct-to-storage
+ * uploads remove the platform cap from the path entirely; the
+ * effective ceiling becomes the bucket/project storage limit.
+ *
+ * Like the route it replaces, this does NOT create a content row —
  * the admin UI saves the item via POST /api/admin/content with the
- * returned url, so one upload can back any item shape.
+ * returned public url, so one upload can back any item shape.
  */
 
 const BUCKET = "content-media";
-// Replays and creator examples can be full videos; 200 MB headroom.
+// Declared-size gate for the ticket request. Replays and creator
+// examples can be full videos; 200 MB headroom. (The bucket also
+// enforces the project's own storage limit at upload time.)
 const MAX_BYTES = 200 * 1024 * 1024;
 
 function safeName(name: string): string {
@@ -23,16 +36,20 @@ function safeName(name: string): string {
 
 type UploadKind = "video" | "image" | "animation";
 
-function inferKind(file: File): UploadKind | null {
-  const name = file.name.toLowerCase();
-  const mime = file.type.toLowerCase();
+function inferKind(fileName: string, mime: string): UploadKind | null {
+  const name = fileName.toLowerCase();
+  const type = mime.toLowerCase();
   // Lottie JSON and GIFs are animations, whatever the mime says.
-  if (mime === "application/json" || name.endsWith(".json")) {
+  if (type === "application/json" || name.endsWith(".json")) {
     return "animation";
   }
-  if (mime === "image/gif" || name.endsWith(".gif")) return "animation";
-  if (mime.startsWith("video/")) return "video";
-  if (mime.startsWith("image/")) return "image";
+  if (type === "image/gif" || name.endsWith(".gif")) return "animation";
+  if (type.startsWith("video/") || /\.(mp4|mov|webm|m4v|mkv)$/.test(name)) {
+    return "video";
+  }
+  if (type.startsWith("image/") || /\.(jpe?g|png|webp|avif|svg)$/.test(name)) {
+    return "image";
+  }
   return null;
 }
 
@@ -42,19 +59,23 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  let form: FormData;
+  let body: {
+    collection?: unknown;
+    fileName?: unknown;
+    mimeType?: unknown;
+    size?: unknown;
+  };
   try {
-    form = await req.formData();
+    body = (await req.json()) as typeof body;
   } catch {
     return NextResponse.json(
-      { error: "Expected multipart form-data" },
+      { error: "Expected a JSON body" },
       { status: 400 }
     );
   }
 
-  const collectionRaw = form.get("collection");
   const collection =
-    typeof collectionRaw === "string" ? collectionRaw.trim() : "";
+    typeof body.collection === "string" ? body.collection.trim() : "";
   if (!CONTENT_COLLECTION_IDS.includes(collection)) {
     return NextResponse.json(
       {
@@ -64,17 +85,19 @@ export async function POST(req: Request) {
     );
   }
 
-  const file = form.get("file");
-  if (!(file instanceof File) || file.size === 0) {
-    return NextResponse.json({ error: "No file provided" }, { status: 400 });
+  const fileName =
+    typeof body.fileName === "string" ? body.fileName.trim() : "";
+  if (!fileName) {
+    return NextResponse.json({ error: "No file name provided" }, { status: 400 });
   }
-  if (file.size > MAX_BYTES) {
+  if (typeof body.size === "number" && body.size > MAX_BYTES) {
     return NextResponse.json(
       { error: "File too large (max 200 MB)" },
       { status: 400 }
     );
   }
-  const kind = inferKind(file);
+  const mimeType = typeof body.mimeType === "string" ? body.mimeType : "";
+  const kind = inferKind(fileName, mimeType);
   if (!kind) {
     return NextResponse.json(
       { error: "Only video, image, GIF or Lottie (.json) files are supported" },
@@ -82,25 +105,23 @@ export async function POST(req: Request) {
     );
   }
 
-  const path = `${collection}/${Date.now()}-${safeName(file.name)}`;
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const contentType =
-    file.type ||
-    (kind === "animation" && path.toLowerCase().endsWith(".json")
-      ? "application/json"
-      : kind === "animation"
-        ? "image/gif"
-        : "application/octet-stream");
-  const { error: upError } = await auth.admin.storage
+  const path = `${collection}/${Date.now()}-${safeName(fileName)}`;
+  const { data: signed, error: signError } = await auth.admin.storage
     .from(BUCKET)
-    .upload(path, bytes, { contentType, upsert: true });
-  if (upError) {
+    .createSignedUploadUrl(path);
+  if (signError || !signed) {
     return NextResponse.json(
-      { error: "Upload to storage failed" },
+      { error: "Could not prepare the upload" },
       { status: 500 }
     );
   }
 
   const { data: pub } = auth.admin.storage.from(BUCKET).getPublicUrl(path);
-  return NextResponse.json({ url: pub.publicUrl, path, kind });
+  return NextResponse.json({
+    signedUrl: signed.signedUrl,
+    token: signed.token,
+    path,
+    url: pub.publicUrl,
+    kind,
+  });
 }
