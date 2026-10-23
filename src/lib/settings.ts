@@ -22,7 +22,34 @@ import { serviceClient } from "./admin-api";
  *                    plans bill from day one, "cancel anytime" is
  *                    the only promise). 3 | 7 re-enable a trial on
  *                    Monthly & Yearly only, from the admin panel.
+ *   deck          → the native app's ResultsDeck (page order, first
+ *                    page, entrance style, per-page visibility),
+ *                    administered from the phone's admin panel.
  */
+
+/** Results-deck pages (native app), in their canonical order. The
+ *  owner reorders / hides them from the in-app admin panel; the
+ *  first entry of `order` is the page users land on. */
+export const DECK_PAGE_IDS = [
+  "overall",
+  "eyes",
+  "midface",
+  "lower",
+  "upper",
+  "misc",
+  "failos",
+  "halos",
+  "summary",
+] as const;
+export type DeckPageId = (typeof DECK_PAGE_IDS)[number];
+
+export type DeckEntrance = "slide" | "fade" | "rise" | "instant";
+
+export interface DeckSettings {
+  order: DeckPageId[];
+  entrance: DeckEntrance;
+  hidden: DeckPageId[];
+}
 
 export interface AppSettings {
   maintenance: { on: boolean; message: string };
@@ -31,6 +58,10 @@ export interface AppSettings {
   /** 0 = no free trial (current product rule); 3 | 7 = trial days
    *  on Monthly & Yearly when the owner re-enables it. */
   trial_days: 0 | 3 | 7;
+  /** Results-deck presentation (2026-10-24) — consumed by the
+   *  native app's ResultsDeck; administered from the phone's admin
+   *  panel (in-app /admin-deck). */
+  deck: DeckSettings;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -42,6 +73,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   announcement: { on: false, text: "" },
   features: { creator_program: true, forum: true },
   trial_days: 0,
+  deck: {
+    order: [...DECK_PAGE_IDS],
+    entrance: "slide",
+    hidden: [],
+  },
 };
 
 export const SETTING_KEYS = [
@@ -49,6 +85,7 @@ export const SETTING_KEYS = [
   "announcement",
   "features",
   "trial_days",
+  "deck",
 ] as const;
 export type SettingKey = (typeof SETTING_KEYS)[number];
 
@@ -60,6 +97,51 @@ const asBool = (v: unknown, fallback: boolean): boolean =>
 
 const asText = (v: unknown, fallback: string, max: number): string =>
   typeof v === "string" ? v.slice(0, max) : fallback;
+
+const DECK_ENTRANCES: DeckEntrance[] = ["slide", "fade", "rise", "instant"];
+
+function isDeckPageId(v: unknown): v is DeckPageId {
+  return (
+    typeof v === "string" && (DECK_PAGE_IDS as readonly string[]).includes(v)
+  );
+}
+
+/** Normalise a raw deck value: order = known ids, deduped, with any
+ *  missing pages appended in canonical order (so a page added later
+ *  can never vanish); hidden = known ids, never "overall" (the free
+ *  anchor page); entrance falls back to "slide". */
+export function normaliseDeck(raw: unknown): DeckSettings {
+  const d = DEFAULT_SETTINGS.deck;
+  if (!isObj(raw)) return d;
+  const seen = new Set<DeckPageId>();
+  const order: DeckPageId[] = [];
+  if (Array.isArray(raw.order)) {
+    for (const v of raw.order) {
+      if (isDeckPageId(v) && !seen.has(v)) {
+        seen.add(v);
+        order.push(v);
+      }
+    }
+  }
+  for (const id of DECK_PAGE_IDS) {
+    if (!seen.has(id)) order.push(id);
+  }
+  const hidden: DeckPageId[] = [];
+  if (Array.isArray(raw.hidden)) {
+    for (const v of raw.hidden) {
+      if (isDeckPageId(v) && v !== "overall" && !hidden.includes(v)) {
+        hidden.push(v);
+      }
+    }
+  }
+  return {
+    order,
+    entrance: DECK_ENTRANCES.includes(raw.entrance as DeckEntrance)
+      ? (raw.entrance as DeckEntrance)
+      : d.entrance,
+    hidden,
+  };
+}
 
 /** Merge raw app_settings rows (key → jsonb value) over the
  *  defaults. Anything malformed falls back to the default for that
@@ -87,6 +169,7 @@ export function resolveSettings(
       forum: asBool(f.forum, d.features.forum),
     },
     trial_days: t === 7 ? 7 : t === 3 ? 3 : 0,
+    deck: normaliseDeck(rows.deck),
   };
 }
 
@@ -98,6 +181,28 @@ export function validateSettingValue(
 ): unknown | null {
   if (key === "trial_days") {
     return value === 0 || value === 3 || value === 7 ? value : null;
+  }
+  if (key === "deck") {
+    if (!isObj(value)) return null;
+    if (
+      value.order !== undefined &&
+      (!Array.isArray(value.order) || !value.order.every(isDeckPageId))
+    ) {
+      return null;
+    }
+    if (
+      value.hidden !== undefined &&
+      (!Array.isArray(value.hidden) || !value.hidden.every(isDeckPageId))
+    ) {
+      return null;
+    }
+    if (
+      value.entrance !== undefined &&
+      !DECK_ENTRANCES.includes(value.entrance as DeckEntrance)
+    ) {
+      return null;
+    }
+    return normaliseDeck(value);
   }
   if (!isObj(value)) return null;
   if (key === "maintenance") {
