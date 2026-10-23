@@ -100,6 +100,8 @@ export const CONTENT_TYPES: ContentType[] = [
 export const FUNNEL_CONTENT_SLOTS = [
   "chad-reality",
   "average-reality",
+  "scan-front",
+  "scan-side",
   "quote-1",
   "quote-2",
   "quote-3",

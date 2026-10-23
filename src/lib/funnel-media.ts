@@ -50,6 +50,20 @@ export const FUNNEL_SLOTS: FunnelSlotDef[] = [
     defaultHeadline: "Average Reality",
   },
   {
+    slot: "scan-front",
+    kind: "video",
+    label: "Face Scan — FRONT guide media",
+    hint: "Plays (looping, muted) inside the app's framed FRONT card on the scan guide. Nothing set → the built-in outline shows.",
+    defaultHeadline: "Front",
+  },
+  {
+    slot: "scan-side",
+    kind: "video",
+    label: "Face Scan — SIDE guide media",
+    hint: "Plays (looping, muted) inside the app's framed SIDE card on the scan guide. Nothing set → the built-in outline shows.",
+    defaultHeadline: "Side",
+  },
+  {
     slot: "quote-1",
     kind: "quote",
     label: "Testimonial quote 1",
