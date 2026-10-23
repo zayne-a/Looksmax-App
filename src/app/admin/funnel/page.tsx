@@ -172,20 +172,48 @@ function SlotEditor({
     setUploading(true);
     setStatus(null);
     try {
-      const form = new FormData();
-      form.append("file", file);
-      form.append("slot", def.slot);
+      // Two steps: ask the funnel upload route for a signed upload
+      // ticket (JSON metadata only), then send the file bytes
+      // straight to Supabase Storage. The bytes deliberately never
+      // pass through Vercel — its ~4.5 MB function payload cap is
+      // what used to kill every video upload with a 413 while
+      // images squeaked through.
       const res = await fetch("/api/admin/funnel/upload", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: form,
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          slot: def.slot,
+          fileName: file.name,
+          mimeType: file.type,
+          size: file.size,
+        }),
       });
       const json = (await res.json().catch(() => ({}))) as {
+        token?: string;
+        path?: string;
         url?: string;
         error?: string;
       };
-      if (!res.ok || !json.url) {
+      if (!res.ok || !json.url || !json.path || !json.token) {
         setStatus(json.error ?? "Upload failed — try again.");
+        return;
+      }
+      const supabase = getSupabase();
+      if (!supabase) {
+        setStatus("Upload is unavailable — storage is not configured.");
+        return;
+      }
+      const { error } = await supabase.storage
+        .from("funnel-media")
+        .uploadToSignedUrl(json.path, json.token, file, {
+          contentType: file.type || undefined,
+          upsert: true,
+        });
+      if (error) {
+        setStatus(`Upload failed — ${error.message}`);
         return;
       }
       setUrl(json.url);
