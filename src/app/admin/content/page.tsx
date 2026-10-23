@@ -180,26 +180,54 @@ async function saveItem(token: string, item: AdminItem): Promise<void> {
   }
 }
 
-/** Upload a file via the content upload route; resolves to its URL. */
+/**
+ * Upload a file; resolves to its hosted URL. Two steps: ask the
+ * content upload route for a signed upload ticket (JSON metadata
+ * only), then send the file bytes straight to Supabase Storage.
+ * The bytes deliberately never pass through Vercel — its ~4.5 MB
+ * function payload cap is what used to kill every video upload
+ * with a 413 while images squeaked through.
+ */
 async function uploadFile(
   token: string,
   collection: string,
   file: File
 ): Promise<string> {
-  const form = new FormData();
-  form.append("file", file);
-  form.append("collection", collection);
   const res = await fetch("/api/admin/content/upload", {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-    body: form,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      collection,
+      fileName: file.name,
+      mimeType: file.type,
+      size: file.size,
+    }),
   });
   const json = (await res.json().catch(() => ({}))) as {
+    signedUrl?: string;
+    token?: string;
+    path?: string;
     url?: string;
     error?: string;
   };
-  if (!res.ok || !json.url) {
+  if (!res.ok || !json.url || !json.path || !json.token) {
     throw new Error(json.error ?? "Upload failed — try again.");
+  }
+  const supabase = getSupabase();
+  if (!supabase) {
+    throw new Error("Upload is unavailable — storage is not configured.");
+  }
+  const { error } = await supabase.storage
+    .from("content-media")
+    .uploadToSignedUrl(json.path, json.token, file, {
+      contentType: file.type || undefined,
+      upsert: true,
+    });
+  if (error) {
+    throw new Error(`Upload failed — ${error.message}`);
   }
   return json.url;
 }
