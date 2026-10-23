@@ -4,7 +4,26 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Button, Card, Eyebrow } from "@/components/ui";
 import AdminGate from "@/components/admin/AdminGate";
-import type { AppSettings } from "@/lib/settings";
+import type { AppSettings, DeckEntrance, DeckPageId } from "@/lib/settings";
+
+const DECK_TITLES: Record<DeckPageId, string> = {
+  overall: "Overall",
+  eyes: "Eyes",
+  midface: "Midface",
+  lower: "Lower Third",
+  upper: "Upper Third",
+  misc: "Miscellaneous",
+  failos: "Failos",
+  halos: "Halos",
+  summary: "Summary",
+};
+
+const DECK_ENTRANCES: { id: DeckEntrance; label: string }[] = [
+  { id: "slide", label: "Slide" },
+  { id: "fade", label: "Fade" },
+  { id: "rise", label: "Rise" },
+  { id: "instant", label: "Instant" },
+];
 
 /**
  * /admin/settings — the owner's product switches (2026-10-22).
@@ -35,6 +54,9 @@ function SettingsConsole({ token }: { token: string }) {
   const [featCreator, setFeatCreator] = useState(true);
   const [featForum, setFeatForum] = useState(true);
   const [trialDays, setTrialDays] = useState<0 | 3 | 7>(0);
+  const [deckOrder, setDeckOrder] = useState<DeckPageId[]>([]);
+  const [deckEntrance, setDeckEntrance] = useState<DeckEntrance>("slide");
+  const [deckHidden, setDeckHidden] = useState<DeckPageId[]>([]);
 
   const applyLoaded = useCallback((s: AppSettings) => {
     setSettings(s);
@@ -45,6 +67,9 @@ function SettingsConsole({ token }: { token: string }) {
     setFeatCreator(s.features.creator_program);
     setFeatForum(s.features.forum);
     setTrialDays(s.trial_days);
+    setDeckOrder(s.deck.order);
+    setDeckEntrance(s.deck.entrance);
+    setDeckHidden(s.deck.hidden);
   }, []);
 
   useEffect(() => {
@@ -335,6 +360,130 @@ function SettingsConsole({ token }: { token: string }) {
               </Button>
             </div>
             {metaLine("trial_days")}
+          </Card>
+
+          {/* Results deck (app) — the same control as the phone
+              admin's Results deck screen; both write this setting. */}
+          <Card>
+            <h2 className="font-display text-lg font-extrabold text-bone">
+              Results deck (app)
+            </h2>
+            <p className="mt-1.5 text-xs leading-relaxed text-muted">
+              The score pages a user swipes through after a scan, in
+              the app. The first page in the list is the page the deck
+              opens on; arrows reorder. Pick how pages come in, and
+              hide any page but Overall — Overall always shows (it
+              carries the free score). Applies over the air: no app
+              update needed.
+            </p>
+            <div className="mt-4 flex flex-col gap-2">
+              {deckOrder.map((id, index) => {
+                const hidden = deckHidden.includes(id);
+                return (
+                  <div
+                    key={id}
+                    className="flex items-center gap-2 rounded-lg border border-line bg-ink px-3 py-2"
+                  >
+                    <span className="w-6 text-center font-display text-sm font-extrabold text-gold">
+                      {index + 1}
+                    </span>
+                    <span className="flex-1 text-sm font-bold text-bone">
+                      {DECK_TITLES[id]}
+                      {index === 0 ? (
+                        <span className="ml-2 rounded-full bg-gold/15 px-2 py-0.5 text-[10px] font-extrabold tracking-widest text-gold-soft">
+                          FIRST PAGE
+                        </span>
+                      ) : null}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={index === 0}
+                      onClick={() =>
+                        setDeckOrder((prev) => {
+                          const next = [...prev];
+                          [next[index - 1], next[index]] = [
+                            next[index],
+                            next[index - 1],
+                          ];
+                          return next;
+                        })
+                      }
+                      className="rounded-md border border-white/10 px-2.5 py-1 text-xs font-bold text-muted hover:text-bone disabled:opacity-30"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      disabled={index === deckOrder.length - 1}
+                      onClick={() =>
+                        setDeckOrder((prev) => {
+                          const next = [...prev];
+                          [next[index + 1], next[index]] = [
+                            next[index],
+                            next[index + 1],
+                          ];
+                          return next;
+                        })
+                      }
+                      className="rounded-md border border-white/10 px-2.5 py-1 text-xs font-bold text-muted hover:text-bone disabled:opacity-30"
+                    >
+                      ↓
+                    </button>
+                    <button
+                      type="button"
+                      disabled={id === "overall"}
+                      onClick={() =>
+                        setDeckHidden((prev) =>
+                          hidden
+                            ? prev.filter((h) => h !== id)
+                            : [...prev, id]
+                        )
+                      }
+                      className="rounded-md border border-white/10 px-2.5 py-1 text-xs font-bold text-muted hover:text-bone disabled:opacity-30"
+                    >
+                      {id === "overall"
+                        ? "Always on"
+                        : hidden
+                          ? "Hidden"
+                          : "Shown"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            <p className={`${labelCls} mt-5`}>How pages come in</p>
+            <div className="flex gap-2">
+              {DECK_ENTRANCES.map((e) => (
+                <button
+                  key={e.id}
+                  type="button"
+                  onClick={() => setDeckEntrance(e.id)}
+                  className={`rounded-full border px-5 py-2 text-xs font-bold tracking-wide transition ${
+                    deckEntrance === e.id
+                      ? "border-gold/60 bg-gold/15 text-gold-soft"
+                      : "border-white/10 bg-white/[0.03] text-muted hover:text-bone"
+                  }`}
+                >
+                  {e.label}
+                </button>
+              ))}
+            </div>
+            <div className="mt-4">
+              <Button
+                onClick={() =>
+                  void save("deck", {
+                    order: deckOrder,
+                    entrance: deckEntrance,
+                    hidden: deckHidden,
+                  })
+                }
+                disabled={busyKey !== null}
+                className="px-6 py-2.5 text-xs"
+              >
+                {busyKey === "deck" ? "Saving…" : "Save deck"}
+              </Button>
+            </div>
+            {metaLine("deck")}
           </Card>
         </div>
       )}
