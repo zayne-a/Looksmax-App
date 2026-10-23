@@ -1,4 +1,4 @@
-// Value props corrected per the deep audit WITHOUT cutting features (Zayne: do not simplify what was added): weekly check-ins and the Coach Review are available with an account, so the Pro props now lead with what is genuinely Pro — the full unblurred protocol + complete weekly plan in the dashboard, and the AI Coach chat. Coupon behaviour intentionally unchanged as shipped.
+// Value props corrected per the deep audit WITHOUT cutting features (Zayne: do not simplify what was added): weekly check-ins and the Coach Review are available with an account, so the Pro props now lead with what is genuinely Pro — the full unblurred protocol + complete weekly plan in the dashboard, and the AI Coach chat. Coupons are REAL since 2026-10-24: codes the owner creates in /admin/coupons validate against /api/coupons/validate and take their actual % off Monthly + Yearly (never Weekly).
 "use client";
 
 import { useEffect, useState } from "react";
@@ -24,6 +24,7 @@ const plans = [
   {
     id: "weekly",
     name: "Weekly",
+    amount: 1.99,
     price: "$1.99",
     per: "/week",
     note: "Half the price of the rating apps",
@@ -35,6 +36,7 @@ const plans = [
   {
     id: "monthly",
     name: "Monthly",
+    amount: 4.99,
     price: "$4.99",
     per: "/month",
     note: "just $1.15/week",
@@ -46,6 +48,7 @@ const plans = [
   {
     id: "yearly",
     name: "Yearly",
+    amount: 29.99,
     price: "$29.99",
     per: "/year",
     note: "just $0.58/week — commit to the climb",
@@ -69,7 +72,12 @@ const valueProps = [
 
 export default function PaywallPage() {
   const [coupon, setCoupon] = useState("");
-  const [couponApplied, setCouponApplied] = useState(false);
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string;
+    percent_off: number;
+  } | null>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const [applying, setApplying] = useState(false);
   const [comingSoon, setComingSoon] = useState<string | null>(null);
 
   // Owner test mode (lib/admin.ts): the coupon box doubles as the
@@ -81,14 +89,41 @@ export default function PaywallPage() {
     setOwnerOn(isOwnerTestMode());
   }, []);
 
-  const applyCoupon = () => {
+  const applyCoupon = async () => {
     if (isOwnerCredential(coupon)) {
       setOwnerTestMode(true);
       setOwnerOn(true);
       setCoupon("");
       return;
     }
-    if (coupon.trim().length > 0) setCouponApplied(true);
+    const code = coupon.trim().toUpperCase();
+    if (code.length < 3) return;
+    setApplying(true);
+    setCouponError(null);
+    try {
+      const res = await fetch("/api/coupons/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+      const json = (await res.json()) as {
+        valid?: boolean;
+        code?: string;
+        percent_off?: number;
+      };
+      if (json.valid && typeof json.percent_off === "number") {
+        setAppliedCoupon({
+          code: json.code ?? code,
+          percent_off: json.percent_off,
+        });
+      } else {
+        setCouponError("That code isn't active. Check it and try again.");
+      }
+    } catch {
+      setCouponError("Could not check the code — try again.");
+    } finally {
+      setApplying(false);
+    }
   };
 
   const exitOwnerMode = () => {
@@ -98,13 +133,27 @@ export default function PaywallPage() {
 
   const { plan } = useApp();
   const { trial_days: trialDays } = useAppSettings();
-  const planCards = plans.map((p) =>
-    p.trial && trialDays > 0
-      ? { ...p, sub: `starts after your ${trialDays}-day free trial` }
-      : p.trial
-        ? { ...p, sub: "billed from day one · cancel anytime" }
-        : p
-  );
+  const planCards = plans.map((p) => {
+    let card = p;
+    if (p.trial && trialDays > 0) {
+      card = { ...p, sub: `starts after your ${trialDays}-day free trial` };
+    } else if (p.trial) {
+      card = { ...p, sub: "billed from day one · cancel anytime" };
+    }
+    // Coupon: Monthly + Yearly only (Weekly never discounts). The
+    // card price becomes the real discounted price; the original
+    // rides along as `struck` for the strike-through render.
+    if (appliedCoupon && p.id !== "weekly") {
+      const discounted = p.amount * (1 - appliedCoupon.percent_off / 100);
+      return {
+        ...card,
+        price: `$${discounted.toFixed(2)}`,
+        struck: p.price as string | undefined,
+        note: `${p.note} · ${appliedCoupon.code} −${appliedCoupon.percent_off}%`,
+      };
+    }
+    return { ...card, struck: undefined as string | undefined };
+  });
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-12 sm:px-6 sm:py-20">
@@ -205,6 +254,11 @@ export default function PaywallPage() {
                   {p.price}
                 </span>
                 <span className="text-muted">{p.per}</span>
+                {p.struck ? (
+                  <span className="ml-2 align-middle text-lg font-bold text-muted line-through">
+                    {p.struck}
+                  </span>
+                ) : null}
               </p>
               <p className="mt-2 text-sm font-bold text-gold">{p.note}</p>
               <p className="text-xs text-muted">{p.sub}</p>
@@ -253,21 +307,24 @@ export default function PaywallPage() {
           ) : (
             <>
               <h3 className="font-display text-lg font-extrabold text-bone">
-                Have a creator code?
+                Have a code?
               </h3>
               <p className="mt-1 text-sm text-muted">
-                Our micro-influencer partners get you 20% off. Ask yours
-                for a code.
+                Creator and offer codes take their % off the Monthly and
+                Yearly plans. Codes don&apos;t apply to Weekly.
               </p>
-              {couponApplied ? (
+              {appliedCoupon ? (
             <motion.p
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               className="mt-4 rounded-2xl border border-gold/40 bg-gold/10 px-4 py-3 text-sm font-bold text-gold-soft"
             >
-              20% off applied — demo state, no payment processed.
+              {appliedCoupon.code} applied — {appliedCoupon.percent_off}%
+              off Monthly &amp; Yearly. The discount is locked to your
+              checkout when payments open.
             </motion.p>
           ) : (
+            <>
             <div className="mt-4 flex flex-col sm:flex-row gap-2">
               <input
                 type="text"
@@ -277,10 +334,21 @@ export default function PaywallPage() {
                 aria-label="Coupon code"
                 className="input-premium flex-1"
               />
-              <Button onClick={applyCoupon} variant="ghost" className="px-8">
-                Apply
+              <Button
+                onClick={() => void applyCoupon()}
+                variant="ghost"
+                className="px-8"
+                disabled={applying}
+              >
+                {applying ? "Checking…" : "Apply"}
               </Button>
             </div>
+            {couponError ? (
+              <p className="mt-2 text-sm font-semibold text-red-300">
+                {couponError}
+              </p>
+            ) : null}
+            </>
               )}
             </>
           )}
