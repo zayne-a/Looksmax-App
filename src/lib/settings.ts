@@ -80,6 +80,30 @@ export type PersuasionCopy = Partial<
   Record<PersuasionStepId, PersuasionStepCopy>
 >;
 
+/** First-interface copy ids (2026-10-24): the app's opening
+ *  screens, editable from /admin/settings. `welcome` is the
+ *  no-session launch screen; `hero` is the onboarding hero card
+ *  (the first interface a new user actually walks through). */
+export const INTERFACE_SCREEN_IDS = ["welcome", "hero"] as const;
+export type InterfaceScreenId = (typeof INTERFACE_SCREEN_IDS)[number];
+
+/** One screen's owner overrides. `accent` is the hero's mint
+ *  highlight segment ("90 days") — welcome ignores it. Blank /
+ *  absent fields keep the app's built-in copy for that field. */
+export interface InterfaceScreenCopy {
+  headline?: string;
+  body?: string;
+  accent?: string;
+  cta?: string;
+}
+
+/** Owner overrides for first-interface copy — consumed by the
+ *  native app's welcome + hero screens; edited from
+ *  /admin/settings. Empty = all bundled copy. */
+export type InterfaceCopy = Partial<
+  Record<InterfaceScreenId, InterfaceScreenCopy>
+>;
+
 export interface AppSettings {
   maintenance: { on: boolean; message: string };
   announcement: { on: boolean; text: string };
@@ -95,6 +119,10 @@ export interface AppSettings {
    *  native app's onboarding pager; administered from
    *  /admin/settings. Empty = all bundled copy. */
   persuasion_copy: PersuasionCopy;
+  /** First-interface copy overrides (2026-10-24) — consumed by
+   *  the native app's welcome + hero screens; administered from
+   *  /admin/settings. Empty = all bundled copy. */
+  interface_copy: InterfaceCopy;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -112,6 +140,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     hidden: [],
   },
   persuasion_copy: {},
+  interface_copy: {},
 };
 
 export const SETTING_KEYS = [
@@ -121,6 +150,7 @@ export const SETTING_KEYS = [
   "trial_days",
   "deck",
   "persuasion_copy",
+  "interface_copy",
 ] as const;
 export type SettingKey = (typeof SETTING_KEYS)[number];
 
@@ -210,6 +240,47 @@ export function normalisePersuasionCopy(raw: unknown): PersuasionCopy {
   return out;
 }
 
+const INTERFACE_HEADLINE_MAX = 120;
+const INTERFACE_BODY_MAX = 500;
+const INTERFACE_ACCENT_MAX = 40;
+const INTERFACE_CTA_MAX = 40;
+
+function isInterfaceScreenId(v: unknown): v is InterfaceScreenId {
+  return (
+    typeof v === "string" &&
+    (INTERFACE_SCREEN_IDS as readonly string[]).includes(v)
+  );
+}
+
+/** Normalise a raw interface_copy value: known screen ids only,
+ *  fields trimmed + capped; entries with nothing left are dropped
+ *  (clearing a field restores the bundled copy for it). */
+export function normaliseInterfaceCopy(raw: unknown): InterfaceCopy {
+  if (!isObj(raw)) return {};
+  const out: InterfaceCopy = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (!isInterfaceScreenId(key) || !isObj(value)) continue;
+    const entry: InterfaceScreenCopy = {};
+    const take = (
+      field: "headline" | "body" | "accent" | "cta",
+      max: number
+    ) => {
+      if (typeof value[field] === "string") {
+        const v = value[field].trim().slice(0, max);
+        if (v) entry[field] = v;
+      }
+    };
+    take("headline", INTERFACE_HEADLINE_MAX);
+    take("body", INTERFACE_BODY_MAX);
+    take("accent", INTERFACE_ACCENT_MAX);
+    take("cta", INTERFACE_CTA_MAX);
+    if (entry.headline || entry.body || entry.accent || entry.cta) {
+      out[key] = entry;
+    }
+  }
+  return out;
+}
+
 /** Merge raw app_settings rows (key → jsonb value) over the
  *  defaults. Anything malformed falls back to the default for that
  *  field — a bad row can never take the site down. */
@@ -238,6 +309,7 @@ export function resolveSettings(
     trial_days: t === 7 ? 7 : t === 3 ? 3 : 0,
     deck: normaliseDeck(rows.deck),
     persuasion_copy: normalisePersuasionCopy(rows.persuasion_copy),
+    interface_copy: normaliseInterfaceCopy(rows.interface_copy),
   };
 }
 
@@ -280,6 +352,16 @@ export function validateSettingValue(
       if (v.body !== undefined && typeof v.body !== "string") return null;
     }
     return normalisePersuasionCopy(value);
+  }
+  if (key === "interface_copy") {
+    if (!isObj(value)) return null;
+    for (const [k, v] of Object.entries(value)) {
+      if (!isInterfaceScreenId(k) || !isObj(v)) return null;
+      for (const f of ["headline", "body", "accent", "cta"] as const) {
+        if (v[f] !== undefined && typeof v[f] !== "string") return null;
+      }
+    }
+    return normaliseInterfaceCopy(value);
   }
   if (!isObj(value)) return null;
   if (key === "maintenance") {
