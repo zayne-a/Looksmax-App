@@ -95,9 +95,13 @@ function PhoneFrame({
 function ScreenMedia({
   media,
   className,
+  loopEnd,
 }: {
   media: string;
   className?: string;
+  /** Loop only [0, loopEnd) — mirrors the app's segment loop (the
+   *  hero source runs past the model's complete face after ~7s). */
+  loopEnd?: number;
 }) {
   if (!media) return null;
   if (isImageUrl(media)) {
@@ -114,6 +118,11 @@ function ScreenMedia({
       muted
       playsInline
       className={className}
+      onTimeUpdate={(e) => {
+        if (loopEnd !== undefined && e.currentTarget.currentTime >= loopEnd) {
+          e.currentTarget.currentTime = 0;
+        }
+      }}
     />
   );
 }
@@ -170,58 +179,65 @@ export function HeroPreview({
 }) {
   return (
     <PhoneFrame label="Onboarding hero" dimmed={!active}>
-      <div className="relative">
-        {/* Visual area — owner media shown whole (contain, no crop),
-            else the built-in gradient + glyph panel. Matches the app:
-            the hero video sits wholly above the sheet, never behind
-            it (Zayne 2026-10-25). */}
-        <div className="relative h-[330px] overflow-hidden">
-          {media ? (
-            <ScreenMedia
-              media={media}
-              className="absolute inset-0 h-full w-full object-contain"
-            />
-          ) : (
-            <div
-              className="absolute inset-0 flex items-center justify-center"
-              style={{
-                background:
-                  "linear-gradient(to bottom, #123B36 0%, #0C1F22 55%, #0A0A0C 100%)",
-              }}
-            >
-              <svg width="150" height="150" viewBox="0 0 150 150">
-                <ellipse
-                  cx="75"
-                  cy="75"
-                  rx="58"
-                  ry="78"
-                  fill="none"
-                  stroke="#5EEAD4"
-                  strokeWidth="3"
-                  opacity="0.65"
-                />
-                <path
-                  d="M30 60 Q75 20 120 60"
-                  fill="none"
-                  stroke="#5EEAD4"
-                  strokeWidth="5"
-                  strokeLinecap="round"
-                />
-              </svg>
-            </div>
-          )}
-          {/* Language pill — top-right, as on the app. */}
-          <div className="absolute right-4 top-3 rounded-full bg-white px-3 py-1.5 text-[13px] font-semibold text-black">
-            English
+      {/* Full 9:16 video background, transparent texts overlaid —
+          matches the app (Zayne 2026-10-25). No sheet: the video
+          fills the frame, the texts float on it over a bottom
+          gradient scrim for contrast. */}
+      <div className="relative min-h-[560px] overflow-hidden">
+        {media ? (
+          <ScreenMedia
+            media={media}
+            className="absolute inset-0 h-full w-full object-cover"
+            loopEnd={7}
+          />
+        ) : (
+          <div
+            className="absolute inset-0 flex items-center justify-center"
+            style={{
+              background:
+                "linear-gradient(to bottom, #123B36 0%, #0C1F22 55%, #0A0A0C 100%)",
+            }}
+          >
+            <svg width="150" height="150" viewBox="0 0 150 150">
+              <ellipse
+                cx="75"
+                cy="75"
+                rx="58"
+                ry="78"
+                fill="none"
+                stroke="#5EEAD4"
+                strokeWidth="3"
+                opacity="0.65"
+              />
+              <path
+                d="M30 60 Q75 20 120 60"
+                fill="none"
+                stroke="#5EEAD4"
+                strokeWidth="5"
+                strokeLinecap="round"
+              />
+            </svg>
           </div>
+        )}
+        {/* Contrast scrim — transparent over the face zone, black
+            under the text block. */}
+        <div
+          className="absolute inset-x-0 bottom-0 h-[340px]"
+          style={{
+            background:
+              "linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0) 55%, rgba(0,0,0,0.85) 100%)",
+          }}
+        />
+        {/* Language pill — top-right, as on the app. */}
+        <div className="absolute right-4 top-3 rounded-full bg-white px-3 py-1.5 text-[13px] font-semibold text-black">
+          English
         </div>
-        {/* Bottom sheet card, flush below the visual — no overlap,
-            so the whole video stays visible above it, as on the app. */}
-        <div className="mt-0 rounded-t-[28px] bg-[#0A0A0C] px-6 pb-8 pt-6 text-center">
-          <p className="text-[28px] font-extrabold leading-[1.15]">
+        {/* Transparent text block over the video. */}
+        <div className="absolute inset-x-0 bottom-0 px-6 pb-8 pt-6 text-center">
+          <p className="text-[28px] font-extrabold leading-[1.15] [text-shadow:0_1px_6px_rgba(0,0,0,0.9)]">
             {copy.headline}
           </p>
-          <p className="mt-3 text-[15px] leading-relaxed text-white/60">
+          <p className="mt-3 text-[15px] leading-relaxed text-white/60 [text-shadow:0_1px_6px_rgba(0,0,0,0.9)]">
             {copy.body}{" "}
             {copy.accent ? (
               <span className="font-bold text-[#5EEAD4]">
@@ -230,7 +246,7 @@ export function HeroPreview({
             ) : null}
             .
           </p>
-          <div className="mx-auto mt-5 max-w-[280px] rounded-full bg-white py-3.5 text-center text-[15px] font-extrabold text-black">
+          <div className="mx-auto mt-5 w-full rounded-full bg-white py-3.5 text-center text-[15px] font-extrabold text-black">
             {copy.cta}
           </div>
         </div>
