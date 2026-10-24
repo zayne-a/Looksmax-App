@@ -202,7 +202,7 @@ function SettingsConsole({ token }: { token: string }) {
           );
         } else {
           setStatus(
-            `Saved — live now. ${ts.pending} translations pending, ${ts.failed} failed — English shows there until the next save.`
+            `Saved — live now. ${ts.pending} translations updating in the background — they'll appear shortly, English shows there meanwhile.`
           );
         }
       } else {
