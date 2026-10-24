@@ -89,13 +89,54 @@ export type InterfaceScreenId = (typeof INTERFACE_SCREEN_IDS)[number];
 
 /** One screen's owner overrides. `accent` is the hero's mint
  *  highlight segment ("90 days") — welcome ignores it. Blank /
- *  absent fields keep the app's built-in copy for that field. */
+ *  absent fields keep the app's built-in copy for that field.
+ *  `translations` holds the same fields machine-translated into
+ *  the native app's non-English locales (Zayne 2026-10-25: admin
+ *  words translate to every language) — English is the top-level
+ *  fields; the app renders translations[language.code] with
+ *  per-field fallback to English. */
 export interface InterfaceScreenCopy {
   headline?: string;
   body?: string;
   accent?: string;
   cta?: string;
+  translations?: Partial<Record<InterfaceLocaleCode, InterfaceScreenCopy>>;
 }
+
+/** The native app's 27 non-English locales (ascend-native
+ *  src/lib/i18n/locales/*.json; English is the key itself). The
+ *  single source of truth for which languages interface copy is
+ *  translated into — keep in sync with that directory. */
+export const INTERFACE_LOCALE_CODES = [
+  "ar",
+  "az",
+  "bn",
+  "de",
+  "es",
+  "fa",
+  "fr",
+  "hi",
+  "id",
+  "it",
+  "ja",
+  "ko",
+  "mr",
+  "nl",
+  "pl",
+  "pt",
+  "ro",
+  "ru",
+  "sw",
+  "ta",
+  "te",
+  "th",
+  "tr",
+  "uk",
+  "ur",
+  "vi",
+  "zh",
+] as const;
+export type InterfaceLocaleCode = (typeof INTERFACE_LOCALE_CODES)[number];
 
 /** Owner overrides for first-interface copy — consumed by the
  *  native app's welcome + hero screens; edited from
@@ -252,29 +293,67 @@ function isInterfaceScreenId(v: unknown): v is InterfaceScreenId {
   );
 }
 
+function isInterfaceLocaleCode(v: unknown): v is InterfaceLocaleCode {
+  return (
+    typeof v === "string" &&
+    (INTERFACE_LOCALE_CODES as readonly string[]).includes(v)
+  );
+}
+
+const INTERFACE_FIELD_MAX = {
+  headline: INTERFACE_HEADLINE_MAX,
+  body: INTERFACE_BODY_MAX,
+  accent: INTERFACE_ACCENT_MAX,
+  cta: INTERFACE_CTA_MAX,
+} as const;
+
+/** Pick one screen's four text fields, trimmed + capped; empty
+ *  fields dropped. Shared by the top level and every translation
+ *  entry (translations never nest — their fields are plain text). */
+function pickScreenFields(value: Record<string, unknown>): InterfaceScreenCopy {
+  const entry: InterfaceScreenCopy = {};
+  for (const field of ["headline", "body", "accent", "cta"] as const) {
+    if (typeof value[field] === "string") {
+      const v = value[field].trim().slice(0, INTERFACE_FIELD_MAX[field]);
+      if (v) entry[field] = v;
+    }
+  }
+  return entry;
+}
+
 /** Normalise a raw interface_copy value: known screen ids only,
  *  fields trimmed + capped; entries with nothing left are dropped
- *  (clearing a field restores the bundled copy for it). */
+ *  (clearing a field restores the bundled copy for it). Translation
+ *  entries survive the same treatment: known locale codes only,
+ *  same caps, empty locales dropped. */
 export function normaliseInterfaceCopy(raw: unknown): InterfaceCopy {
   if (!isObj(raw)) return {};
   const out: InterfaceCopy = {};
   for (const [key, value] of Object.entries(raw)) {
     if (!isInterfaceScreenId(key) || !isObj(value)) continue;
-    const entry: InterfaceScreenCopy = {};
-    const take = (
-      field: "headline" | "body" | "accent" | "cta",
-      max: number
-    ) => {
-      if (typeof value[field] === "string") {
-        const v = value[field].trim().slice(0, max);
-        if (v) entry[field] = v;
+    const entry = pickScreenFields(value);
+    if (isObj(value.translations)) {
+      const translations: Partial<
+        Record<InterfaceLocaleCode, InterfaceScreenCopy>
+      > = {};
+      for (const [locale, tr] of Object.entries(value.translations)) {
+        if (!isInterfaceLocaleCode(locale) || !isObj(tr)) continue;
+        const sub = pickScreenFields(tr);
+        if (sub.headline || sub.body || sub.accent || sub.cta) {
+          translations[locale] = sub;
+        }
       }
-    };
-    take("headline", INTERFACE_HEADLINE_MAX);
-    take("body", INTERFACE_BODY_MAX);
-    take("accent", INTERFACE_ACCENT_MAX);
-    take("cta", INTERFACE_CTA_MAX);
-    if (entry.headline || entry.body || entry.accent || entry.cta) {
+      if (Object.keys(translations).length > 0) {
+        entry.translations = translations;
+      }
+    }
+    if (
+      entry.headline ||
+      entry.body ||
+      entry.accent ||
+      entry.cta ||
+      entry.translations
+    ) {
       out[key] = entry;
     }
   }
@@ -359,6 +438,17 @@ export function validateSettingValue(
       if (!isInterfaceScreenId(k) || !isObj(v)) return null;
       for (const f of ["headline", "body", "accent", "cta"] as const) {
         if (v[f] !== undefined && typeof v[f] !== "string") return null;
+      }
+      // Translations (server-managed, seed-sent): known locale
+      // codes only, each a plain field object with string fields.
+      if (v.translations !== undefined) {
+        if (!isObj(v.translations)) return null;
+        for (const [locale, tr] of Object.entries(v.translations)) {
+          if (!isInterfaceLocaleCode(locale) || !isObj(tr)) return null;
+          for (const f of ["headline", "body", "accent", "cta"] as const) {
+            if (tr[f] !== undefined && typeof tr[f] !== "string") return null;
+          }
+        }
       }
     }
     return normaliseInterfaceCopy(value);
