@@ -15,6 +15,13 @@ import {
   INTERFACE_SCREEN_IDS,
   PERSUASION_STEP_IDS,
 } from "@/lib/settings";
+import {
+  BUILT_IN_HERO,
+  BUILT_IN_WELCOME,
+  HeroPreview,
+  WelcomePreview,
+  resolveCopy,
+} from "@/components/admin/InterfacePreview";
 
 const DECK_TITLES: Record<DeckPageId, string> = {
   overall: "Overall",
@@ -647,7 +654,8 @@ function SettingsConsole({ token }: { token: string }) {
               /admin/content, Interfaces collection. Applies over
               the air — no app update needed.
             </p>
-            <div className="mt-4 flex flex-col gap-5">
+            <div className="mt-4 grid items-start gap-8 lg:grid-cols-2">
+              <div className="flex flex-col gap-5">
               {INTERFACE_SCREEN_IDS.map((id) => (
                 <div key={id}>
                   <p className={labelCls}>{INTERFACE_SCREEN_TITLES[id]}</p>
@@ -723,6 +731,42 @@ function SettingsConsole({ token }: { token: string }) {
                   />
                 </div>
               ))}
+              </div>
+              <div className="space-y-10">
+                <WelcomePreview
+                  copy={resolveCopy(
+                    {
+                      headline: ifaceCopy.welcome?.headline ?? "",
+                      body: ifaceCopy.welcome?.body ?? "",
+                      accent: ifaceCopy.welcome?.accent ?? "",
+                      cta: ifaceCopy.welcome?.cta ?? "",
+                    },
+                    BUILT_IN_WELCOME
+                  )}
+                />
+                <HeroPreview
+                  copy={resolveCopy(
+                    {
+                      headline: ifaceCopy.hero?.headline ?? "",
+                      body: ifaceCopy.hero?.body ?? "",
+                      accent: ifaceCopy.hero?.accent ?? "",
+                      cta: ifaceCopy.hero?.cta ?? "",
+                    },
+                    BUILT_IN_HERO
+                  )}
+                />
+                <p className="text-center text-[11px] leading-relaxed text-muted">
+                  Live preview — updates as you type, before you save.
+                  Media for these screens is set in{" "}
+                  <a
+                    href="/admin/content"
+                    className="font-semibold text-gold hover:underline"
+                  >
+                    /admin/content → Interfaces
+                  </a>
+                  ; this preview shows the built-in visuals.
+                </p>
+              </div>
             </div>
             <div className="mt-4">
               <Button
