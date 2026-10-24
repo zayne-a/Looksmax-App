@@ -8,9 +8,13 @@ import type {
   AppSettings,
   DeckEntrance,
   DeckPageId,
+  InterfaceScreenId,
   PersuasionStepId,
 } from "@/lib/settings";
-import { PERSUASION_STEP_IDS } from "@/lib/settings";
+import {
+  INTERFACE_SCREEN_IDS,
+  PERSUASION_STEP_IDS,
+} from "@/lib/settings";
 
 const DECK_TITLES: Record<DeckPageId, string> = {
   overall: "Overall",
@@ -30,6 +34,11 @@ const DECK_ENTRANCES: { id: DeckEntrance; label: string }[] = [
   { id: "rise", label: "Rise" },
   { id: "instant", label: "Instant" },
 ];
+
+const INTERFACE_SCREEN_TITLES: Record<InterfaceScreenId, string> = {
+  welcome: "Welcome (no-session launch screen)",
+  hero: "Onboarding hero (first interface)",
+};
 
 const PERSUASION_STEP_TITLES: Record<PersuasionStepId, string> = {
   dating: "Dating Reality",
@@ -76,6 +85,14 @@ function SettingsConsole({ token }: { token: string }) {
   const [persCopy, setPersCopy] = useState<
     Partial<Record<PersuasionStepId, { title: string; body: string }>>
   >({});
+  const [ifaceCopy, setIfaceCopy] = useState<
+    Partial<
+      Record<
+        InterfaceScreenId,
+        { headline: string; body: string; accent: string; cta: string }
+      >
+    >
+  >({});
 
   const applyLoaded = useCallback((s: AppSettings) => {
     setSettings(s);
@@ -99,6 +116,21 @@ function SettingsConsole({ token }: { token: string }) {
       };
     }
     setPersCopy(nextPers);
+    const nextIface: Partial<
+      Record<
+        InterfaceScreenId,
+        { headline: string; body: string; accent: string; cta: string }
+      >
+    > = {};
+    for (const id of INTERFACE_SCREEN_IDS) {
+      nextIface[id] = {
+        headline: s.interface_copy[id]?.headline ?? "",
+        body: s.interface_copy[id]?.body ?? "",
+        accent: s.interface_copy[id]?.accent ?? "",
+        cta: s.interface_copy[id]?.cta ?? "",
+      };
+    }
+    setIfaceCopy(nextIface);
   }, []);
 
   useEffect(() => {
@@ -595,6 +627,140 @@ function SettingsConsole({ token }: { token: string }) {
               </Button>
             </div>
             {metaLine("persuasion_copy")}
+          </Card>
+
+          {/* Interface copy (app first screens) — headline/body/
+              accent/CTA overrides; blank = the app's built-in copy.
+              Applies over the air — no app update needed. */}
+          <Card>
+            <h2 className="font-display text-lg font-extrabold text-bone">
+              Interface copy (app)
+            </h2>
+            <p className="mt-1.5 text-xs leading-relaxed text-muted">
+              The words on the app&apos;s first interfaces — the
+              welcome screen and the onboarding hero card. Leave a
+              field blank to keep the built-in copy for it; clearing
+              a saved field restores the built-in copy. The hero
+              accent is the mint highlight segment (built-in: “90
+              days”); the welcome screen ignores it. Media
+              (photo/video) for these screens lives in
+              /admin/content, Interfaces collection. Applies over
+              the air — no app update needed.
+            </p>
+            <div className="mt-4 flex flex-col gap-5">
+              {INTERFACE_SCREEN_IDS.map((id) => (
+                <div key={id}>
+                  <p className={labelCls}>{INTERFACE_SCREEN_TITLES[id]}</p>
+                  <input
+                    type="text"
+                    value={ifaceCopy[id]?.headline ?? ""}
+                    onChange={(e) =>
+                      setIfaceCopy((prev) => ({
+                        ...prev,
+                        [id]: {
+                          headline: e.target.value,
+                          body: prev[id]?.body ?? "",
+                          accent: prev[id]?.accent ?? "",
+                          cta: prev[id]?.cta ?? "",
+                        },
+                      }))
+                    }
+                    placeholder="Headline — blank keeps the built-in headline"
+                    className="w-full rounded-lg border border-line bg-ink px-3 py-2 text-sm text-bone placeholder:text-muted"
+                  />
+                  <textarea
+                    value={ifaceCopy[id]?.body ?? ""}
+                    onChange={(e) =>
+                      setIfaceCopy((prev) => ({
+                        ...prev,
+                        [id]: {
+                          headline: prev[id]?.headline ?? "",
+                          body: e.target.value,
+                          accent: prev[id]?.accent ?? "",
+                          cta: prev[id]?.cta ?? "",
+                        },
+                      }))
+                    }
+                    placeholder="Body — blank keeps the built-in body"
+                    rows={3}
+                    className="mt-2 w-full rounded-lg border border-line bg-ink px-3 py-2 text-sm text-bone placeholder:text-muted"
+                  />
+                  {id === "hero" ? (
+                    <input
+                      type="text"
+                      value={ifaceCopy[id]?.accent ?? ""}
+                      onChange={(e) =>
+                        setIfaceCopy((prev) => ({
+                          ...prev,
+                          [id]: {
+                            headline: prev[id]?.headline ?? "",
+                            body: prev[id]?.body ?? "",
+                            accent: e.target.value,
+                            cta: prev[id]?.cta ?? "",
+                          },
+                        }))
+                      }
+                      placeholder="Accent (mint highlight) — blank keeps “90 days”"
+                      className="mt-2 w-full rounded-lg border border-line bg-ink px-3 py-2 text-sm text-bone placeholder:text-muted"
+                    />
+                  ) : null}
+                  <input
+                    type="text"
+                    value={ifaceCopy[id]?.cta ?? ""}
+                    onChange={(e) =>
+                      setIfaceCopy((prev) => ({
+                        ...prev,
+                        [id]: {
+                          headline: prev[id]?.headline ?? "",
+                          body: prev[id]?.body ?? "",
+                          accent: prev[id]?.accent ?? "",
+                          cta: e.target.value,
+                        },
+                      }))
+                    }
+                    placeholder="Button — blank keeps the built-in button"
+                    className="mt-2 w-full rounded-lg border border-line bg-ink px-3 py-2 text-sm text-bone placeholder:text-muted"
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="mt-4">
+              <Button
+                onClick={() => {
+                  const value: Record<
+                    string,
+                    {
+                      headline?: string;
+                      body?: string;
+                      accent?: string;
+                      cta?: string;
+                    }
+                  > = {};
+                  for (const id of INTERFACE_SCREEN_IDS) {
+                    const headline = (ifaceCopy[id]?.headline ?? "").trim();
+                    const body = (ifaceCopy[id]?.body ?? "").trim();
+                    const accent = (ifaceCopy[id]?.accent ?? "").trim();
+                    const cta = (ifaceCopy[id]?.cta ?? "").trim();
+                    if (headline || body || accent || cta) {
+                      value[id] = {
+                        ...(headline ? { headline } : {}),
+                        ...(body ? { body } : {}),
+                        ...(accent ? { accent } : {}),
+                        ...(cta ? { cta } : {}),
+                      };
+                    }
+                  }
+                  void save("interface_copy", value);
+                }}
+                disabled={busyKey !== null}
+                className="px-6 py-2.5 text-xs"
+              >
+                {busyKey === "interface_copy"
+                  ? "Saving…"
+                  : "Save interface copy"}
+              </Button>
+            </div>
+            {metaLine("interface_copy")}
           </Card>
         </div>
       )}
