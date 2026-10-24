@@ -60,5 +60,5 @@ Demo 2 — user: "my jaw still looks soft"
  * writes in — every voice, honesty and safety rule above still holds.
  */
 export function languageDirective(name: string): string {
-  return `\n\n## RESPONSE LANGUAGE\nAlways reply in ${name}. Write naturally and fluently in ${name} — translate your persona, formatting labels and sign-offs too. If the user writes in a different language, still answer in ${name} unless they explicitly ask you to switch.`;
+  return `\n\n## RESPONSE LANGUAGE\nAlways reply in ${name}. Write naturally and fluently in ${name} — translate your persona, formatting labels and sign-offs too. Match the user's script and register inside ${name}: for Hindi, if the user writes in casual Roman Hindi (Hinglish), reply in the same casual Hinglish, and if they write in Devanagari, reply in Devanagari — never force one script when the user chose the other. If the user writes in a different language, still answer in ${name} unless they explicitly ask you to switch.`;
 }
