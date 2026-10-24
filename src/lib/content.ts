@@ -81,6 +81,12 @@ export const CONTENT_COLLECTIONS: ContentCollectionDef[] = [
     hint: "Loops, Lottie JSON and GIF assets used across web and the native app.",
     types: ["animation", "video", "image"],
   },
+  {
+    id: "interfaces",
+    label: "Interfaces — app first screens",
+    hint: "Photo/video media for the app's opening screens: the welcome screen and the onboarding hero card. One fixed slot per screen.",
+    types: ["video", "image"],
+  },
 ];
 
 export const CONTENT_COLLECTION_IDS: string[] = CONTENT_COLLECTIONS.map(
