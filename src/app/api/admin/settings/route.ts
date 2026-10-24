@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { requireAdmin } from "@/lib/admin-api";
 import {
   INTERFACE_LOCALE_CODES,
@@ -13,7 +13,11 @@ import {
   type InterfaceScreenCopy,
   type SettingKey,
 } from "@/lib/settings";
-import { fillInterfaceTranslations } from "@/lib/translate-interface";
+import {
+  countMissingTranslations,
+  fillInterfaceTranslations,
+  mergeTranslationsIntoCurrent,
+} from "@/lib/translate-interface";
 
 /**
  * /api/admin/settings — owner control of public.app_settings
@@ -142,13 +146,51 @@ export async function POST(req: Request) {
         merged[screen] = entry;
       }
     }
-    const filled = await fillInterfaceTranslations(merged);
-    value = filled.copy;
-    translationStatus = {
-      translated: filled.translated,
-      failed: filled.failed,
-      pending: filled.pending,
-    };
+    // Save the merged English + carried translations FIRST, so a
+    // translation failure can never fail the save. Fresh
+    // translations are then produced in the background (after())
+    // and upserted incrementally as each locale completes — a
+    // stale fill never clobbers newer English (see
+    // mergeTranslationsIntoCurrent), and the response reports how
+    // many translations were queued.
+    value = merged;
+    const queued = countMissingTranslations(merged);
+    translationStatus = { translated: 0, failed: 0, pending: queued };
+    if (queued > 0) {
+      after(async () => {
+        try {
+          await fillInterfaceTranslations(merged, {
+            budgetMs: 240_000,
+            onProgress: async (partial) => {
+              const { data: currentRow } = await auth.admin
+                .from("app_settings")
+                .select("value")
+                .eq("key", key)
+                .single();
+              const current = normaliseInterfaceCopy(
+                currentRow?.value ?? null
+              );
+              const updated = mergeTranslationsIntoCurrent(
+                current,
+                partial,
+                merged
+              );
+              await auth.admin.from("app_settings").upsert(
+                {
+                  key,
+                  value: updated,
+                  updated_at: new Date().toISOString(),
+                  updated_by: "translation-fill",
+                },
+                { onConflict: "key" }
+              );
+            },
+          });
+        } catch {
+          // Background fill never fails the save.
+        }
+      });
+    }
   }
 
   const { data: caller } = await auth.admin
