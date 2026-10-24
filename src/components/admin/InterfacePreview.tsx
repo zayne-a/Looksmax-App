@@ -171,13 +171,15 @@ export function HeroPreview({
   return (
     <PhoneFrame label="Onboarding hero" dimmed={!active}>
       <div className="relative">
-        {/* Visual area — owner media full-bleed, else the built-in
-            gradient + glyph panel. */}
+        {/* Visual area — owner media shown whole (contain, no crop),
+            else the built-in gradient + glyph panel. Matches the app:
+            the hero video sits wholly above the sheet, never behind
+            it (Zayne 2026-10-25). */}
         <div className="relative h-[330px] overflow-hidden">
           {media ? (
             <ScreenMedia
               media={media}
-              className="absolute inset-0 h-full w-full object-cover"
+              className="absolute inset-0 h-full w-full object-contain"
             />
           ) : (
             <div
@@ -213,8 +215,9 @@ export function HeroPreview({
             English
           </div>
         </div>
-        {/* Bottom sheet card, overlapping the visual. */}
-        <div className="-mt-7 rounded-t-[28px] bg-[#0A0A0C] px-6 pb-8 pt-6 text-center">
+        {/* Bottom sheet card, flush below the visual — no overlap,
+            so the whole video stays visible above it, as on the app. */}
+        <div className="mt-0 rounded-t-[28px] bg-[#0A0A0C] px-6 pb-8 pt-6 text-center">
           <p className="text-[28px] font-extrabold leading-[1.15]">
             {copy.headline}
           </p>
