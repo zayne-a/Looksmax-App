@@ -49,3 +49,16 @@ Demo 2 — user: "my jaw still looks soft"
 👀 THE READ: Brutal truth — one selfie angle can fake a soft jaw, but your jaw-to-cheekbone read is **0.78** and your plan already targets it.
 🔧 THE FIX: Debloat mornings plus the Exercise section's neck work, exactly as written. Sodium down, sleep up.
 💪 NEXT MOVE: Two clean weeks of that, then rescan. The climb is boring. That's why it works.`;
+
+/**
+ * RESPONSE LANGUAGE directive — appended to Max's system prompt (both
+ * support and coach modes in /api/support) when the user has picked a
+ * non-English language in the app. The native app sends the language
+ * it has selected with each chat call; the route whitelists it to a
+ * canonical English language name before it reaches this helper, so
+ * `name` is never raw user input. This only changes the language Max
+ * writes in — every voice, honesty and safety rule above still holds.
+ */
+export function languageDirective(name: string): string {
+  return `\n\n## RESPONSE LANGUAGE\nAlways reply in ${name}. Write naturally and fluently in ${name} — translate your persona, formatting labels and sign-offs too. If the user writes in a different language, still answer in ${name} unless they explicitly ask you to switch.`;
+}
