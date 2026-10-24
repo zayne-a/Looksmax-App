@@ -35,7 +35,8 @@ type CollectionId =
   | "replays"
   | "creator-examples"
   | "research"
-  | "animations";
+  | "animations"
+  | "interfaces";
 
 const COLLECTIONS: { id: CollectionId; label: string; hint: string }[] = [
   {
@@ -43,6 +44,11 @@ const COLLECTIONS: { id: CollectionId; label: string; hint: string }[] = [
     label: "Funnel",
     hint: "The five fixed slots inside the /start persuasion funnel.",
   },
+    {
+      id: "interfaces",
+      label: "Interfaces",
+      hint: "Photo/video media for the app's first screens: welcome + hero.",
+    },
   {
     id: "omegle-clips",
     label: "Omegle clips",
@@ -512,6 +518,12 @@ export default function AdminContentPage() {
                 token={token}
                 onSaved={reload}
               />
+            ) : collection === "interfaces" ? (
+              <InterfaceSlots
+                items={items}
+                token={token}
+                onSaved={reload}
+              />
             ) : (
               <ListCollection
                 // Remount per collection so form state resets cleanly.
@@ -596,18 +608,70 @@ function FunnelSlots({
   );
 }
 
+/* Interfaces collection — fixed slot editors (same editor as the
+   funnel slots: video/image upload + poster + save, one card per
+   screen). Slots are the app's first screens. */
+
+const INTERFACE_SLOT_DEFS: {
+  slot: string;
+  label: string;
+  kind: "video" | "quote";
+  hint: string;
+}[] = [
+  {
+    slot: "welcome-media",
+    label: "Welcome — hero photo/video",
+    kind: "video",
+    hint: "Photo or vertical video shown above the welcome screen's headline. Nothing set → the text-only welcome ships.",
+  },
+  {
+    slot: "hero-media",
+    label: "Onboarding hero — full-bleed visual",
+    kind: "video",
+    hint: "Photo or vertical video filling the hero's visual area, replacing the gradient + glyph. Nothing set → the built-in visual ships.",
+  },
+];
+
+function InterfaceSlots({
+  items,
+  token,
+  onSaved,
+}: {
+  items: AdminItem[];
+  token: string;
+  onSaved: () => void;
+}) {
+  return (
+    <div className="space-y-6">
+      {INTERFACE_SLOT_DEFS.map((def, i) => (
+        <FunnelSlotEditor
+          key={def.slot}
+          def={def}
+          item={items.find((r) => r.slot === def.slot) ?? null}
+          sortFallback={i}
+                token={token}
+          onSaved={onSaved}
+          collection="interfaces"
+        />
+      ))}
+    </div>
+  );
+}
+
 function FunnelSlotEditor({
   def,
   item,
   sortFallback,
   token,
   onSaved,
+  collection = "funnel",
 }: {
   def: (typeof FUNNEL_SLOT_DEFS)[number];
   item: AdminItem | null;
   sortFallback: number;
   token: string;
   onSaved: () => void;
+  collection?: string;
 }) {
   const isQuote = def.kind === "quote";
   const [title, setTitle] = useState(item?.title ?? "");
@@ -639,7 +703,7 @@ function FunnelSlotEditor({
     try {
       await saveItem(token, {
         id: item?.id ?? null,
-        collection: "funnel",
+        collection,
         slot: def.slot,
         type: isQuote ? "quote" : "video",
         title,
@@ -681,7 +745,7 @@ function FunnelSlotEditor({
         <div className="mt-4 space-y-4">
           <UploadField
             token={token}
-            collection="funnel"
+            collection={collection}
             accept="video/*,image/*"
             label="Media file"
             onUploaded={(url) => {
@@ -701,7 +765,7 @@ function FunnelSlotEditor({
           </label>
           <UploadField
             token={token}
-            collection="funnel"
+            collection={collection}
             accept="image/*"
             label="Poster image"
             onUploaded={(url) => {
@@ -782,7 +846,7 @@ function FunnelSlotEditor({
         <div className="lg:sticky lg:top-6">
           <ContentPreview
             item={{
-              collection: "funnel",
+              collection,
               slot: def.slot,
               type: isQuote ? "quote" : "video",
               title,
