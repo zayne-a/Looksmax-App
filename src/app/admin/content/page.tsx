@@ -6,6 +6,14 @@ import { Button, Card, Eyebrow } from "@/components/ui";
 import ContentPreview, {
   liveSurfaceFor,
 } from "@/components/admin/ContentPreview";
+import {
+  BUILT_IN_HERO,
+  BUILT_IN_WELCOME,
+  HeroPreview,
+  WelcomePreview,
+  resolveCopy,
+  type InterfaceCopyDraft,
+} from "@/components/admin/InterfacePreview";
 import { getSupabase } from "@/lib/supabase";
 import type { ContentItem } from "@/lib/content";
 import { AdminChecking } from "@/components/admin/AdminGate";
@@ -641,6 +649,40 @@ function InterfaceSlots({
   token: string;
   onSaved: () => void;
 }) {
+  // Live interface copy for the previews (public /api/settings —
+  // no admin token needed). Falls back to the built-in copy.
+  const [liveCopy, setLiveCopy] = useState<{
+    welcome: InterfaceCopyDraft;
+    hero: InterfaceCopyDraft;
+  }>({ welcome: BUILT_IN_WELCOME, hero: BUILT_IN_HERO });
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      try {
+        const res = await fetch("/api/settings");
+        if (!res.ok) return;
+        const json = (await res.json()) as {
+          interface_copy?: Record<
+            string,
+            Partial<InterfaceCopyDraft> | undefined
+          >;
+        };
+        if (!live) return;
+        setLiveCopy({
+          welcome: resolveCopy(
+            json.interface_copy?.welcome ?? {},
+            BUILT_IN_WELCOME
+          ),
+          hero: resolveCopy(json.interface_copy?.hero ?? {}, BUILT_IN_HERO),
+        });
+      } catch {
+        // Built-in copy stays — the preview still shows the media.
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, []);
   return (
     <div className="space-y-6">
       {INTERFACE_SLOT_DEFS.map((def, i) => (
@@ -649,15 +691,46 @@ function InterfaceSlots({
           def={def}
           item={items.find((r) => r.slot === def.slot) ?? null}
           sortFallback={i}
-                token={token}
+          token={token}
           onSaved={onSaved}
           collection="interfaces"
+          preview={(draft) => (
+            <>
+              {def.slot === "welcome-media" ? (
+                <WelcomePreview
+                  copy={liveCopy.welcome}
+                  media={draft.media}
+                  active={draft.active}
+                />
+              ) : (
+                <HeroPreview
+                  copy={liveCopy.hero}
+                  media={draft.media}
+                  active={draft.active}
+                />
+              )}
+              {draft.media.startsWith("blob:") ? (
+                <p className="mt-3 text-center text-[11px] font-semibold leading-relaxed text-gold-soft">
+                  Showing the file you just picked — Upload, then
+                  Save, to publish it.
+                </p>
+              ) : null}
+              <p className="mt-3 text-center">
+                <Link
+                  href="/admin/android"
+                  target="_blank"
+                  className="text-xs font-bold text-gold hover:underline"
+                >
+                  See it in the real app — /admin/android ↗
+                </Link>
+              </p>
+            </>
+          )}
         />
       ))}
     </div>
   );
 }
-
 function FunnelSlotEditor({
   def,
   item,
@@ -665,6 +738,7 @@ function FunnelSlotEditor({
   token,
   onSaved,
   collection = "funnel",
+  preview,
 }: {
   def: (typeof FUNNEL_SLOT_DEFS)[number];
   item: AdminItem | null;
@@ -672,6 +746,14 @@ function FunnelSlotEditor({
   token: string;
   onSaved: () => void;
   collection?: string;
+  /** When set, renders instead of ContentPreview in the right
+   *  column — used by the Interfaces slots to preview the whole
+   *  screen (draft media + live copy) rather than just the item. */
+  preview?: (draft: {
+    media: string;
+    poster: string;
+    active: boolean;
+  }) => React.ReactNode;
 }) {
   const isQuote = def.kind === "quote";
   const [title, setTitle] = useState(item?.title ?? "");
@@ -844,7 +926,14 @@ function FunnelSlotEditor({
         </div>
 
         <div className="lg:sticky lg:top-6">
-          <ContentPreview
+          {preview ? (
+            preview({
+              media: mediaPreview.url || mediaUrl,
+              poster: posterPreview.url || posterUrl,
+              active,
+            })
+          ) : (
+            <ContentPreview
             item={{
               collection,
               slot: def.slot,
@@ -861,6 +950,7 @@ function FunnelSlotEditor({
             localPosterUrl={posterPreview.url}
             liveHref={item?.id || savedOnce ? "/start" : null}
           />
+          )}
         </div>
       </div>
     </Card>
