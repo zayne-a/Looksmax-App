@@ -4,7 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { Button, Card, Eyebrow } from "@/components/ui";
 import AdminGate from "@/components/admin/AdminGate";
-import type { AppSettings, DeckEntrance, DeckPageId } from "@/lib/settings";
+import type {
+  AppSettings,
+  DeckEntrance,
+  DeckPageId,
+  PersuasionStepId,
+} from "@/lib/settings";
+import { PERSUASION_STEP_IDS } from "@/lib/settings";
 
 const DECK_TITLES: Record<DeckPageId, string> = {
   overall: "Overall",
@@ -25,13 +31,23 @@ const DECK_ENTRANCES: { id: DeckEntrance; label: string }[] = [
   { id: "instant", label: "Instant" },
 ];
 
+const PERSUASION_STEP_TITLES: Record<PersuasionStepId, string> = {
+  dating: "Dating Reality",
+  halo: "Perception Is Everything",
+  chad: "Chad's Reality",
+  average: "Average Reality",
+  scale: "The Highest Leverage Solution",
+  studies: "Studies (experts page title)",
+};
+
 /**
  * /admin/settings — the owner's product switches (2026-10-22).
  * Every control here is wired to a real consumer (see
  * lib/settings.ts for the map): maintenance gates the web app,
  * the announcement banners the home page, creator_program gates
  * /creator + /portal, forum is served to the native app via
- * GET /api/settings, and trial_days rewrites the pricing copy.
+ * GET /api/settings, trial_days rewrites the pricing copy, and
+ * persuasion_copy rewrites the app's onboarding words.
  * Saves go through /api/admin/settings (server re-checks is_admin).
  */
 
@@ -57,6 +73,9 @@ function SettingsConsole({ token }: { token: string }) {
   const [deckOrder, setDeckOrder] = useState<DeckPageId[]>([]);
   const [deckEntrance, setDeckEntrance] = useState<DeckEntrance>("slide");
   const [deckHidden, setDeckHidden] = useState<DeckPageId[]>([]);
+  const [persCopy, setPersCopy] = useState<
+    Partial<Record<PersuasionStepId, { title: string; body: string }>>
+  >({});
 
   const applyLoaded = useCallback((s: AppSettings) => {
     setSettings(s);
@@ -70,6 +89,16 @@ function SettingsConsole({ token }: { token: string }) {
     setDeckOrder(s.deck.order);
     setDeckEntrance(s.deck.entrance);
     setDeckHidden(s.deck.hidden);
+    const nextPers: Partial<
+      Record<PersuasionStepId, { title: string; body: string }>
+    > = {};
+    for (const id of PERSUASION_STEP_IDS) {
+      nextPers[id] = {
+        title: s.persuasion_copy[id]?.title ?? "",
+        body: s.persuasion_copy[id]?.body ?? "",
+      };
+    }
+    setPersCopy(nextPers);
   }, []);
 
   useEffect(() => {
@@ -484,6 +513,88 @@ function SettingsConsole({ token }: { token: string }) {
               </Button>
             </div>
             {metaLine("deck")}
+          </Card>
+
+          {/* Persuasion copy (app onboarding) — per-step title/body
+              overrides; blank = the app's built-in copy. Applies
+              over the air: the app refetches settings on
+              foreground, no app update needed. */}
+          <Card>
+            <h2 className="font-display text-lg font-extrabold text-bone">
+              Persuasion copy (app)
+            </h2>
+            <p className="mt-1.5 text-xs leading-relaxed text-muted">
+              The words on the app&apos;s onboarding persuasion
+              screens, step by step. Leave a field blank to keep the
+              built-in copy for it; clearing a saved field restores
+              the built-in copy. Applies over the air — no app
+              update needed.
+            </p>
+            <div className="mt-4 flex flex-col gap-5">
+              {PERSUASION_STEP_IDS.map((id) => (
+                <div key={id}>
+                  <p className={labelCls}>{PERSUASION_STEP_TITLES[id]}</p>
+                  <input
+                    type="text"
+                    value={persCopy[id]?.title ?? ""}
+                    onChange={(e) =>
+                      setPersCopy((prev) => ({
+                        ...prev,
+                        [id]: {
+                          title: e.target.value,
+                          body: prev[id]?.body ?? "",
+                        },
+                      }))
+                    }
+                    placeholder="Title — blank keeps the built-in title"
+                    className="w-full rounded-lg border border-line bg-ink px-3 py-2 text-sm text-bone placeholder:text-muted"
+                  />
+                  <textarea
+                    value={persCopy[id]?.body ?? ""}
+                    onChange={(e) =>
+                      setPersCopy((prev) => ({
+                        ...prev,
+                        [id]: {
+                          title: prev[id]?.title ?? "",
+                          body: e.target.value,
+                        },
+                      }))
+                    }
+                    placeholder="Body — blank keeps the built-in body"
+                    rows={4}
+                    className="mt-2 w-full rounded-lg border border-line bg-ink px-3 py-2 text-sm text-bone placeholder:text-muted"
+                  />
+                </div>
+              ))}
+            </div>
+            <div className="mt-4">
+              <Button
+                onClick={() => {
+                  const value: Record<
+                    string,
+                    { title?: string; body?: string }
+                  > = {};
+                  for (const id of PERSUASION_STEP_IDS) {
+                    const title = (persCopy[id]?.title ?? "").trim();
+                    const body = (persCopy[id]?.body ?? "").trim();
+                    if (title || body) {
+                      value[id] = {
+                        ...(title ? { title } : {}),
+                        ...(body ? { body } : {}),
+                      };
+                    }
+                  }
+                  void save("persuasion_copy", value);
+                }}
+                disabled={busyKey !== null}
+                className="px-6 py-2.5 text-xs"
+              >
+                {busyKey === "persuasion_copy"
+                  ? "Saving…"
+                  : "Save persuasion copy"}
+              </Button>
+            </div>
+            {metaLine("persuasion_copy")}
           </Card>
         </div>
       )}
