@@ -1,12 +1,19 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-api";
 import {
+  INTERFACE_LOCALE_CODES,
+  INTERFACE_SCREEN_IDS,
   SETTING_KEYS,
   getAppSettings,
+  normaliseInterfaceCopy,
   resolveSettings,
   validateSettingValue,
+  type InterfaceCopy,
+  type InterfaceLocaleCode,
+  type InterfaceScreenCopy,
   type SettingKey,
 } from "@/lib/settings";
+import { fillInterfaceTranslations } from "@/lib/translate-interface";
 
 /**
  * /api/admin/settings — owner control of public.app_settings
@@ -66,12 +73,82 @@ export async function POST(req: Request) {
       { status: 400 }
     );
   }
-  const value = validateSettingValue(key as SettingKey, body.value);
-  if (value === null) {
+  const valueRaw = validateSettingValue(key as SettingKey, body.value);
+  if (valueRaw === null) {
     return NextResponse.json(
       { error: `Invalid value for ${key}` },
       { status: 400 }
     );
+  }
+  let value: unknown = valueRaw;
+
+  // Interface copy translations (Zayne 2026-10-25: admin words
+  // translate to every language). The admin page sends English
+  // drafts only, so the server owns translations: client-sent
+  // translations win (the VM seed path sends a fully translated
+  // value); otherwise stored translations survive for fields whose
+  // English is unchanged, changed or removed English drops its
+  // translations, and missing translations are filled inline
+  // inside a soft time budget — the rest stay English until the
+  // next save converges them. A fill failure never fails the save.
+  let translationStatus: {
+    translated: number;
+    failed: number;
+    pending: number;
+  } | null = null;
+  if (key === "interface_copy") {
+    const { data: storedRow } = await auth.admin
+      .from("app_settings")
+      .select("value")
+      .eq("key", key)
+      .single();
+    const stored = normaliseInterfaceCopy(storedRow?.value ?? null);
+    const incoming = value as InterfaceCopy;
+    const merged: InterfaceCopy = {};
+    for (const screen of INTERFACE_SCREEN_IDS) {
+      const next = incoming[screen];
+      const prev = stored[screen];
+      if (!next && !prev) continue;
+      const entry: InterfaceScreenCopy = { ...(next ?? {}) };
+      const translations: Partial<
+        Record<InterfaceLocaleCode, InterfaceScreenCopy>
+      > = { ...(next?.translations ?? {}) };
+      if (prev?.translations) {
+        for (const field of ["headline", "body", "accent", "cta"] as const) {
+          const newText = next?.[field];
+          if (newText !== undefined && newText === prev[field]) {
+            for (const code of INTERFACE_LOCALE_CODES) {
+              const t = prev.translations[code]?.[field];
+              if (t && !translations[code]?.[field]) {
+                translations[code] ??= {};
+                translations[code][field] = t;
+              }
+            }
+          }
+        }
+      }
+      if (Object.keys(translations).length > 0) {
+        entry.translations = translations;
+      } else {
+        delete entry.translations;
+      }
+      if (
+        entry.headline ||
+        entry.body ||
+        entry.accent ||
+        entry.cta ||
+        entry.translations
+      ) {
+        merged[screen] = entry;
+      }
+    }
+    const filled = await fillInterfaceTranslations(merged);
+    value = filled.copy;
+    translationStatus = {
+      translated: filled.translated,
+      failed: filled.failed,
+      pending: filled.pending,
+    };
   }
 
   const { data: caller } = await auth.admin
@@ -106,5 +183,9 @@ export async function POST(req: Request) {
     .select("key, value");
   const map: Record<string, unknown> = {};
   for (const r of rows ?? []) map[r.key as string] = r.value;
-  return NextResponse.json({ ok: true, settings: resolveSettings(map) });
+  return NextResponse.json({
+    ok: true,
+    settings: resolveSettings(map),
+    ...(translationStatus ? { translationStatus } : {}),
+  });
 }
