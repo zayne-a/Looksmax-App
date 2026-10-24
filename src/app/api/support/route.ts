@@ -3,7 +3,7 @@ import { serviceClient } from "@/lib/admin-api";
 import { buildScoreView } from "@/lib/score-view";
 import { getAppSettings } from "@/lib/settings";
 import type { FaceMeasurements } from "@/lib/types";
-import { MAX_VOICE, COACH_LAYER } from "@/lib/max-voice";
+import { MAX_VOICE, COACH_LAYER, languageDirective } from "@/lib/max-voice";
 
 /**
  * /api/support — Max, one persona on web + native (Zayne, 2026-10-21;
@@ -116,6 +116,55 @@ SAFETY
 
 FORMAT ON TOP OF THE VOICE RULES ABOVE
 - Mention the page (e.g. "Open /scan") when guiding — and for the Discord, the portal and the Creator Tools, include the full clickable URL from the LINKS facts above. One question back at most, only if needed.`;
+
+/**
+ * Reply language (Zayne, 2026-10-24): the native app sends the
+ * language the user picked in its language selector with each chat
+ * call, and Max answers in it — in BOTH modes. The value is accepted
+ * ONLY as an exact (case-insensitive) match against this whitelist of
+ * canonical English names; anything else — unknown names, codes,
+ * junk, prompt-shaped strings — is ignored and Max replies in
+ * English. Raw user input is never interpolated into a prompt: the
+ * name that reaches languageDirective() always comes from this list.
+ */
+const REPLY_LANGUAGES = [
+  "English",
+  "Chinese",
+  "Hindi",
+  "Spanish",
+  "French",
+  "German",
+  "Russian",
+  "Portuguese",
+  "Italian",
+  "Romanian",
+  "Azerbaijani",
+  "Arabic",
+  "Bengali",
+  "Urdu",
+  "Indonesian",
+  "Japanese",
+  "Turkish",
+  "Korean",
+  "Vietnamese",
+  "Persian",
+  "Swahili",
+  "Marathi",
+  "Polish",
+  "Ukrainian",
+  "Dutch",
+  "Thai",
+] as const;
+
+/** The accepted non-English reply language for this request, or null
+ *  for English / anything unrecognised (English needs no directive). */
+function sanitiseReplyLanguage(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const wanted = raw.trim().toLowerCase();
+  if (!wanted) return null;
+  const match = REPLY_LANGUAGES.find((l) => l.toLowerCase() === wanted);
+  return match && match !== "English" ? match : null;
+}
 
 const MODELS = ["gemini-3.5-flash-lite", "gemini-3.6-flash"];
 
@@ -425,7 +474,8 @@ async function buildCoachContext(
 async function handleCoach(
   req: Request,
   body: { message?: unknown; history?: RawHistory },
-  keys: string[]
+  keys: string[],
+  replyLanguage: string | null
 ): Promise<NextResponse> {
   const premiumDeny = () =>
     NextResponse.json({ error: "coach_premium" }, { status: 403 });
@@ -494,7 +544,7 @@ async function handleCoach(
   const context = await buildCoachContext(admin, userId).catch(() => "");
   const coachSystem = `${MAX_VOICE}\n\n${COACH_LAYER}${
     context ? `\n\n${context}` : ""
-  }`;
+  }${replyLanguage ? languageDirective(replyLanguage) : ""}`;
   const contents = [
     ...normaliseHistory(body.history),
     { role: "user", parts: [{ text: message }] },
@@ -530,6 +580,7 @@ export async function POST(req: Request) {
     message?: unknown;
     history?: RawHistory;
     mode?: unknown;
+    language?: unknown;
   };
   try {
     const parsed: unknown = await req.json();
@@ -541,10 +592,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
+  // The app-selected reply language (whitelisted; null = English).
+  const replyLanguage = sanitiseReplyLanguage(body.language);
+
   // Coach mode branches before the public per-IP cap: it is
   // authenticated and carries its own per-user DB cap instead.
   if (body.mode === "coach") {
-    return handleCoach(req, body, keys);
+    return handleCoach(req, body, keys, replyLanguage);
   }
 
   const ip =
@@ -590,11 +644,17 @@ export async function POST(req: Request) {
         ? SYSTEM
         : SYSTEM.replaceAll("3-day", `${trialDays}-day`);
 
+  // The app-selected reply language goes LAST, after every other
+  // prompt adjustment, so nothing overwrites it.
+  const systemWithLanguage = replyLanguage
+    ? system + languageDirective(replyLanguage)
+    : system;
+
   // Rotate across Max's dedicated keys; a quota hit or outage on one
   // key falls through to the next key, then the next model.
   for (const key of keys) {
     for (const model of MODELS) {
-      const reply = await askGemini(key, model, contents, system);
+      const reply = await askGemini(key, model, contents, systemWithLanguage);
       if (reply) return NextResponse.json({ reply });
     }
   }
