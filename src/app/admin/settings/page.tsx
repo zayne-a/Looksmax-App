@@ -12,6 +12,7 @@ import type {
   PersuasionStepId,
 } from "@/lib/settings";
 import {
+  INTERFACE_LOCALE_CODES,
   INTERFACE_SCREEN_IDS,
   PERSUASION_STEP_IDS,
 } from "@/lib/settings";
@@ -182,13 +183,31 @@ function SettingsConsole({ token }: { token: string }) {
       const json = (await res.json().catch(() => ({}))) as {
         error?: string;
         settings?: AppSettings;
+        translationStatus?: {
+          translated: number;
+          failed: number;
+          pending: number;
+        };
       };
       if (!res.ok || !json.settings) {
         setStatus(json.error ?? "Save failed — try again.");
         return;
       }
       applyLoaded(json.settings);
-      setStatus("Saved — live now.");
+      const ts = json.translationStatus;
+      if (ts && key === "interface_copy") {
+        if (ts.pending === 0 && ts.failed === 0) {
+          setStatus(
+            `Saved — live now. Translated to all ${INTERFACE_LOCALE_CODES.length} languages.`
+          );
+        } else {
+          setStatus(
+            `Saved — live now. ${ts.pending} translations pending, ${ts.failed} failed — English shows there until the next save.`
+          );
+        }
+      } else {
+        setStatus("Saved — live now.");
+      }
     } catch {
       setStatus("Save failed — check your connection and try again.");
     } finally {
