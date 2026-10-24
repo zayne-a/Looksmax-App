@@ -150,6 +150,8 @@ const REPLY_LANGUAGES = [
   "Persian",
   "Swahili",
   "Marathi",
+  "Tamil",
+  "Telugu",
   "Polish",
   "Ukrainian",
   "Dutch",
