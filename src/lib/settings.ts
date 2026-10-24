@@ -25,6 +25,10 @@ import { serviceClient } from "./admin-api";
  *   deck          → the native app's ResultsDeck (page order, first
  *                    page, entrance style, per-page visibility),
  *                    administered from the phone's admin panel.
+ *   persuasion_copy → the native app's onboarding persuasion
+ *                    steps (per-step title/body overrides;
+ *                    blank = the bundled copy), administered
+ *                    from /admin/settings.
  */
 
 /** Results-deck pages (native app), in their canonical order. The
@@ -51,6 +55,31 @@ export interface DeckSettings {
   hidden: DeckPageId[];
 }
 
+/** Persuasion steps (native onboarding pager), in flow order. */
+export const PERSUASION_STEP_IDS = [
+  "dating",
+  "halo",
+  "chad",
+  "average",
+  "scale",
+  "studies",
+] as const;
+export type PersuasionStepId = (typeof PERSUASION_STEP_IDS)[number];
+
+/** One step's owner override: an optional title and/or body.
+ *  A blank field means "keep the bundled copy" for that field. */
+export interface PersuasionStepCopy {
+  title?: string;
+  body?: string;
+}
+
+/** Owner overrides for persuasion copy (2026-10-24) — consumed
+ *  by the native PersuasionScreen; edited from /admin/settings.
+ *  Absent steps (or an empty map) mean the bundled copy ships. */
+export type PersuasionCopy = Partial<
+  Record<PersuasionStepId, PersuasionStepCopy>
+>;
+
 export interface AppSettings {
   maintenance: { on: boolean; message: string };
   announcement: { on: boolean; text: string };
@@ -62,6 +91,10 @@ export interface AppSettings {
    *  native app's ResultsDeck; administered from the phone's admin
    *  panel (in-app /admin-deck). */
   deck: DeckSettings;
+  /** Persuasion copy overrides (2026-10-24) — consumed by the
+   *  native app's onboarding pager; administered from
+   *  /admin/settings. Empty = all bundled copy. */
+  persuasion_copy: PersuasionCopy;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -78,6 +111,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     entrance: "slide",
     hidden: [],
   },
+  persuasion_copy: {},
 };
 
 export const SETTING_KEYS = [
@@ -86,6 +120,7 @@ export const SETTING_KEYS = [
   "features",
   "trial_days",
   "deck",
+  "persuasion_copy",
 ] as const;
 export type SettingKey = (typeof SETTING_KEYS)[number];
 
@@ -143,6 +178,38 @@ export function normaliseDeck(raw: unknown): DeckSettings {
   };
 }
 
+const PERSUASION_TITLE_MAX = 120;
+const PERSUASION_BODY_MAX = 2000;
+
+function isPersuasionStepId(v: unknown): v is PersuasionStepId {
+  return (
+    typeof v === "string" &&
+    (PERSUASION_STEP_IDS as readonly string[]).includes(v)
+  );
+}
+
+/** Normalise a raw persuasion_copy value: known step ids only,
+ *  title/body trimmed + capped; entries with neither are dropped
+ *  (clearing a field restores the bundled copy for it). */
+export function normalisePersuasionCopy(raw: unknown): PersuasionCopy {
+  if (!isObj(raw)) return {};
+  const out: PersuasionCopy = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (!isPersuasionStepId(key) || !isObj(value)) continue;
+    const entry: PersuasionStepCopy = {};
+    if (typeof value.title === "string") {
+      const title = value.title.trim().slice(0, PERSUASION_TITLE_MAX);
+      if (title) entry.title = title;
+    }
+    if (typeof value.body === "string") {
+      const body = value.body.trim().slice(0, PERSUASION_BODY_MAX);
+      if (body) entry.body = body;
+    }
+    if (entry.title || entry.body) out[key] = entry;
+  }
+  return out;
+}
+
 /** Merge raw app_settings rows (key → jsonb value) over the
  *  defaults. Anything malformed falls back to the default for that
  *  field — a bad row can never take the site down. */
@@ -170,6 +237,7 @@ export function resolveSettings(
     },
     trial_days: t === 7 ? 7 : t === 3 ? 3 : 0,
     deck: normaliseDeck(rows.deck),
+    persuasion_copy: normalisePersuasionCopy(rows.persuasion_copy),
   };
 }
 
@@ -203,6 +271,15 @@ export function validateSettingValue(
       return null;
     }
     return normaliseDeck(value);
+  }
+  if (key === "persuasion_copy") {
+    if (!isObj(value)) return null;
+    for (const [k, v] of Object.entries(value)) {
+      if (!isPersuasionStepId(k) || !isObj(v)) return null;
+      if (v.title !== undefined && typeof v.title !== "string") return null;
+      if (v.body !== undefined && typeof v.body !== "string") return null;
+    }
+    return normalisePersuasionCopy(value);
   }
   if (!isObj(value)) return null;
   if (key === "maintenance") {
