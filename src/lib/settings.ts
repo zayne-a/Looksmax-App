@@ -281,10 +281,10 @@ export function normalisePersuasionCopy(raw: unknown): PersuasionCopy {
   return out;
 }
 
-const INTERFACE_HEADLINE_MAX = 120;
-const INTERFACE_BODY_MAX = 500;
-const INTERFACE_ACCENT_MAX = 40;
-const INTERFACE_CTA_MAX = 40;
+export const INTERFACE_HEADLINE_MAX = 120;
+export const INTERFACE_BODY_MAX = 500;
+export const INTERFACE_ACCENT_MAX = 40;
+export const INTERFACE_CTA_MAX = 40;
 
 function isInterfaceScreenId(v: unknown): v is InterfaceScreenId {
   return (
