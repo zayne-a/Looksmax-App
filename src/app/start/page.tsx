@@ -341,9 +341,10 @@ export default function StartPage() {
     : chad;
 
   // Research cards, live rows first choice, bundled fallback
-  // otherwise — normalized to one shape, then sorted with
-  // Zayne's rule: studies whose source has a logo stay on top
-  // (stable — original order kept inside each group).
+  // otherwise — normalized to one shape, then filtered with
+  // Zayne's rule: a study whose logo can't be found is removed
+  // from the list (never shown logo-less); logo'd studies keep
+  // their original order.
   const researchCards: ResearchCardData[] =
     researchItems.length > 0
       ? researchItems.map((r) => ({
@@ -365,10 +366,9 @@ export default function StartPage() {
           mediaUrl: null,
           citation: null,
         }));
-  const sortedResearch = [
-    ...researchCards.filter((c) => logoForStudy(c.source)),
-    ...researchCards.filter((c) => !logoForStudy(c.source)),
-  ];
+  const sortedResearch = researchCards.filter((c) =>
+    logoForStudy(c.source),
+  );
 
   const LAST = 6;
   const next = () => setStep((s) => Math.min(LAST, s + 1));
