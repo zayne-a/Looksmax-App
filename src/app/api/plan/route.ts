@@ -927,7 +927,11 @@ async function entitlementForToken(
  *  in full; every task past that ships as a LOCKED task — its real title
  *  and frequency stay (so the full 48-step protocol is visibly there and
  *  worth unlocking), but its detail and why-you instructions are stubbed
- *  out BEFORE the response leaves the server (audit fix, 2026-10-20 —
+ *  out BEFORE the response leaves the server. Premium-only method
+ *  tasks (proOnly, Zayne 2026-10-25) lock even inside the free
+ *  allowance, without consuming budget — so the mewing/debloat
+ *  methods are teasers for free users and full instructions for
+ *  premium users, by rule rather than by position (audit fix, 2026-10-20 —
  *  the earlier build shipped the full protocol and only blurred it in
  *  the browser, so the "locked" content was readable in the network
  *  tab; Zayne, 2026-10-21 — titles now ship so free users can see the
@@ -948,6 +952,15 @@ function truncateForFree(plan: AscendPlan): AscendPlan {
         weeks: section.weeks.map((week) => ({
           ...week,
           tasks: week.tasks.map((t) => {
+            if (t.proOnly) {
+              return {
+                title: t.title,
+                detail: "",
+                frequency: t.frequency,
+                whyYou: "",
+                locked: true,
+              };
+            }
             if (budget > 0) {
               budget -= 1;
               return t;
