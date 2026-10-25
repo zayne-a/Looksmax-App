@@ -103,6 +103,132 @@ const RESEARCH = [
   },
 ];
 
+/** Study logos, mirrored from the native StudyCard (studyLogos.ts):
+ *  the mark for a study's source, on a disc (white, except Oxford
+ *  navy — its crest is white line art). Hosted on the public
+ *  content-media bucket, same pattern as the other study logos. */
+const STUDY_LOGOS: Record<string, { url: string; bg: string }> = {
+  Harvard: {
+    url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/content-media/study-logos/harvard.png`,
+    bg: "#FFFFFF",
+  },
+  Stanford: {
+    url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/content-media/study-logos/stanford.png`,
+    bg: "#FFFFFF",
+  },
+  Oxford: {
+    url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/content-media/study-logos/oxford.png`,
+    bg: "#002147",
+  },
+  Yale: {
+    url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/content-media/study-logos/yale.png`,
+    bg: "#FFFFFF",
+  },
+  "St Andrews": {
+    url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/content-media/study-logos/st-andrews.png`,
+    bg: "#FFFFFF",
+  },
+  OkCupid: {
+    url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/content-media/study-logos/okcupid.png`,
+    bg: "#FFFFFF",
+  },
+};
+
+/** The logo for a study's source, or null → monogram. Matches on
+ *  the part before "·"; OkCupid matches on its leading name.
+ *  Mirrors the native logoForStudy exactly. */
+function logoForStudy(source: string | null): { url: string; bg: string } | null {
+  const name = (source ?? "").trim();
+  if (!name) return null;
+  const head = name.split("·")[0].trim();
+  const hit = STUDY_LOGOS[head];
+  if (hit) return hit;
+  if (name.startsWith("OkCupid")) return STUDY_LOGOS.OkCupid;
+  return null;
+}
+
+/** Monogram fallback, mirrored from the native StudyCard. */
+function monogram(source: string | null, title: string | null): string {
+  const text = (source ?? title ?? "M").trim();
+  const letters = text.replace(/[^A-Za-z ]/g, "").split(" ").filter(Boolean);
+  if (letters.length === 0) return "M";
+  if (letters.length === 1) return (letters[0] ?? "M").slice(0, 1).toUpperCase();
+  const first = letters[0]?.[0] ?? "";
+  const second = letters[1]?.[0] ?? "";
+  return (first + second).toUpperCase();
+}
+
+/** One research card's display data, live row or bundled fallback. */
+interface ResearchCardData {
+  key: string;
+  title: string;
+  body: string;
+  source: string;
+  mediaUrl: string | null;
+  citation: string | null;
+}
+
+/** A research card in the native StudyCard's header layout: a
+ *  round avatar (the item's image when set, else the source's
+ *  logo on its disc, else a monogram), the headline as the name
+ *  line, the source as the credential line, the finding in
+ *  italics, and a citation footer when one is carried. */
+function ResearchCard({ item }: { item: ResearchCardData }) {
+  const logo = item.mediaUrl ? null : logoForStudy(item.source);
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+      <div className="flex items-center gap-4">
+        {item.mediaUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={item.mediaUrl}
+            alt=""
+            className="h-16 w-16 shrink-0 rounded-full object-cover ring-2 ring-white"
+          />
+        ) : logo ? (
+          <div
+            className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full p-[7px] ring-2 ring-white"
+            style={{ backgroundColor: logo.bg }}
+          >
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={logo.url}
+              alt=""
+              className="h-full w-full object-contain"
+            />
+          </div>
+        ) : (
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-white/5 ring-2 ring-[#5EEAD4]">
+            <span className="text-xl font-extrabold" style={{ color: MINT }}>
+              {monogram(item.source, item.title)}
+            </span>
+          </div>
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="font-display text-base font-black leading-snug text-white">
+            {item.title}
+          </p>
+          {item.source ? (
+            <p className="mt-0.5 text-[13px] font-semibold text-white/50">
+              {item.source}
+            </p>
+          ) : null}
+        </div>
+      </div>
+      {item.body ? (
+        <p className="mt-3 text-[15px] italic leading-relaxed text-[#D8D8DE]">
+          “{item.body}”
+        </p>
+      ) : null}
+      {item.citation ? (
+        <p className="mt-2 text-xs font-semibold text-white/40">
+          {item.citation}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 /** Map a unified content_items row onto the FunnelMedia shape the
  *  step renderer already speaks. */
 function contentToFunnelMedia(item: ContentItem): FunnelMedia {
@@ -191,6 +317,36 @@ export default function StartPage() {
         updated_at: clipForBg.updatedAt,
       }
     : chad;
+
+  // Research cards, live rows first choice, bundled fallback
+  // otherwise — normalized to one shape, then sorted with
+  // Zayne's rule: studies whose source has a logo stay on top
+  // (stable — original order kept inside each group).
+  const researchCards: ResearchCardData[] =
+    researchItems.length > 0
+      ? researchItems.map((r) => ({
+          key: r.id,
+          title: r.title ?? "",
+          body: r.caption ?? "",
+          source: r.sourceName ?? "",
+          mediaUrl: r.mediaUrl,
+          citation:
+            typeof r.meta?.citation === "string" && r.meta.citation.length > 0
+              ? r.meta.citation
+              : null,
+        }))
+      : RESEARCH.map((r) => ({
+          key: r.title,
+          title: r.title,
+          body: r.body,
+          source: r.source,
+          mediaUrl: null,
+          citation: null,
+        }));
+  const sortedResearch = [
+    ...researchCards.filter((c) => logoForStudy(c.source)),
+    ...researchCards.filter((c) => !logoForStudy(c.source)),
+  ];
 
   const LAST = 6;
   const next = () => setStep((s) => Math.min(LAST, s + 1));
@@ -509,47 +665,9 @@ export default function StartPage() {
                 This isn&apos;t opinion. It&apos;s measured.
               </h2>
               <div className="mt-8 space-y-3">
-                {researchItems.length > 0
-                  ? researchItems.map((r) => (
-                      <div
-                        key={r.id}
-                        className="rounded-2xl border border-white/10 bg-white/[0.04] p-5"
-                      >
-                        <p
-                          className="font-display text-lg font-black"
-                          style={{ color: MINT }}
-                        >
-                          {r.title}
-                        </p>
-                        <p className="mt-2 text-sm leading-relaxed text-white/65">
-                          {r.caption}
-                        </p>
-                        {r.sourceName && (
-                          <p className="mt-2 text-xs text-white/40">
-                            Source: {r.sourceName}
-                          </p>
-                        )}
-                      </div>
-                    ))
-                  : RESEARCH.map((r) => (
-                      <div
-                        key={r.title}
-                        className="rounded-2xl border border-white/10 bg-white/[0.04] p-5"
-                      >
-                        <p
-                          className="font-display text-lg font-black"
-                          style={{ color: MINT }}
-                        >
-                          {r.title}
-                        </p>
-                        <p className="mt-2 text-sm leading-relaxed text-white/65">
-                          {r.body}
-                        </p>
-                        <p className="mt-2 text-xs text-white/40">
-                          Source: {r.source}
-                        </p>
-                      </div>
-                    ))}
+                {sortedResearch.map((r) => (
+                  <ResearchCard key={r.key} item={r} />
+                ))}
                 {quotes.map((q) => (
                   <figure
                     key={q.slot}
