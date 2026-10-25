@@ -201,7 +201,7 @@ function ResearchCard({ item }: { item: ResearchCardData }) {
     <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
       <div className="flex items-center gap-4">
         {item.mediaUrl ? (
-          {/* eslint-disable-next-line @next/next/no-img-element */}
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={item.mediaUrl}
             alt=""
@@ -593,7 +593,7 @@ export default function StartPage() {
                           }`}
                         >
                           {clip.posterUrl ? (
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            // eslint-disable-next-line @next/next/no-img-element
                             <img
                               src={clip.posterUrl}
                               alt={clip.title ?? ""}
