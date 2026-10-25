@@ -14,6 +14,7 @@ import {
   type ContentItem,
 } from "@/lib/content";
 import { barFraction, scoreTierLabel } from "@/lib/creator-tiers";
+import { SAYINGS, type Saying } from "@/lib/sayings";
 
 /**
  * The persuasion onboarding (Zayne, 2026-10-21) — "that's what the
@@ -251,6 +252,43 @@ function ResearchCard({ item }: { item: ResearchCardData }) {
   );
 }
 
+/** A saying card in the ResearchCard's header layout: a round
+ *  avatar (the person's photo, the organisation's logo, or a
+ *  monogram when no portrait exists — Lee), the name line, the
+ *  credential line, and the quote in italics. */
+function SayingCard({ saying }: { saying: Saying }) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
+      <div className="flex items-center gap-4">
+        {saying.photoUrl ? (
+          <img
+            src={saying.photoUrl}
+            alt=""
+            className="h-16 w-16 shrink-0 rounded-full object-cover ring-2 ring-white"
+          />
+        ) : (
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-white/5 ring-2 ring-[#5EEAD4]">
+            <span className="text-xl font-extrabold" style={{ color: MINT }}>
+              {monogram(saying.name, saying.name)}
+            </span>
+          </div>
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="font-display text-base font-black leading-snug text-white">
+            {saying.name}
+          </p>
+          <p className="mt-0.5 text-[13px] font-semibold text-white/50">
+            {saying.credential}
+          </p>
+        </div>
+      </div>
+      <p className="mt-3 text-[15px] italic leading-relaxed text-[#D8D8DE]">
+        “{saying.quote}”
+      </p>
+    </div>
+  );
+}
+
 /** Map a unified content_items row onto the FunnelMedia shape the
  *  step renderer already speaks. */
 function contentToFunnelMedia(item: ContentItem): FunnelMedia {
@@ -369,6 +407,30 @@ export default function StartPage() {
   const sortedResearch = researchCards.filter((c) =>
     logoForStudy(c.source),
   );
+
+  /** Step 6's list: research + sayings interleaved (Zayne-approved
+   *  2026-10-25) — one saying after every 3 research cards; any
+   *  saying left over (Lee, the 5th) appends at the end. */
+  type Step6Item =
+    | { kind: "research"; key: string; item: ResearchCardData }
+    | { kind: "saying"; key: string; saying: Saying };
+  const step6Items: Step6Item[] = [];
+  {
+    let s = 0;
+    sortedResearch.forEach((r, i) => {
+      step6Items.push({ kind: "research", key: r.key, item: r });
+      if ((i + 1) % 3 === 0 && s < SAYINGS.length) {
+        const saying = SAYINGS[s++];
+        if (saying)
+          step6Items.push({ kind: "saying", key: saying.id, saying });
+      }
+    });
+    while (s < SAYINGS.length) {
+      const saying = SAYINGS[s++];
+      if (saying)
+        step6Items.push({ kind: "saying", key: saying.id, saying });
+    }
+  }
 
   const LAST = 6;
   const next = () => setStep((s) => Math.min(LAST, s + 1));
@@ -687,9 +749,13 @@ export default function StartPage() {
                 This isn&apos;t opinion. It&apos;s measured.
               </h2>
               <div className="mt-8 space-y-3">
-                {sortedResearch.map((r) => (
-                  <ResearchCard key={r.key} item={r} />
-                ))}
+                {step6Items.map((it) =>
+                  it.kind === "research" ? (
+                    <ResearchCard key={it.key} item={it.item} />
+                  ) : (
+                    <SayingCard key={it.key} saying={it.saying} />
+                  ),
+                )}
                 {quotes.map((q) => (
                   <figure
                     key={q.slot}
