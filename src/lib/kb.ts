@@ -434,6 +434,23 @@ function task(
   return { title, detail, frequency, whyYou };
 }
 
+/**
+ * A task carrying a mewing/debloat method (Zayne 2026-10-25): full
+ * detail for premium plans only. truncateForFree locks it for free
+ * users even inside the free allowance, so free users see the
+ * title + frequency as a teaser and premium users get the method.
+ * The AI plan path grounds premium sections in these same methods
+ * via the excerpts block in getRelevantKbExcerpts.
+ */
+function proTask(
+  title: string,
+  detail: string,
+  frequency: string,
+  whyYou: string
+): PlanTask {
+  return { title, detail, frequency, whyYou, proOnly: true };
+}
+
 function week(weekNo: number, focus: string, tasks: PlanTask[]): PlanWeek {
   return { week: weekNo, focus, tasks };
 }
@@ -1154,19 +1171,19 @@ function advancedSkinSection(quiz: QuizAnswers, s: SkinSignals): PlanSection {
           "3x/week",
           `${whyRoutine(quiz)} — progression is earned by tolerance, not scheduled.`
         ),
-        task(
+        proTask(
           "Morning debloat ritual",
           "Cold water splash or an ice cube in a thin cloth for 30-60 seconds, then 5 minutes of light gua sha strokes — centre of the face outward along jawline, cheekbones, and brow, then down the sides of the neck — after moisturizer. This moves temporary water only: visible for hours, not permanent.",
           "daily",
           `${whyGoal1(quiz)} — the morning debloat ritual adds visible sharpness for your maintenance goal.`
         ),
-        task(
+        proTask(
           "Sodium check at dinner, potassium in the day",
           "Restaurant food, sauces, and instant noodles load sodium that shows up as a puffy face by morning. Keep dinner sodium moderate, and get potassium in daily (banana, coconut water, yogurt, leafy greens) — it's the counterweight that keeps fluid balance level.",
           "daily",
           `${whyGoal1(quiz)} — less water held overnight means the debloat ritual starts ahead, not behind.`
         ),
-        task(
+        proTask(
           "Sleep head-up for a leaner morning face",
           "Sleep with your head slightly elevated (an extra pillow works) and protect the full night's sleep — lying flat pools fluid in the face, and a short night shows up as puff no morning ritual fully undoes.",
           "daily",
@@ -1458,6 +1475,12 @@ function buildExerciseSection(
           "daily",
           `${whySleep(quiz)} — short sleep stalls fat loss and dulls skin.`
         ),
+        proTask(
+          "The long debloat: body fat, not water tricks",
+          "Morning rituals move temporary water for hours; lasting facial leanness follows overall body fat over weeks and months — training plus diet consistency, judged by monthly photos, not daily mirror checks. Never use diuretics, laxatives, dehydration, or detoxes to chase it: they cost health and the puff comes back.",
+          "weekly",
+          "because the debloat chapters separate water (hours) from fat (months) — this is the months half, and it is the only one that lasts."
+        ),
       ]),
       week(3, "Push progression", [
         task(
@@ -1566,7 +1589,7 @@ function buildStyleSection(
             ? `because your detected face shape is ${shape.name} — facial hair should flatter it.`
             : "because deliberate facial hair reads intentional."
         ),
-        task(
+        proTask(
           "Mewing (tongue posture)",
           tongue
             ? `${tongue.detail} Include the back third of the tongue, suctioned up — not just the tip — and keep teeth lightly together, never clenched. ${tongue.caution}`
@@ -1574,11 +1597,23 @@ function buildStyleSection(
           "daily",
           "because mewing is simply correct tongue resting posture — a free daily habit worth making your default, with honest expectations."
         ),
-        task(
+        proTask(
           "Morning debloat before photos",
           "Ice and 5 minutes of upward facial massage before any photo or event — this debloats: it moves temporary water, so it's visible for hours, not permanent.",
           "as needed",
           "because debloating sharpens photos — as needed before events."
+        ),
+        proTask(
+          "Palate posture — the full mechanics",
+          "Rest the whole tongue flat against the roof of the mouth with the back third suctioned up in a light seal — not just the tip — lips sealed, teeth lightly together (never clenched), breathing through the nose. The common errors are tip-only contact, clenched teeth, and hard mewing (pushing with force): force never helps and risks jaw pain and TMJ trouble. Stop with jaw pain or clicking and see a dentist. A habit, never a promise — no posture exercise reshapes adult bone.",
+          "daily",
+          "because correct resting posture is the mewing method itself — the back-third seal is what makes it real, and the no-force rule is what keeps it safe."
+        ),
+        proTask(
+          "Chew properly: harder foods, both sides",
+          "Swap one soft item per meal for something chewier — raw vegetables, crusty bread, nuts, tougher meats — and chew slowly on both sides until food is well broken down. This trains jaw-muscle use and chewing habit, not bone: it will not widen a palate or advance a jaw. Stop with jaw pain or clicking. Never chew ice, bones, bottle caps, or objects — they crack teeth. With TMJ symptoms, braces, or restorations, check with your dentist first.",
+          "daily",
+          "because chewing is the jaw-training method from the mewing chapters — muscle and habit, done inside normal meals, never as a stunt."
         ),
       ]),
       week(3, "Glasses and grooming audit", [
@@ -1592,13 +1627,19 @@ function buildStyleSection(
             ? `because your detected face shape is ${shape.name} — frames should contrast it.`
             : "because frames should contrast your face shape."
         ),
-        task(
+        proTask(
           "Nasal breathing at night",
           mouthTape
             ? `${mouthTape.detail} ${mouthTape.caution}`
             : "Practice breathing through the nose at night for better sleep quality.",
           "daily",
           `${whySleep(_quiz)} — nasal breathing improves sleep quality.`
+        ),
+        proTask(
+          "Clear a blocked nose before you chase posture",
+          "Chronic congestion makes nose breathing — and therefore resting tongue posture — impossible, so fix the airway first: daily saline rinse and treating allergies. If congestion, mouth breathing, or snoring persist, see an ENT; unrefreshed waking deserves a sleep-apnea assessment. Never tape a blocked nose shut.",
+          "daily",
+          "because the airway chapters are clear — posture follows breathing, not the other way round."
         ),
         task(
           "Wardrobe fit check",
@@ -1869,6 +1910,40 @@ export function getRelevantKbExcerpts(
       `- ${p.name}: AM [${p.routine.am.join(" | ")}] / PM [${p.routine.pm.join(" | ")}] / Weekly [${p.weekly.join(" | ")}] / Avoid [${p.whatToAvoid.join(" | ")}] / Timeline ${p.timelineWeeks} weeks`
     );
   }
+
+  // Mewing & debloat methods (Zayne 2026-10-25): the premium plan
+  // AI grounds its sections in these. Kept compact and placed
+  // early so it survives the 6000-char slice on section calls.
+  // Framing is fixed: habit, not promise — never bone change,
+  // fat loss, or overnight results; never diuretics, dehydration,
+  // force, or DIY devices.
+  lines.push(
+    "## Mewing & debloat methods — use in premium plans (locked for free users)"
+  );
+  lines.push(
+    "- Mewing (tongue posture): whole tongue on the palate, back third suctioned up lightly, lips sealed, teeth lightly together, nose breathing; never force, never clench."
+  );
+  lines.push(
+    "- Palate posture mechanics: tip-only contact, clenched teeth, and hard mewing are the errors; stop at jaw pain/clicking, see a dentist."
+  );
+  lines.push(
+    "- Chewing: harder foods in normal meals, chewed slowly on both sides; trains jaw-muscle use and habit, not bone; never ice, bones, or objects; TMJ/braces/restorations check with a dentist first."
+  );
+  lines.push(
+    "- Nasal breathing + clear airway: saline rinse and allergy care first; persistent congestion, mouth breathing, or snoring go to an ENT; never tape a blocked nose shut."
+  );
+  lines.push(
+    "- Morning debloat ritual: cold splash or ice in cloth 30-60s, then 5 minutes light gua sha outward along jawline, cheekbones, brow, down the neck; moves temporary water for hours only."
+  );
+  lines.push(
+    "- Debloat before photos: ice + 5 minutes upward facial massage as needed; visible for hours, not permanent."
+  );
+  lines.push(
+    "- Sodium/potassium: moderate dinner sodium, potassium daily (banana, coconut water, yogurt, leafy greens); sleep head-up so fluid does not pool overnight."
+  );
+  lines.push(
+    "- Long debloat: lasting facial leanness follows overall body fat over weeks/months via training + diet; never diuretics, laxatives, dehydration, or detoxes."
+  );
 
   lines.push("## Core routines");
   lines.push(`- Morning (${foundations.morningRoutine.title}): ${foundations.morningRoutine.steps.join(" | ")}`);
