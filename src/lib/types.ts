@@ -133,6 +133,12 @@ export interface PlanTask {
    *  Renderers show it as a locked row; it is never a doable task.
    *  Absent (undefined) on every task of a premium plan. */
   locked?: boolean;
+  /** Premium-only method (Zayne 2026-10-25): mewing/debloat method
+   *  tasks carry this flag. truncateForFree locks them for free
+   *  users even inside the free allowance, so the methods are
+   *  teasers (title + frequency) for free users and full
+   *  instructions for premium users. Absent on ordinary tasks. */
+  proOnly?: boolean;
 }
 
 export interface PlanWeek {
