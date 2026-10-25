@@ -105,8 +105,11 @@ const RESEARCH = [
 
 /** Study logos, mirrored from the native StudyCard (studyLogos.ts):
  *  the mark for a study's source, on a disc (white, except Oxford
- *  navy — its crest is white line art). Hosted on the public
- *  content-media bucket, same pattern as the other study logos. */
+ *  navy — its crest is white line art — and Minnesota maroon, whose
+ *  M carries its own maroon field). People-led rows map to their
+ *  institution's mark (Dion → Minnesota, Langlois + Hamermesh →
+ *  UT Austin, Bryan Johnson → his Blueprint mark), so every card
+ *  carries a logo. Hosted on the public content-media bucket. */
 const STUDY_LOGOS: Record<string, { url: string; bg: string }> = {
   Harvard: {
     url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/content-media/study-logos/harvard.png`,
@@ -132,11 +135,26 @@ const STUDY_LOGOS: Record<string, { url: string; bg: string }> = {
     url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/content-media/study-logos/okcupid.png`,
     bg: "#FFFFFF",
   },
+  Minnesota: {
+    url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/content-media/study-logos/minnesota.png`,
+    bg: "#7A0019",
+  },
+  "UT Austin": {
+    url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/content-media/study-logos/ut-austin.png`,
+    bg: "#FFFFFF",
+  },
+  Blueprint: {
+    url: `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/content-media/study-logos/blueprint.png`,
+    bg: "#FFFFFF",
+  },
 };
 
 /** The logo for a study's source, or null → monogram. Matches on
- *  the part before "·"; OkCupid matches on its leading name.
- *  Mirrors the native logoForStudy exactly. */
+ *  the part before "·" for institution-led rows; people-led rows
+ *  match on their leading name → their institution's mark
+ *  (Dion → Minnesota, Langlois + Hamermesh → UT Austin,
+ *  Bryan Johnson → his Blueprint mark). Web extends the native
+ *  map with these rows; native parity is a follow-up. */
 function logoForStudy(source: string | null): { url: string; bg: string } | null {
   const name = (source ?? "").trim();
   if (!name) return null;
@@ -144,6 +162,10 @@ function logoForStudy(source: string | null): { url: string; bg: string } | null
   const hit = STUDY_LOGOS[head];
   if (hit) return hit;
   if (name.startsWith("OkCupid")) return STUDY_LOGOS.OkCupid;
+  if (name.startsWith("Dion")) return STUDY_LOGOS.Minnesota;
+  if (name.startsWith("Langlois")) return STUDY_LOGOS["UT Austin"];
+  if (name.startsWith("Hamermesh")) return STUDY_LOGOS["UT Austin"];
+  if (name.startsWith("Bryan Johnson")) return STUDY_LOGOS.Blueprint;
   return null;
 }
 
@@ -187,7 +209,7 @@ function ResearchCard({ item }: { item: ResearchCardData }) {
           />
         ) : logo ? (
           <div
-            className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full p-[7px] ring-2 ring-white"
+            className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full p-[7px] ring-2 ring-white"
             style={{ backgroundColor: logo.bg }}
           >
             // eslint-disable-next-line @next/next/no-img-element
