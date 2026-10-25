@@ -572,6 +572,24 @@ const FUNNEL_SLOT_DEFS: {
     hint: "Plays full-bleed behind the “Average Reality” step in /start. Vertical MP4 works best.",
   },
   {
+    slot: "dating-reality",
+    label: "Dating Reality — graphic",
+    kind: "video",
+    hint: "Replaces the bundled chart on the Dating Reality persuasion step in the app. Image or video — nothing set → the bundled chart shows.",
+  },
+  {
+    slot: "halo-effect",
+    label: "Halo Effect — graphic",
+    kind: "video",
+    hint: "Replaces the bundled faces on the Halo Effect persuasion step in the app. Image or video — nothing set → the bundled faces show.",
+  },
+  {
+    slot: "psl-scale",
+    label: "PSL Scale — graphic",
+    kind: "video",
+    hint: "Replaces the bundled ladder on the PSL Scale persuasion step in the app. Image or video — nothing set → the bundled ladder shows.",
+  },
+  {
     slot: "quote-1",
     label: "Testimonial quote 1",
     kind: "quote",
