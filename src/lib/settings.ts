@@ -507,22 +507,34 @@ export async function getAppSettings(): Promise<AppSettings> {
   }
   try {
     // The settings read must never stall a page: if Supabase doesn't
-    // answer within 2s (restricted or unreachable project), fall back
-    // to defaults immediately instead of hanging on the client's own
-    // timeout (measured ~8s on the new deployment, 2026-11-13).
+    // answer within 8s (restricted or unreachable project), fall back
+    // to defaults instead of hanging on the client's own timeout
+    // (measured ~8s on the new deployment, 2026-11-13 — the 2s cap
+    // proved too tight for the restored DB from Vercel's runtime).
+    // Failures are logged server-side (Vercel Runtime Logs) so a
+    // silent fallback is diagnosable; the response never leaks the
+    // reason to the client.
     const query = admin.from("app_settings").select("key, value");
     const timeout = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error("app_settings timeout")), 2000),
+      setTimeout(() => reject(new Error("app_settings timeout")), 8000),
     );
     const { data, error } = await Promise.race([query, timeout]);
     if (error || !data) {
+      console.error(
+        "[getAppSettings] Supabase read failed:",
+        error?.message ?? "no data",
+      );
       settingsFailedAt = performance.now();
       return DEFAULT_SETTINGS;
     }
     const rows: Record<string, unknown> = {};
     for (const r of data) rows[r.key as string] = r.value;
     return resolveSettings(rows);
-  } catch {
+  } catch (e) {
+    console.error(
+      "[getAppSettings] Supabase read threw:",
+      e instanceof Error ? e.message : String(e),
+    );
     settingsFailedAt = performance.now();
     return DEFAULT_SETTINGS;
   }
