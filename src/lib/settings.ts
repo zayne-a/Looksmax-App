@@ -487,10 +487,21 @@ export function validateSettingValue(
  * back to DEFAULT_SETTINGS when the table doesn't exist yet (the
  * migration not applied) or Supabase is unconfigured — the site must
  * behave exactly as before in that state.
+ *
+ * Negative cache: when the DB is unreachable the query still costs the
+ * 2s timeout on every request. Remember a failed read for 60s and serve
+ * defaults instantly in that window. Successful reads are NEVER cached,
+ * so an admin edit still shows on the next page load.
  */
+let settingsFailedAt = 0;
+const SETTINGS_FAILED_CACHE_MS = 60_000;
+
 export async function getAppSettings(): Promise<AppSettings> {
   const admin = serviceClient();
   if (!admin) return DEFAULT_SETTINGS;
+  if (Date.now() - settingsFailedAt < SETTINGS_FAILED_CACHE_MS) {
+    return DEFAULT_SETTINGS;
+  }
   try {
     // The settings read must never stall a page: if Supabase doesn't
     // answer within 2s (restricted or unreachable project), fall back
@@ -501,11 +512,15 @@ export async function getAppSettings(): Promise<AppSettings> {
       setTimeout(() => reject(new Error("app_settings timeout")), 2000),
     );
     const { data, error } = await Promise.race([query, timeout]);
-    if (error || !data) return DEFAULT_SETTINGS;
+    if (error || !data) {
+      settingsFailedAt = Date.now();
+      return DEFAULT_SETTINGS;
+    }
     const rows: Record<string, unknown> = {};
     for (const r of data) rows[r.key as string] = r.value;
     return resolveSettings(rows);
   } catch {
+    settingsFailedAt = Date.now();
     return DEFAULT_SETTINGS;
   }
 }
