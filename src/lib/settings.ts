@@ -491,7 +491,10 @@ export function validateSettingValue(
  * Negative cache: when the DB is unreachable the query still costs the
  * 2s timeout on every request. Remember a failed read for 60s and serve
  * defaults instantly in that window. Successful reads are NEVER cached,
- * so an admin edit still shows on the next page load.
+ * so an admin edit still shows on the next page load. Uses
+ * performance.now(), NOT Date.now(): this code runs during static
+ * prerendering of the homepage, and Next.js treats a Date.now() read
+ * there as a build error (40bac61 failed on exactly that).
  */
 let settingsFailedAt = 0;
 const SETTINGS_FAILED_CACHE_MS = 60_000;
@@ -499,7 +502,7 @@ const SETTINGS_FAILED_CACHE_MS = 60_000;
 export async function getAppSettings(): Promise<AppSettings> {
   const admin = serviceClient();
   if (!admin) return DEFAULT_SETTINGS;
-  if (Date.now() - settingsFailedAt < SETTINGS_FAILED_CACHE_MS) {
+  if (performance.now() - settingsFailedAt < SETTINGS_FAILED_CACHE_MS) {
     return DEFAULT_SETTINGS;
   }
   try {
@@ -513,14 +516,14 @@ export async function getAppSettings(): Promise<AppSettings> {
     );
     const { data, error } = await Promise.race([query, timeout]);
     if (error || !data) {
-      settingsFailedAt = Date.now();
+      settingsFailedAt = performance.now();
       return DEFAULT_SETTINGS;
     }
     const rows: Record<string, unknown> = {};
     for (const r of data) rows[r.key as string] = r.value;
     return resolveSettings(rows);
   } catch {
-    settingsFailedAt = Date.now();
+    settingsFailedAt = performance.now();
     return DEFAULT_SETTINGS;
   }
 }
