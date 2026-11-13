@@ -15,6 +15,12 @@ import { getAppSettings } from "@/lib/settings";
 // The trial length in the FAQ + pricing copy below is the owner's
 // trial_days app setting (/admin/settings) — rendered per-request
 // so a panel change rewrites this page without a deploy.
+// `instant = false` (Cache Components "blocking route") is REQUIRED
+// for that: getAppSettings() awaits connection() before reading, and
+// without the opt-out the build fails ("uncached or runtime data
+// during prerendering"). With it, the page renders per request with
+// a fresh settings read — no build-time defaults baked in (the bug
+// that served empty interface_copy on /api/settings, 2026-11-13).
 export const instant = false;
 
 const steps = [

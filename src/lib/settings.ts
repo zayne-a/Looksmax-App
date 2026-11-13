@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { serviceClient } from "./admin-api";
 
 /**
@@ -496,10 +497,30 @@ export function validateSettingValue(
  * prerendering of the homepage, and Next.js treats a Date.now() read
  * there as a build error (40bac61 failed on exactly that).
  */
-let settingsFailedAt = 0;
+// -Infinity, NOT 0: performance.now() counts ms since process
+// start, so a 0 initial value made `performance.now() - 0 < 60_000`
+// TRUE for the first minute of every process's life — the function
+// returned defaults without ever attempting the DB. On Vercel's
+// short-lived serverless instances (fresh on nearly every request
+// at this traffic level) that meant the DB was NEVER read, silently,
+// with no log line (caught 2026-11-13). -Infinity keeps the check
+// false until a real failure stamps the time.
+let settingsFailedAt = -Infinity;
 const SETTINGS_FAILED_CACHE_MS = 60_000;
 
 export async function getAppSettings(): Promise<AppSettings> {
+  // Cache Components (cacheComponents: true): the supabase-js fetch
+  // below carries no Next.js cache option, so without a request-time
+  // API call every route using this function PRERENDERS at build
+  // time and serves the baked response forever. That is exactly what
+  // happened 2026-11-13: /api/settings served empty interface_copy
+  // for hours while the DB held the full hero copy, and no function
+  // invocation (hence no log line) ever ran at request time.
+  // connection() — the documented Cache Components pattern, called
+  // in the shared lib so every caller goes dynamic — forces the read
+  // to run per request. It runs FIRST, before the early returns,
+  // so no code path can be prerendered with stale defaults.
+  await connection();
   const admin = serviceClient();
   if (!admin) return DEFAULT_SETTINGS;
   if (performance.now() - settingsFailedAt < SETTINGS_FAILED_CACHE_MS) {
