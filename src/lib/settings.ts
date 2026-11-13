@@ -492,9 +492,15 @@ export async function getAppSettings(): Promise<AppSettings> {
   const admin = serviceClient();
   if (!admin) return DEFAULT_SETTINGS;
   try {
-    const { data, error } = await admin
-      .from("app_settings")
-      .select("key, value");
+    // The settings read must never stall a page: if Supabase doesn't
+    // answer within 2s (restricted or unreachable project), fall back
+    // to defaults immediately instead of hanging on the client's own
+    // timeout (measured ~8s on the new deployment, 2026-11-13).
+    const query = admin.from("app_settings").select("key, value");
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error("app_settings timeout")), 2000),
+    );
+    const { data, error } = await Promise.race([query, timeout]);
     if (error || !data) return DEFAULT_SETTINGS;
     const rows: Record<string, unknown> = {};
     for (const r of data) rows[r.key as string] = r.value;
