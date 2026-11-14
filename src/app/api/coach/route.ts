@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { fallbackConfigured, openFallbackStream } from "@/lib/ai-providers";
 import { MAX_VOICE, COACH_LAYER } from "@/lib/max-voice";
+import { retrieveCoachMethods, coachMethodsPromptBlock } from "@/lib/coach-methods";
 
 /**
  * The Ascend Coach — a subscriber-only AI chat that knows the user's
@@ -725,7 +726,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
 
   const context = await contextPromise;
-  const system = `${SYSTEM_PROMPT}\n\nCONTEXT (their real account data):\n${context || "No plan or logs yet — encourage them to run their first scan and generate their protocol, then come back."}`;
+  // Scraped-methods retrieval (Slice 5): matching public
+  // looksmaxxing guides ride along with source URLs for citation.
+  // No match → no block → the Coach answers from its own
+  // capability, exactly as before.
+  const methodsBlock = coachMethodsPromptBlock(retrieveCoachMethods(message));
+  const system = `${SYSTEM_PROMPT}\n\nCONTEXT (their real account data):\n${context || "No plan or logs yet — encourage them to run their first scan and generate their protocol, then come back."}${methodsBlock ? `\n\n${methodsBlock}` : ""}`;
   const turns: ChatTurn[] = [...history, { role: "user", content: message }];
 
   // Overall generation budget: if no attempt anywhere on the ladder
