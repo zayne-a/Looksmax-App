@@ -27,10 +27,25 @@
 //     average. softComposite (returned here) is the mean of the 4
 //     face criteria — the free-mode A numerator, and half the pro
 //     numerator.
+//   RE-CENTRING (slice 2): the model scores generously — run-6 raw
+//     centre 82.6/100, not 50 — so mean A came out 3.33 and the blend
+//     inflated every face ~+1.0 PSL. Every face score is shifted down
+//     by RECENTER_SHIFT (25) at parse time, so the AI half centres at
+//     2.0/4 on an average face (fit: 17 run-6 face-modes, target mean
+//     A = geometry mean − mean G = 2.30, shift 24.8 → rounded to 25).
+//     The response carries rawMean (mean of the raw scores) so the
+//     shift can be re-fit from production data later. photoQuality is
+//     NOT re-centred (confidence signal, not a face score).
 //   PSL = clamp(G + A, 0.5, 7.9). The pixel Misc term is RETIRED under
-//     50/50 — the AI owns the soft layer entirely. FALLBACK: if the
-//     AI call fails, the caller returns 2G — the bone-only PSL —
-//     because with no AI there is no soft layer to fall back to.
+//     50/50 — the AI owns the soft layer entirely. The merge runs
+//     SERVER-SIDE here (slice 2): the caller sends the geometry
+//     buckets (harmony/dimorphism/definition) and this route returns
+//     blendedPsl + gPart + aPart alongside the AI scores, so there is
+//     one source of truth for the blend. The harness cross-checks the
+//     route's blendedPsl against its own merge on every call.
+//     FALLBACK: if the AI call fails, the caller returns 2G — the
+//     bone-only PSL — because with no AI there is no soft layer to
+//     fall back to.
 //
 // REGIONS (Zayne 2026-11-14, overrides the geometry region reads): the
 // AI ALSO decides the four deck region scores — Eyes, Midface, Lower
@@ -51,13 +66,21 @@
 // POTENTIAL (Zayne 2026-11-14, corrected 23:00 IST): the AI gives
 // Potential (0–8 scale + one-line reason) DERIVED FROM THE SCORES —
 // the region scores + soft criteria + supplied geometry measurements —
-// NOT a separate holistic judgment from the photo. Strong bone with
-// weak soft scores = high remaining potential; already-high scores =
-// less room left. Why AI: geometry measures what IS there, it cannot
-// reason about what COULD be — the gap between current and ascended is
-// the AI's job. Potential is unblurred for everyone, so it is returned
-// in BOTH modes. In free mode the derivation uses the soft criteria +
-// geometry (no regions exist in that call).
+// NOT a separate holistic judgment from the photo. The derivation is
+// structured (slice 2): the model shows its working — currentEstimate
+// (its read of the CURRENT level from the scores) + headroom (the
+// realistic gain from fixing what is fixable, 0–2.0). The value is
+// ANCHORED to the displayed score: value = blended PSL + headroom,
+// so Potential always means "your PSL could reach X" relative to the
+// PSL the user actually sees (the model's currentEstimate is advisory
+// only). When the blend cannot be computed (no geometry buckets in
+// the request), the value falls back to currentEstimate + headroom.
+// Either way the route recomputes the value from the components, so
+// it can never contradict its reason again (slice 1: "little room
+// left" + 7.7). The reason must name the specific improvements that
+// make up the headroom. Potential is unblurred for everyone, so it is
+// returned in BOTH modes. In free mode the derivation uses the soft
+// criteria + geometry (no regions exist in that call).
 //
 // Failure is explicit and fast: a 20s hard timeout per Gemini attempt,
 // a 55s overall deadline, and a 503 { ok: false, error:
@@ -68,10 +91,18 @@
 // harness deadlined — 4/4 at a 25s deadline, 3/3 at 55s. 20s keeps a
 // hard cap on any single call while letting real attempts land.)
 //
-// Auth/entitlement: NOT enforced in this slice — the route is called
-// by the harness and, later, by the scan flow. The wiring slice must
-// add the same server-side entitlement check /api/plan uses before
-// this endpoint is reachable from production clients.
+// Auth/entitlement (slice 2): ENFORCED. Same pattern as
+// /api/weekly-plan and /api/plan — Bearer token → Supabase
+// admin.auth.getUser → profiles (is_admin, is_premium). No token or
+// an invalid token → 401. The free/pro mode comes from the SERVER
+// tier, not the client flag: regions are scored only when the caller
+// is premium/admin AND did not explicitly ask for free mode. A free
+// user sending includeRegions=true still gets regions: null. A valid
+// session with NO profile row (e.g. an anonymous/guest session) is
+// treated as free, not rejected — free users are entitled to this
+// endpoint; only an invalid token gets a 401.
+
+import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 
 export const maxDuration = 60;
@@ -100,6 +131,24 @@ const KEY_COOLDOWN_MS = 60_000;
 
 // Base64 photo cap (~3 MB of image). Harness photos are ≤ 460 KB.
 const MAX_PHOTO_CHARS = 4_000_000;
+
+// Re-centring shift (slice 2): points subtracted from every AI face
+// score at parse time. Fit on run-6 (17 face-modes, raw centre 82.6,
+// target mean A 2.30 → shift 24.8, rounded to 25). Re-fit from
+// production rawMean data when real scans exist — never guess.
+const RECENTER_SHIFT = 25;
+
+// Sanity bound on the AI's Potential headroom: no face realistically
+// gains more than 2.0 PSL from looksmaxxing. Only binds on
+// inconsistent outputs (slice 1: headroom up to 2.3 while the reason
+// said "little room left").
+const HEADROOM_MAX = 2.0;
+
+const clamp = (v: number, lo: number, hi: number) =>
+  Math.min(hi, Math.max(lo, v));
+
+/** Round to 2 decimals — kills float artefacts like 3.9000000000000004. */
+const round2 = (v: number) => Math.round(v * 100) / 100;
 
 /** keyIndex → cooldown-until (epoch ms). Module-level: persists across
  *  requests in a warm serverless instance. */
@@ -204,8 +253,16 @@ const REGION_NAMES: RegionName[] = [
 type Regions = Record<RegionName, CriterionScore>;
 
 /** Potential, 0–8 scale (same as PSL), derived by the AI from the
- *  scores — never a separate photo judgment. */
-type Potential = { value: number | null; reason: string };
+ *  scores — never a separate photo judgment. The model shows its
+ *  working: value = currentEstimate + headroom. The route recomputes
+ *  the value from the components when both are present, so the value
+ *  can never contradict the reason. */
+type Potential = {
+  value: number | null;
+  reason: string;
+  currentEstimate: number | null;
+  headroom: number | null;
+};
 
 const SYSTEM_PROMPT = [
   "You are a looksmaxxing face analyst scoring ONLY soft criteria against the PSL framework.",
@@ -238,18 +295,18 @@ function buildUserText(
       "8. lowerThird — jaw, chin, lips, lower-face balance and definition.",
       "9. upperThird — forehead proportion, hairline, temple width, brow line.",
       "",
-      "LAST — Potential: derive it FROM THE SCORES you have just produced (regions + soft criteria) plus the geometry measurements above — do NOT re-judge the photo independently for Potential. Strong bone with weak soft scores = high remaining potential; already-high scores = less room left. State it on the 0–8 scale (same scale as PSL) with a one-line reason.",
+      "LAST — Potential, derived FROM THE SCORES you have just produced (regions + soft criteria) plus the geometry measurements above — do NOT re-judge the photo independently for Potential. Show your working in three steps: (1) currentEstimate — your read of this face's CURRENT level on the 0–8 scale, from the scores (near the geometry PSL, raised by strong soft scores, lowered by weak ones); (2) headroom — the REALISTIC gain on the 0–8 scale from fixing what is fixable (0 when the scores are already high — little room left means SMALL headroom, never more than 2.0; larger only when strong bone pairs with weak soft scores); (3) value = currentEstimate + headroom. Your one-line reason MUST name the specific improvements that make up the headroom (for example 'clearing acne + better hair framing'), and MUST be consistent with the headroom size — if you say little room is left, the headroom must be small.",
       "",
       "Return exactly this shape, nothing else:",
-      '{ "skinQuality": { "score": 0-100 or null, "reason": "..." }, "eyeArea": { "score": ..., "reason": "..." }, "hairFraming": { "score": ..., "reason": "..." }, "overallImpression": { "score": ..., "reason": "..." }, "photoQuality": { "score": ..., "reason": "..." }, "regions": { "eyes": { "score": ..., "reason": "..." }, "midface": { "score": ..., "reason": "..." }, "lowerThird": { "score": ..., "reason": "..." }, "upperThird": { "score": ..., "reason": "..." } }, "potential": { "value": 0-8 or null, "reason": "..." } }'
+      '{ "skinQuality": { "score": 0-100 or null, "reason": "..." }, "eyeArea": { "score": ..., "reason": "..." }, "hairFraming": { "score": ..., "reason": "..." }, "overallImpression": { "score": ..., "reason": "..." }, "photoQuality": { "score": ..., "reason": "..." }, "regions": { "eyes": { "score": ..., "reason": "..." }, "midface": { "score": ..., "reason": "..." }, "lowerThird": { "score": ..., "reason": "..." }, "upperThird": { "score": ..., "reason": "..." } }, "potential": { "value": 0-8 or null, "reason": "...", "currentEstimate": 0-8 or null, "headroom": 0-2 or null } }'
     );
   } else {
     lines.push(
       "",
-      "LAST — Potential: derive it FROM THE SCORES you have just produced (soft criteria) plus the geometry measurements above — do NOT re-judge the photo independently for Potential. Strong bone with weak soft scores = high remaining potential; already-high scores = less room left. State it on the 0–8 scale (same scale as PSL) with a one-line reason.",
+      "LAST — Potential, derived FROM THE SCORES you have just produced (soft criteria) plus the geometry measurements above — do NOT re-judge the photo independently for Potential. Show your working in three steps: (1) currentEstimate — your read of this face's CURRENT level on the 0–8 scale, from the scores (near the geometry PSL, raised by strong soft scores, lowered by weak ones); (2) headroom — the REALISTIC gain on the 0–8 scale from fixing what is fixable (0 when the scores are already high — little room left means SMALL headroom, never more than 2.0; larger only when strong bone pairs with weak soft scores); (3) value = currentEstimate + headroom. Your one-line reason MUST name the specific improvements that make up the headroom (for example 'clearing acne + better hair framing'), and MUST be consistent with the headroom size — if you say little room is left, the headroom must be small.",
       "",
       "Return exactly this shape, nothing else:",
-      '{ "skinQuality": { "score": 0-100 or null, "reason": "..." }, "eyeArea": { "score": ..., "reason": "..." }, "hairFraming": { "score": ..., "reason": "..." }, "overallImpression": { "score": ..., "reason": "..." }, "photoQuality": { "score": ..., "reason": "..." }, "potential": { "value": 0-8 or null, "reason": "..." } }'
+      '{ "skinQuality": { "score": 0-100 or null, "reason": "..." }, "eyeArea": { "score": ..., "reason": "..." }, "hairFraming": { "score": ..., "reason": "..." }, "overallImpression": { "score": ..., "reason": "..." }, "photoQuality": { "score": ..., "reason": "..." }, "potential": { "value": 0-8 or null, "reason": "...", "currentEstimate": 0-8 or null, "headroom": 0-2 or null } }'
     );
   }
   if (geometry) {
@@ -319,16 +376,23 @@ function extractText(data: unknown): string | null {
 }
 
 /** Parse one { score, reason } entry. Null score WITH a reason
- *  ("hair not visible") is a real answer, not a failure. */
-function parseEntry(entry: unknown): CriterionScore {
+ *  ("hair not visible") is a real answer, not a failure. Face scores
+ *  are RE-CENTRED (RECENTER_SHIFT) at parse time — the model scores
+ *  generously (run-6 raw centre 82.6, not 50). photoQuality passes
+ *  recenter=false: it is a confidence signal, not a face score. */
+function parseEntry(entry: unknown, recenter = true): CriterionScore {
   let score: number | null = null;
   let reason = "";
   if (typeof entry === "object" && entry !== null) {
     const s = (entry as { score?: unknown }).score;
     const r = (entry as { reason?: unknown }).reason;
     if (s === null) score = null;
-    else if (typeof s === "number" && Number.isFinite(s))
-      score = Math.min(100, Math.max(0, s));
+    else if (typeof s === "number" && Number.isFinite(s)) {
+      const clamped = clamp(s, 0, 100);
+      score = recenter
+        ? clamp(clamped - RECENTER_SHIFT, 0, 100)
+        : clamped;
+    }
     if (typeof r === "string") reason = r.slice(0, 200);
   }
   return { score, reason };
@@ -342,7 +406,9 @@ function parseEntry(entry: unknown): CriterionScore {
  * object in pro mode does NOT fail the call (the criteria still stand
  * — the caller keeps geometry regions for that scan). Potential is
  * parsed in both modes; a missing one comes back null with an empty
- * reason rather than failing the call.
+ * reason rather than failing the call. rawMean is the mean of the RAW
+ * (pre-re-centring) scores that enter A — the drift signal for future
+ * re-fits of RECENTER_SHIFT.
  */
 function parseScoring(
   rawText: string,
@@ -351,6 +417,7 @@ function parseScoring(
   criteria: Criteria;
   regions: Regions | null;
   potential: Potential;
+  rawMean: number | null;
 } | null {
   let parsed: unknown;
   try {
@@ -363,36 +430,77 @@ function parseScoring(
   const criteria = {} as Criteria;
   let valid = 0;
   for (const name of CRITERIA) {
-    const entry = parseEntry(obj[name]);
+    const entry = parseEntry(obj[name], name !== "photoQuality");
     if (entry.score !== null || entry.reason.length > 0) valid += 1;
     criteria[name] = entry;
   }
   if (valid === 0) return null;
   let regions: Regions | null = null;
+  const robj =
+    typeof obj.regions === "object" && obj.regions !== null
+      ? (obj.regions as Record<string, unknown>)
+      : {};
   if (includeRegions) {
     regions = {} as Regions;
-    const robj =
-      typeof obj.regions === "object" && obj.regions !== null
-        ? (obj.regions as Record<string, unknown>)
-        : {};
     for (const name of REGION_NAMES) {
       regions[name] = parseEntry(robj[name]);
     }
   }
-  let potential: Potential = { value: null, reason: "" };
+  // rawMean: mean of the raw scores that enter A (face criteria +
+  // regions when present; photoQuality excluded). Read from the raw
+  // JSON — parseEntry already re-centred the parsed copies.
+  const rawVals: number[] = [];
+  const rawScoreOf = (e: unknown): number | null => {
+    if (typeof e !== "object" || e === null) return null;
+    const s = (e as { score?: unknown }).score;
+    return typeof s === "number" && Number.isFinite(s) ? s : null;
+  };
+  for (const name of FACE_CRITERIA) {
+    const s = rawScoreOf(obj[name]);
+    if (s !== null) rawVals.push(s);
+  }
+  if (includeRegions) {
+    for (const name of REGION_NAMES) {
+      const s = rawScoreOf(robj[name]);
+      if (s !== null) rawVals.push(s);
+    }
+  }
+  const rawMean =
+    rawVals.length > 0
+      ? rawVals.reduce((a, b) => a + b, 0) / rawVals.length
+      : null;
+  let potential: Potential = {
+    value: null,
+    reason: "",
+    currentEstimate: null,
+    headroom: null,
+  };
   const p = obj.potential;
   if (typeof p === "object" && p !== null) {
     const v = (p as { value?: unknown }).value;
     const r = (p as { reason?: unknown }).reason;
+    const ce = (p as { currentEstimate?: unknown }).currentEstimate;
+    const hr = (p as { headroom?: unknown }).headroom;
+    // Parse only — the value is anchored in anchorPotential() (which
+    // needs the blended PSL, computed after the merge). The model's
+    // stated value survives only when neither anchor is available.
     potential = {
       value:
         typeof v === "number" && Number.isFinite(v)
-          ? Math.min(8, Math.max(0, v))
+          ? round2(clamp(v, 0, 8))
           : null,
       reason: typeof r === "string" ? r.slice(0, 200) : "",
+      currentEstimate:
+        typeof ce === "number" && Number.isFinite(ce)
+          ? round2(clamp(ce, 0, 8))
+          : null,
+      headroom:
+        typeof hr === "number" && Number.isFinite(hr)
+          ? round2(clamp(hr, 0, HEADROOM_MAX))
+          : null,
     };
   }
-  return { criteria, regions, potential };
+  return { criteria, regions, potential, rawMean };
 }
 
 /** Mean of the non-null FACE criteria. Null when all four are null. */
@@ -404,6 +512,105 @@ function softCompositeOf(criteria: Criteria): number | null {
   return scores.reduce((a, b) => a + b, 0) / scores.length;
 }
 
+// ---------- 50/50 merge (server-side, single source of truth) ----------
+
+/** The geometry half G from the bone buckets (0–100). Null when any
+ *  bucket is missing — the caller must send harmony/dimorphism/
+ *  definition for the blend. Same anchor (68) and slope (12.5) as
+ *  the geometry engine; this function READS the buckets, it never
+ *  re-scores anything. */
+function gPartOf(geometry: Record<string, unknown> | null): number | null {
+  if (!geometry) return null;
+  const h = geometry.harmony;
+  const d = geometry.dimorphism;
+  const def = geometry.definition;
+  if (
+    typeof h !== "number" ||
+    typeof d !== "number" ||
+    typeof def !== "number"
+  ) {
+    return null;
+  }
+  const boneMean = (0.4 * h + 0.2 * d + 0.25 * def) / 0.85;
+  return clamp(4.0 + (boneMean - 68) / 12.5, 0.5, 7.9) / 2;
+}
+
+/** The AI half A: mean of the non-null re-centred scores / 25. Pro:
+ *  4 regions + 4 face criteria. Free: 4 face criteria. Null when no
+ *  score exists. photoQuality never enters A. */
+function aPartOf(criteria: Criteria, regions: Regions | null): number | null {
+  const vals: number[] = [];
+  for (const n of FACE_CRITERIA) {
+    const s = criteria[n].score;
+    if (s !== null) vals.push(s);
+  }
+  if (regions) {
+    for (const n of REGION_NAMES) {
+      const s = regions[n].score;
+      if (s !== null) vals.push(s);
+    }
+  }
+  if (vals.length === 0) return null;
+  return vals.reduce((a, b) => a + b, 0) / vals.length / 25;
+}
+
+interface Blend {
+  gPart: number | null;
+  aPart: number | null;
+  blendedPsl: number | null;
+}
+
+/** The 50/50 merge. blendedPsl is null when the geometry buckets
+ *  are missing (old caller) or the AI scored nothing. */
+function mergeBlend(
+  geometry: Record<string, unknown> | null,
+  criteria: Criteria,
+  regions: Regions | null
+): Blend {
+  const gPart = gPartOf(geometry);
+  const aPart = aPartOf(criteria, regions);
+  const blendedPsl =
+    gPart !== null && aPart !== null
+      ? round2(clamp(gPart + aPart, 0.5, 7.9))
+      : null;
+  return {
+    gPart: gPart === null ? null : round2(gPart),
+    aPart: aPart === null ? null : round2(aPart),
+    blendedPsl,
+  };
+}
+
+/**
+ * Anchor Potential to the displayed score. Precedence:
+ *   1. blended PSL + headroom (the normal path — Potential means
+ *      "your PSL could reach X" relative to the PSL shown).
+ *   2. currentEstimate + headroom (no geometry buckets in the
+ *      request, so no blend exists).
+ *   3. The model's stated value, as parsed (no components at all).
+ * The headroom is always the AI's own determination from the
+ * scores; only the base changes. The reason is the model's own.
+ */
+function anchorPotential(potential: Potential, blendedPsl: number | null): Potential {
+  const { value, reason, currentEstimate, headroom } = potential;
+  if (blendedPsl !== null && headroom !== null) {
+    return {
+      value: round2(clamp(blendedPsl + headroom, 0, 8)),
+      reason,
+      currentEstimate,
+      headroom,
+    };
+  }
+  if (currentEstimate !== null && headroom !== null) {
+    return {
+      value: round2(clamp(currentEstimate + headroom, 0, 8)),
+      reason,
+      currentEstimate,
+      headroom,
+    };
+  }
+  return potential;
+}
+
 type Attempt =
   | {
       ok: true;
@@ -411,6 +618,7 @@ type Attempt =
       criteria: Criteria;
       regions: Regions | null;
       potential: Potential;
+      rawMean: number | null;
     }
   | {
       ok: false;
@@ -492,6 +700,7 @@ async function tryAttempt(
       criteria: parsed.criteria,
       regions: parsed.regions,
       potential: parsed.potential,
+      rawMean: parsed.rawMean,
     };
   } catch (err) {
     if (isTimeoutError(err)) {
@@ -513,9 +722,73 @@ async function tryAttempt(
   }
 }
 
+// ---------- Auth (same pattern as /api/weekly-plan and /api/plan) ----------
+
+function serviceClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !serviceKey) return null;
+  return createClient(url, serviceKey, { auth: { persistSession: false } });
+}
+
+async function entitlementForToken(
+  token: string
+): Promise<{ userId: string; is_admin: boolean; is_premium: boolean } | null> {
+  const admin = serviceClient();
+  if (!admin) return null;
+  try {
+    const { data: userData } = await admin.auth.getUser(token);
+    const uid = userData?.user?.id;
+    if (!uid) return null;
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("is_admin, is_premium")
+      .eq("id", uid)
+      .single();
+    // No profile row (e.g. an anonymous/guest session whose row was
+    // never created) is a FREE user, not an error: free users are
+    // entitled to this endpoint (free mode), and the tier check
+    // below still keeps regions Pro-only. Only an invalid token
+    // (no user above) rejects. This differs from /api/weekly-plan
+    // deliberately — that route is premium-only, this one is not.
+    if (!profile) {
+      return { userId: uid, is_admin: false, is_premium: false };
+    }
+    return {
+      userId: uid,
+      is_admin: Boolean(profile.is_admin),
+      is_premium: Boolean(profile.is_premium),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function bearer(req: NextRequest): string | null {
+  const header = req.headers.get("authorization");
+  return header?.startsWith("Bearer ") ? header.slice(7) : null;
+}
+
 export async function POST(req: NextRequest) {
   const startedAt = Date.now();
   const deadline = startedAt + OVERALL_DEADLINE_MS;
+
+  // Auth first: no token or an invalid token never reaches Gemini.
+  const token = bearer(req);
+  if (!token) {
+    return NextResponse.json(
+      { ok: false, error: "unauthorized", detail: "missing bearer token" },
+      { status: 401 }
+    );
+  }
+  const ent = await entitlementForToken(token);
+  if (!ent) {
+    return NextResponse.json(
+      { ok: false, error: "unauthorized", detail: "invalid token or no profile" },
+      { status: 401 }
+    );
+  }
+  const isPro = ent.is_premium || ent.is_admin;
 
   let body: unknown;
   try {
@@ -552,10 +825,11 @@ export async function POST(req: NextRequest) {
     typeof b.geometry === "object" && b.geometry !== null
       ? (b.geometry as Record<string, unknown>)
       : null;
-  // Default true: the endpoint is the full (pro) call unless the
-  // caller explicitly asks for free mode. The caller passes the flag
-  // from the user's tier (slice 2).
-  const includeRegions = b.includeRegions !== false;
+  // Mode comes from the SERVER tier, not the client flag: regions are
+  // scored only for premium/admin callers. A premium caller may still
+  // ask for free mode (includeRegions=false); a free caller asking for
+  // regions gets free mode regardless — the flag can only narrow.
+  const includeRegions = isPro && b.includeRegions !== false;
 
   const keys = getApiKeys();
   if (keys.length === 0) {
@@ -608,11 +882,14 @@ export async function POST(req: NextRequest) {
         Math.min(ATTEMPT_TIMEOUT_MS, remaining)
       );
       if (attempt.ok) {
+        const blend = mergeBlend(geometry, attempt.criteria, attempt.regions);
         return successResponse(
           attempt.model,
           attempt.criteria,
           attempt.regions,
-          attempt.potential,
+          anchorPotential(attempt.potential, blend.blendedPsl),
+          blend,
+          attempt.rawMean,
           Date.now() - startedAt
         );
       }
@@ -652,11 +929,14 @@ export async function POST(req: NextRequest) {
       Math.min(ATTEMPT_TIMEOUT_MS, deadline - Date.now())
     );
     if (attempt.ok) {
+      const blend = mergeBlend(geometry, attempt.criteria, attempt.regions);
       return successResponse(
         attempt.model,
         attempt.criteria,
         attempt.regions,
-        attempt.potential,
+        anchorPotential(attempt.potential, blend.blendedPsl),
+        blend,
+        attempt.rawMean,
         Date.now() - startedAt
       );
     }
@@ -682,6 +962,8 @@ function successResponse(
   criteria: Criteria,
   regions: Regions | null,
   potential: Potential,
+  blend: Blend,
+  rawMean: number | null,
   latencyMs: number
 ) {
   return NextResponse.json({
@@ -690,8 +972,16 @@ function successResponse(
     criteria,
     regions,
     potential,
+    // The 50/50 merge, computed server-side (single source of truth).
+    blendedPsl: blend.blendedPsl,
+    gPart: blend.gPart,
+    aPart: blend.aPart,
     softComposite: softCompositeOf(criteria),
     photoQuality: criteria.photoQuality.score,
+    // Calibration transparency: the raw (pre-re-centring) mean and the
+    // shift applied, so drift can be spotted from production data.
+    rawMean,
+    recenterShift: RECENTER_SHIFT,
     latencyMs,
   });
 }
