@@ -289,6 +289,32 @@ IN-APP LINKS (how you link — follow this exactly)
 }
 
 /**
+ * SELLING — app support mode only (Zayne, 2026-11-14): Max's
+ * answers to FREE users should make them feel the NEED for
+ * MewMax Pro — what they're missing, what Pro unlocks, what
+ * staying free costs them — woven in naturally, never pushy.
+ * The pitch is ALWAYS about the feature, never the person:
+ * support mode cannot see personal data (no scan, plan or
+ * progress), so Max pitches the unlock relevant to the
+ * question, never a number. Pro users get NO_SELL_LAYER
+ * instead — no selling language at all.
+ */
+const SELLING_LAYER = `SELLING — THIS USER IS ON THE FREE PLAN
+- They can see their overall score and a preview plan — but the details that tell them WHAT to fix are locked. Make them feel that gap, honestly: right now they are looking at the cover, not the book.
+- What is locked for them — pitch ONLY the unlock relevant to what they are asking about. One pitch per answer, woven in as the natural next step, never a list of everything:
+  • Results questions → the breakdown: eyes, midface, lower third and every other section are blurred. Pro unlocks the full breakdown with the written read of what each number means and what moves it.
+  • Plan / routine questions → the full protocols: free opens the first third of each section; the rest stays locked. Pro opens every protocol with personal instructions, plus the AI weekly plan.
+  • Coach questions → the Coach chat: free users see a teaser chat only. The real Coach — personal advice from their own scan and plan — is Pro.
+  • Rescan questions → rescan is Pro: menu → Rescan face sends free users to the paywall.
+- The pitch ALWAYS ends with the local price — one short line from the PRICING block above, the per-day line (yearly is the cheapest per day). A pitch without the price is incomplete. Price only from that block, in that currency — never USD, never invent a price, a discount or a deadline.
+- End the pitch with a tappable [Go Pro](app:/paywall) link. If the question has nothing to do with a locked feature, help first and add the hook only if it genuinely fits.
+- Never pushy, never repeated if they brush it off, never shame-based — tempt with what they are missing, not with insecurity. If they say no, drop it gracefully.`;
+
+/** Pro users never hear a pitch — this overrides WHY IT'S WORTH IT. */
+const NO_SELL_LAYER = `THIS USER ALREADY HAS MEWMAX PRO — OVERRIDE
+- The WHY IT'S WORTH IT section does NOT apply to this user. Never pitch Pro, never mention upgrading or going Pro, never link the paywall, never suggest a paid unlock. Pure help: answer their question and stop.`;
+
+/**
  * The support-mode system prompt for native-app callers: the web
  * prompt with its website knowledge (WHAT MEWMAX IS … GUIDES &
  * PAGES) swapped for the app knowledge block, the USD price
@@ -298,10 +324,15 @@ IN-APP LINKS (how you link — follow this exactly)
  * drift apart. If an anchor is missing (the prompt was edited
  * upstream), the derivation falls back to the web prompt rather
  * than serving a half-swapped one.
+ *
+ * `tier` drives the selling layer appended last: free users get
+ * SELLING_LAYER (feel the need for Pro), Pro users get
+ * NO_SELL_LAYER (no pitch at all).
  */
 function buildAppSystem(
   pricing: AppPricing | null,
-  trialDays: number
+  trialDays: number,
+  tier: "free" | "pro"
 ): string {
   const start = SYSTEM.indexOf("WHAT MEWMAX IS");
   const end = SYSTEM.indexOf("CREATOR PROGRAM");
@@ -337,7 +368,10 @@ function buildAppSystem(
     `- When you name an in-app destination, ALWAYS link it as [Label](app:/path) using ONLY the paths in the IN-APP LINKS table — tapping it takes the user there. Never write a bare /path or a website URL for an app screen. For the Discord, the portal and the Creator Tools, include the full clickable URL from the LINKS facts above. One question back at most, only if needed.`
   );
   // The app brand is MewMax (the web prompt still says Mewmax).
-  return app.replaceAll("Mewmax", "MewMax");
+  const branded = app.replaceAll("Mewmax", "MewMax");
+  // Selling, tier-driven and last (recency counts): free users
+  // feel the need for Pro; Pro users never hear a pitch.
+  return `${branded}\n\n${tier === "pro" ? NO_SELL_LAYER : SELLING_LAYER}`;
 }
 
 /**
@@ -972,6 +1006,7 @@ export async function POST(req: Request) {
     language?: unknown;
     client?: unknown;
     pricing?: unknown;
+    tier?: unknown;
     stream?: unknown;
   };
   try {
@@ -1010,6 +1045,12 @@ export async function POST(req: Request) {
   // widget sends neither and keeps the website prompt verbatim.
   const isApp = body.client === "app";
   const pricing = isApp ? sanitisePricing(body.pricing) : null;
+  // App callers also send their tier (free vs Pro) with every Max
+  // request; the support prompt sells only to free users. Absent
+  // or anything but exactly "pro" reads as free — the support
+  // surface is the free surface, and coach mode never uses this
+  // (it verifies premium server-side from the token instead).
+  const tier: "free" | "pro" = body.tier === "pro" ? "pro" : "free";
 
   // The owner's trial_days app setting — read once, used by both
   // modes' pricing blocks (support path used to read it later).
@@ -1064,7 +1105,7 @@ export async function POST(req: Request) {
   // the no-trial facts. 3 keeps the prompt as written; 7 rewrites
   // the length.
   const system = isApp
-    ? buildAppSystem(pricing, trialDays)
+    ? buildAppSystem(pricing, trialDays, tier)
     : trialDays === 0
       ? SYSTEM.replace(
           "- TRIAL: 3-day free trial on Monthly and Yearly only. Weekly has NO trial — it bills from day one.",
@@ -1083,9 +1124,8 @@ export async function POST(req: Request) {
     ? system + languageDirective(replyLanguage)
     : system;
 
-  // Stream mode (same shape as coach mode; nothing calls support
-  // mode with stream yet — the native support panel still uses the
-  // JSON path — but the route answers it identically).
+  // Stream mode (same shape as coach mode — the native support
+  // panel streams too, so Max answers word by word there as well).
   if (stream) {
     const busy = isApp
       ? "I'm having trouble answering right now — try again in a moment. Meanwhile the Vault covers most how-to questions."
