@@ -304,7 +304,8 @@ const SYSTEM_PROMPT = [
 function buildUserText(
   blend: BlendInput,
   geometry: Record<string, unknown> | null,
-  quiz: Record<string, unknown> | null
+  quiz: Record<string, unknown> | null,
+  steer: string | null
 ): string {
   const scores = signalScores(blend);
   const lines: string[] = [
@@ -334,6 +335,22 @@ function buildUserText(
   }
   if (quiz) {
     lines.push("", "USER CONTEXT (quiz answers — respect them, e.g. skin type, budget, body goal):", JSON.stringify(quiz));
+  }
+  if (steer) {
+    // Slice 4 — Coach customise: the user steered this rebuild
+    // ("more focus on skin", "less diet"). Honour the steer by
+    // shifting task emphasis as asked. The weakest-fixable-first
+    // order still stands UNLESS the user explicitly overrides the
+    // priority ("make X the priority", "focus on X first") — only
+    // then may the priority array lead with the steered signal.
+    // Even when steered away from the weakest fixable signal, keep
+    // at least one task addressing it (and say why in its whyYou):
+    // the plan never drops the thing that needs the most work.
+    lines.push(
+      "",
+      `USER STEER — the user asked for this change to the plan: "${steer}".`,
+      "Honour it: shift task emphasis as asked (more/fewer tasks for the named area). Weakest-fixable-first still stands unless the user explicitly overrides the priority. Always keep at least one task addressing the weakest fixable signal, even when steered away from it."
+    );
   }
   lines.push(
     "",
@@ -801,6 +818,14 @@ export async function POST(req: NextRequest) {
     typeof b.quiz === "object" && b.quiz !== null
       ? (b.quiz as Record<string, unknown>)
       : null;
+  // Slice 4 — Coach customise: an optional user steer for this
+  // rebuild ("more focus on skin"). Free text, capped — it goes
+  // into the prompt verbatim, so it is length-bounded like the
+  // other prompt inputs. Absent on the first design.
+  const steer =
+    typeof b.steer === "string" && b.steer.trim().length > 0
+      ? b.steer.trim().slice(0, 200)
+      : null;
 
   const scores = signalScores(blend);
   const weakest = weakestFixable(scores);
@@ -813,7 +838,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const userText = buildUserText(blend, geometry, quiz);
+  const userText = buildUserText(blend, geometry, quiz, steer);
   const now = Date.now();
   const keyOrder = orderedKeyIndexes(keys.length, now);
 
@@ -868,6 +893,7 @@ export async function POST(req: NextRequest) {
           sections: attempt.sections,
           priority: attempt.priority,
           weakestFixable: weakest,
+          steer,
           latencyMs: Date.now() - startedAt,
         });
       }
@@ -916,6 +942,7 @@ export async function POST(req: NextRequest) {
         sections: attempt.sections,
         priority: attempt.priority,
         weakestFixable: weakest,
+        steer,
         latencyMs: Date.now() - startedAt,
       });
     }
