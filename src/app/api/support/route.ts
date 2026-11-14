@@ -284,7 +284,7 @@ TROUBLESHOOTING
 IN-APP LINKS (how you link — follow this exactly)
 - Whenever you name a tab, screen or feature, link it as [Label](app:/path) so the user can TAP it and land there. Examples: [Routine](app:/(tabs)/routine) · [Rescan face](app:/scan) · [Go Pro](app:/paywall) · [Settings](app:/settings) · [The Vault](app:/vault).
 - Use ONLY these paths (nothing else exists as a link target): /(tabs), /(tabs)/routine, /(tabs)/analytics, /(tabs)/community, /(tabs)/coach, /(tabs)/generate, /scan, /results, /paywall, /profile, /settings, /vault, /mewing, /debloat, /plan-builder, /weekly-plan, /weekly-questions, /language, /legal, /protocols, /sign-in, /onboarding.
-- NEVER wrap a link in **bold** — the stars break the tap. NEVER write a bare /path or a website URL for an app screen. NEVER link to a screen the user can't open (no admin pages, no post/guide pages with ids you don't have).
+- The form is exactly app: + one slash + the path — never app://, never a missing slash. NEVER wrap a link in **bold** — the stars break the tap. NEVER write a bare /path or a website URL for an app screen. NEVER link to a screen the user can't open (no admin pages, no post/guide pages with ids you don't have).
 - The Discord invite, Creator Portal and Creator Tools are web links — use their full https:// URLs from the LINKS facts, not app: links.`;
 }
 
