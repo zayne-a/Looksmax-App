@@ -117,6 +117,229 @@ SAFETY
 FORMAT ON TOP OF THE VOICE RULES ABOVE
 - Mention the page (e.g. "Open /scan") when guiding — and for the Discord, the portal and the Creator Tools, include the full clickable URL from the LINKS facts above. One question back at most, only if needed.`;
 
+/* ------------------------------------------------------------------ */
+/* APP MODE (native app callers — Zayne, 2026-11-14)                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Local pricing snapshot the native app sends with every Max
+ * request (its lib/pricing — the paywall's own source of truth,
+ * so Max's numbers can never disagree with the paywall). The app
+ * computes it from the device region; the server only quotes it.
+ * Sanitised like the reply language: a malformed snapshot is
+ * dropped wholesale and Max falls back to the USD list rather
+ * than quoting anything untrusted.
+ */
+interface AppPricing {
+  currency: string;
+  region: string;
+  weekly: { price: string; perDay: string };
+  monthly: { price: string; perDay: string };
+  yearly: { price: string; perDay: string };
+}
+
+/** One formatted price line: no control characters (so it can
+ *  never break out of its prompt line), ≤40 chars, must contain
+ *  a digit. Anything else is rejected. */
+function cleanPrice(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const v = raw
+    .replace(/[\u0000-\u001F\u007F]/g, "")
+    .trim()
+    .slice(0, 40);
+  return v && /\d/.test(v) ? v : null;
+}
+
+function sanitisePricing(raw: unknown): AppPricing | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const currency =
+    typeof r.currency === "string" && /^[A-Z]{3}$/.test(r.currency)
+      ? r.currency
+      : null;
+  if (!currency) return null;
+  const region =
+    typeof r.region === "string" && /^[A-Z]{2}$/.test(r.region)
+      ? r.region
+      : "";
+  const plan = (key: string) => {
+    const p = r[key];
+    if (!p || typeof p !== "object") return null;
+    const price = cleanPrice((p as Record<string, unknown>).price);
+    const perDay = cleanPrice((p as Record<string, unknown>).perDay);
+    return price && perDay ? { price, perDay } : null;
+  };
+  const weekly = plan("weekly");
+  const monthly = plan("monthly");
+  const yearly = plan("yearly");
+  if (!weekly || !monthly || !yearly) return null;
+  return { currency, region, weekly, monthly, yearly };
+}
+
+/** The trial line for the app pricing block, from the owner's
+ *  trial_days app setting (same rule as the web prompt's swap:
+ *  0 = no trial at all). */
+function appTrialLine(trialDays: number): string {
+  if (trialDays === 0)
+    return "- TRIAL: there is NO free trial. Every plan — Weekly, Monthly, Yearly — bills from day one. Never tell anyone a trial exists.";
+  if (trialDays === 3)
+    return "- TRIAL: 3-day free trial on Monthly and Yearly only. Weekly has NO trial — it bills from day one.";
+  return `- TRIAL: ${trialDays}-day free trial on Monthly and Yearly only. Weekly has NO trial — it bills from day one.`;
+}
+
+/**
+ * THE APP — the knowledge block Max answers from in app mode.
+ * Every fact here is about the native app's real screens, tabs
+ * and flows (verified against the app code, 2026-11-14) — never
+ * website pages. Pricing quotes ONLY the validated local
+ * snapshot; with no snapshot Max falls back to the USD list and
+ * says the paywall shows the local price.
+ *
+ * `mode` changes exactly two lines: support mode must never
+ * claim personal knowledge (it has none — personalisation is
+ * the Coach's work), while coach mode answers from the CONTEXT
+ * block the server builds from the account rows.
+ */
+function appKnowledge(
+  pricing: AppPricing | null,
+  trialDays: number,
+  mode: "support" | "coach"
+): string {
+  const priceLines = pricing
+    ? `- Weekly ${pricing.weekly.price} · Monthly ${pricing.monthly.price} · Yearly ${pricing.yearly.price} — in ${pricing.currency}, the currency this phone prices in.`
+    : `- Weekly $1.99 · Monthly $4.99 · Yearly $29.99 (USD list — the app did not send local pricing, so quote these and say the paywall shows the price in the local currency).`;
+  const perDayLine = pricing
+    ? `- Per day: yearly works out to about ${pricing.yearly.perDay} (${pricing.yearly.price}); monthly about ${pricing.monthly.perDay}.`
+    : `- Per day: yearly works out to about 8¢ a day ($29.99/year); monthly about 17¢ a day.`;
+  const personalLine =
+    mode === "coach"
+      ? "- You coach from the CONTEXT block below — this user's real scan, plan and logs. For questions about the APP itself (where things are, what Pro unlocks, prices), use this knowledge, not CONTEXT."
+      : "- You CANNOT see this user's personal data in this chat — no scan, no plan, no week, no progress. Never claim to know their numbers, never guess them, never invent a score or a task. If they ask about their own score or plan, point them at their [Results](app:/results) or [Routine](app:/(tabs)/routine) — and personal coaching from their data lives in the [Coach](app:/(tabs)/coach) tab (Pro).";
+  const resultsLine =
+    mode === "coach"
+      ? "- Everyone sees the OVERALL score. The breakdown — eyes, midface, lower third and every other section — is blurred and locked for free users; Pro unlocks it. Your CONTEXT carries the real breakdown numbers for this Pro user, so you may quote them."
+      : "- Everyone sees the OVERALL score. The breakdown — eyes, midface, lower third and every other section — is blurred and locked for free users; Pro unlocks it. Never quote breakdown numbers — you can't see them in this chat.";
+
+  return `YOU ARE INSIDE THE MEWMAX APP
+- You are Max inside the MewMax phone app — NOT on the website. There are no web pages, no URLs, no "dashboard", no "/scan". The app has bottom tabs, a slide-in menu, and screens. Never tell the user to open a web page or a /path — name the tab or screen and LINK it (see IN-APP LINKS below).
+${personalLine}
+
+THE APP — SCREENS AND HOW TO GET THERE
+- Bottom tabs (always visible): [Home](app:/(tabs)) · [Routine](app:/(tabs)/routine) · [Analytics](app:/(tabs)/analytics) · [Community](app:/(tabs)/community) · [Coach](app:/(tabs)/coach). Generate is NOT a tab — it opens from the Generate card on Home.
+- The slide-in menu (☰, from the right): Profile · Rescan face · Go Premium · Ask Max (this chat) · Discord · [The Vault](app:/vault) · [Mewing](app:/mewing) · [Debloat](app:/debloat) · Creator tools · [Settings](app:/settings). Profile is NOT a tab — it lives in the menu.
+- [Home](app:/(tabs)): latest scan + score, streak, ascend date (start + 90 days), today's snapshot, the "Scan your face" button, the Generate card.
+- [Routine](app:/(tabs)/routine): today's tasks from the active plan, the week strip, the day ring, weekly check-ins. Only TODAY is editable — past days are read-only, future days unlock on the day.
+- [Analytics](app:/(tabs)/analytics): measurements, scan history and trends over time.
+- [Community](app:/(tabs)/community): the forum, knowledge and products.
+- [Coach](app:/(tabs)/coach): the AI Coach chat — Pro only. Free users see a teaser chat (their scan photo, first lines visible, the rest blurred) instead of a paywall bounce.
+- The Max bubble (you, support) floats on every tab except Coach — draggable, with quick questions. The Coach tab IS Max too, but coaching.
+
+THE SCAN
+- First scan: [Home](app:/(tabs)) → "Scan your face", or straight from onboarding. Gender is asked ONCE, before the scan — never again.
+- Rescan: menu → [Rescan face](app:/scan) (Pro — free users land on the paywall), or Home → Generate card ("Re-scan").
+- Steps: front-photo guide → side-photo guide → birth-date step (once) → short quiz → results. Face analysis runs ON THE DEVICE — photos are never uploaded for analysis. Scan photos stay on the user's own phone.
+- Quality gate: face visible and centred, big enough in frame, decent light, not blown out, not blurry. If rejected, the screen says exactly why; retakes are unlimited and free.
+- Scores are estimates from one photo under the current lighting/angle — a tracking tool, not a medical or absolute judgment. Rescan in similar light for fair comparisons.
+- The PSL score runs 1–8 — the community's scale; there is no 10, and 8 is the practical ceiling. Tiers, low to high: Sub-3, Low-Tier Normie, Mid-Tier Normie, High-Tier Normie, Chadlite, Chad, True Adam (female ladder: Sub-3, Low-Tier Becky, Mid-Tier Becky, High-Tier Becky, Stacylite, Stacy, True Eve). POTENTIAL is on the same 1–8 scale. If a user quotes a score out of 10, correct it once, lightly.
+
+RESULTS
+${resultsLine}
+- Every result includes a written read of what each number means and what can honestly move it.
+
+THE PLAN AND ROUTINE
+- After the scan + quiz, the app builds a personal 90-day plan: 48 protocols in 4 sections — Skin, Diet, Exercise, Style — 12 each, phased across 12 weeks, plus Foundations (sleep, hydration, daily movement, non-negotiables) every day. Days 85–90 are the consolidation stretch.
+- Free: the scan, the overall score, and a preview plan — the first 3 steps of each section (12 tasks) are open; the other tasks show titles but stay locked.
+- Pro: all 48 protocols in full with personal instructions, the AI-personalised plan, the AI Coach, the full Routine (12-week roadmap, weekly check-ins, record calendar, progress timeline), rescan history analysis and all guides.
+- [Plan builder](app:/plan-builder): retune body goal, training days or timeline. Each plan includes 1 FREE change; a fresh scan starts a new plan with its own free change. Old versions are never deleted.
+- Weekly check-ins adjust the plan (e.g. calories self-correct by ±150 kcal on weigh-ins). The [Weekly plan](app:/weekly-plan) is the AI-curated week, generated from the [AI week questions](app:/weekly-questions).
+
+PRICING (exact — quote ONLY these numbers, in this currency, never USD, never other numbers)
+${priceLines}
+${perDayLine}
+${appTrialLine(trialDays)}
+- Creator/influencer coupon codes give 20% off Monthly and Yearly — never Weekly. Codes are entered on the paywall.
+- Checkout: payments are coming soon via Google Play — Play is the merchant of record and charges in the buyer's local currency. The Continue button on the paywall closes it until Play Billing wires in at store launch. Never ask for card details — the app never builds its own card form.
+- Cancelling stops future billing; the free scan, score and preview keep working.
+
+ACCOUNTS
+- The app is guest-first: it works fully WITHOUT an account. Signing in is only needed to sync Pro, scans and plan to another phone.
+- Sign in from [Settings](app:/settings) or the [Sign in](app:/sign-in) screen. Signing out deletes nothing — sign back in and everything is restored.
+- Full deletion of an account and its data is available on request (Profile → delete account — the request goes to the team by email).
+
+SETTINGS
+- [Settings](app:/settings): [Language](app:/language) (28 languages), reminders + the MewMax notification sound, account, subscription, app version.
+- Reminders: daily task reminders at the plan's own times, plus a morning "plan ready" teaser. If reminders don't arrive, check they are ON in Settings AND notifications are allowed for MewMax in the phone's system settings.
+- Changing language can need an app restart before the layout follows — close and reopen the app.
+
+READS AND GUIDES
+- [The Vault](app:/vault): every term, decoded. [Mewing](app:/mewing) and [Debloat](app:/debloat): the in-depth reads (tongue posture, bloat) — free.
+- [Protocols](app:/protocols): the full protocol library (headings for free, full content for Pro).
+
+TROUBLESHOOTING
+- Camera won't start: allow the camera permission in the phone's system settings (Settings → Apps → MewMax → Permissions → Camera); if the camera says busy, close other apps using it; no front camera → use the upload option on the scan screen.
+- Photo keeps getting rejected: follow the on-screen reason — brighter, even light (face a window), phone at eye level, arm's length, glasses/hat off, keep still.
+- Plan looks wrong / tasks too hard: use the [Plan builder](app:/plan-builder), or retake the scan in better light — measurements drive everything.
+- Score changed between scans: lighting, angle, facial hair, bloating and time of day all move readings — compare scans taken in similar conditions; the trend across several scans is what matters.
+
+IN-APP LINKS (how you link — follow this exactly)
+- Whenever you name a tab, screen or feature, link it as [Label](app:/path) so the user can TAP it and land there. Examples: [Routine](app:/(tabs)/routine) · [Rescan face](app:/scan) · [Go Pro](app:/paywall) · [Settings](app:/settings) · [The Vault](app:/vault).
+- Use ONLY these paths (nothing else exists as a link target): /(tabs), /(tabs)/routine, /(tabs)/analytics, /(tabs)/community, /(tabs)/coach, /(tabs)/generate, /scan, /results, /paywall, /profile, /settings, /vault, /mewing, /debloat, /plan-builder, /weekly-plan, /weekly-questions, /language, /legal, /protocols, /sign-in, /onboarding.
+- NEVER wrap a link in **bold** — the stars break the tap. NEVER write a bare /path or a website URL for an app screen. NEVER link to a screen the user can't open (no admin pages, no post/guide pages with ids you don't have).
+- The Discord invite, Creator Portal and Creator Tools are web links — use their full https:// URLs from the LINKS facts, not app: links.`;
+}
+
+/**
+ * The support-mode system prompt for native-app callers: the web
+ * prompt with its website knowledge (WHAT MEWMAX IS … GUIDES &
+ * PAGES) swapped for the app knowledge block, the USD price
+ * framing swapped for the local one, and the format tail taught
+ * the in-app link form. Everything else — creator program,
+ * safety, the voice — is shared verbatim, so the surfaces can't
+ * drift apart. If an anchor is missing (the prompt was edited
+ * upstream), the derivation falls back to the web prompt rather
+ * than serving a half-swapped one.
+ */
+function buildAppSystem(
+  pricing: AppPricing | null,
+  trialDays: number
+): string {
+  const start = SYSTEM.indexOf("WHAT MEWMAX IS");
+  const end = SYSTEM.indexOf("CREATOR PROGRAM");
+  if (start < 0 || end < 0 || end <= start) return SYSTEM;
+  let app = `${SYSTEM.slice(0, start)}${appKnowledge(pricing, trialDays, "support")}\n\n${SYSTEM.slice(end)}`;
+  // Local price framing in WHY IT'S WORTH IT.
+  if (pricing) {
+    app = app.replace(
+      "• Price framing (use the real numbers): yearly works out to about 8 cents a day ($29.99/year); monthly about 17 cents a day. Less than a coffee a month for a full personal protocol.",
+      `• Price framing (use the real numbers): yearly works out to about ${pricing.yearly.perDay} (${pricing.yearly.price}); monthly about ${pricing.monthly.perDay}. Less than a coffee a month for a full personal protocol.`
+    );
+  }
+  // Trial bullet, same rule as the web swap.
+  if (trialDays === 0) {
+    app = app.replace(
+      "• Risk-free angle: Monthly and Yearly start with a 3-day free trial — they can see the entire plan before paying anything.",
+      "• Low-risk angle: there is no free trial — but the first scan, the score and the preview plan are free forever before they pay anything, and cancelling is one tap and stops future billing."
+    );
+  } else if (trialDays !== 3) {
+    app = app.replace(
+      "• Risk-free angle: Monthly and Yearly start with a 3-day free trial — they can see the entire plan before paying anything.",
+      `• Risk-free angle: Monthly and Yearly start with a ${trialDays}-day free trial — they can see the entire plan before paying anything.`
+    );
+  }
+  // Next-step hook: the app has no /scan URL.
+  app = app.replace(
+    '("Start with the free scan at /scan — the score and read are free")',
+    '("Start with the free scan — tap [Scan your face](app:/scan) on Home — the score and read are free")'
+  );
+  // Format tail: teach the in-app link form.
+  app = app.replace(
+    `- Mention the page (e.g. "Open /scan") when guiding — and for the Discord, the portal and the Creator Tools, include the full clickable URL from the LINKS facts above. One question back at most, only if needed.`,
+    `- When you name an in-app destination, ALWAYS link it as [Label](app:/path) using ONLY the paths in the IN-APP LINKS table — tapping it takes the user there. Never write a bare /path or a website URL for an app screen. For the Discord, the portal and the Creator Tools, include the full clickable URL from the LINKS facts above. One question back at most, only if needed.`
+  );
+  // The app brand is MewMax (the web prompt still says Mewmax).
+  return app.replaceAll("Mewmax", "MewMax");
+}
+
 /**
  * Reply language (Zayne, 2026-10-24): the native app sends the
  * language the user picked in its language selector with each chat
@@ -262,7 +485,7 @@ function normaliseHistory(raw: RawHistory) {
 const COACH_DAILY_CAP = 40;
 
 const COACH_CAP_REPLY =
-  "🛑 YOUR NUMBER: **40/40** — you've used every coach message for today. Even Chads let the jaw rest.\n🎯 THE MOVE: Your plan and today's tasks are still live in the dashboard — go execute. I'm back at full strength tomorrow.";
+  "🛑 YOUR NUMBER: **40/40** — you've used every coach message for today. Even Chads let the jaw rest.\n🎯 THE MOVE: Your plan and today's tasks are still live in the Routine tab — go execute. I'm back at full strength tomorrow.";
 
 const COACH_BUSY_REPLY =
   "📡 Line dropped on my end — give me a moment and ask that again. Your data's saved, nothing's lost.";
@@ -477,7 +700,10 @@ async function handleCoach(
   req: Request,
   body: { message?: unknown; history?: RawHistory },
   keys: string[],
-  replyLanguage: string | null
+  replyLanguage: string | null,
+  isApp: boolean,
+  pricing: AppPricing | null,
+  trialDays: number
 ): Promise<NextResponse> {
   const premiumDeny = () =>
     NextResponse.json({ error: "coach_premium" }, { status: 403 });
@@ -544,9 +770,21 @@ async function handleCoach(
     .insert({ user_id: userId, role: "user", content: message });
 
   const context = await buildCoachContext(admin, userId).catch(() => "");
-  const coachSystem = `${MAX_VOICE}\n\n${COACH_LAYER}${
-    context ? `\n\n${context}` : ""
-  }${replyLanguage ? languageDirective(replyLanguage) : ""}`;
+  // App callers get the app knowledge (screens, flows, local
+  // pricing, in-app links) between the coach layer and their
+  // CONTEXT — the coach answers app questions from it and
+  // personal questions from CONTEXT. Non-app callers keep the
+  // original coach prompt.
+  const coachSystem = isApp
+    ? `${MAX_VOICE}\n\n${COACH_LAYER}\n\n${appKnowledge(pricing, trialDays, "coach")}${
+        context ? `\n\n${context}` : ""
+      }${replyLanguage ? languageDirective(replyLanguage) : ""}`.replaceAll(
+        "Mewmax",
+        "MewMax"
+      )
+    : `${MAX_VOICE}\n\n${COACH_LAYER}${
+        context ? `\n\n${context}` : ""
+      }${replyLanguage ? languageDirective(replyLanguage) : ""}`;
   const contents = [
     ...normaliseHistory(body.history),
     { role: "user", parts: [{ text: message }] },
@@ -583,6 +821,8 @@ export async function POST(req: Request) {
     history?: RawHistory;
     mode?: unknown;
     language?: unknown;
+    client?: unknown;
+    pricing?: unknown;
   };
   try {
     const parsed: unknown = await req.json();
@@ -597,10 +837,28 @@ export async function POST(req: Request) {
   // The app-selected reply language (whitelisted; null = English).
   const replyLanguage = sanitiseReplyLanguage(body.language);
 
+  // Native-app callers send client: "app" + their local pricing
+  // snapshot (validated; null when absent or malformed). The web
+  // widget sends neither and keeps the website prompt verbatim.
+  const isApp = body.client === "app";
+  const pricing = isApp ? sanitisePricing(body.pricing) : null;
+
+  // The owner's trial_days app setting — read once, used by both
+  // modes' pricing blocks (support path used to read it later).
+  const { trial_days: trialDays } = await getAppSettings();
+
   // Coach mode branches before the public per-IP cap: it is
   // authenticated and carries its own per-user DB cap instead.
   if (body.mode === "coach") {
-    return handleCoach(req, body, keys, replyLanguage);
+    return handleCoach(
+      req,
+      body,
+      keys,
+      replyLanguage,
+      isApp,
+      pricing,
+      trialDays
+    );
   }
 
   const ip =
@@ -608,8 +866,9 @@ export async function POST(req: Request) {
   if (overCap(ip)) {
     return NextResponse.json(
       {
-        reply:
-          "You've hit today's support chat limit on this connection. The guides at /guides cover most questions, and the Coach in your dashboard can help with your plan.",
+        reply: isApp
+          ? "You've hit today's support chat limit on this connection. The Vault covers most questions — and if you're Pro, the Coach tab can help with your plan."
+          : "You've hit today's support chat limit on this connection. The guides at /guides cover most questions, and the Coach in your dashboard can help with your plan.",
       },
       { status: 200 }
     );
@@ -627,14 +886,17 @@ export async function POST(req: Request) {
     { role: "user", parts: [{ text: message }] },
   ];
 
-  // The trial Max quotes is the owner's trial_days app setting
+  // App callers get the app system prompt (app knowledge, local
+  // pricing, in-app links — the trial is baked into its pricing
+  // block). Web callers keep the existing prompt, with the trial
+  // Max quotes from the owner's trial_days app setting
   // (/admin/settings). 0 = NO free trial (the product rule since
   // 2026-10-23): both trial mentions in the prompt are swapped for
   // the no-trial facts. 3 keeps the prompt as written; 7 rewrites
   // the length.
-  const { trial_days: trialDays } = await getAppSettings();
-  const system =
-    trialDays === 0
+  const system = isApp
+    ? buildAppSystem(pricing, trialDays)
+    : trialDays === 0
       ? SYSTEM.replace(
           "- TRIAL: 3-day free trial on Monthly and Yearly only. Weekly has NO trial — it bills from day one.",
           "- TRIAL: there is NO free trial. Every plan — Weekly, Monthly, Yearly — bills from day one. Never tell anyone a trial exists."
@@ -662,8 +924,9 @@ export async function POST(req: Request) {
   }
   return NextResponse.json(
     {
-      reply:
-        "I'm having trouble answering right now — try again in a moment. Meanwhile /guides covers most how-to questions.",
+      reply: isApp
+        ? "I'm having trouble answering right now — try again in a moment. Meanwhile the Vault covers most how-to questions."
+        : "I'm having trouble answering right now — try again in a moment. Meanwhile /guides covers most how-to questions.",
     },
     { status: 200 }
   );
