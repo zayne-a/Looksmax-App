@@ -4,6 +4,7 @@ import { buildScoreView } from "@/lib/score-view";
 import { getAppSettings } from "@/lib/settings";
 import type { FaceMeasurements } from "@/lib/types";
 import { MAX_VOICE, COACH_LAYER, languageDirective } from "@/lib/max-voice";
+import { retrieveCoachMethods, coachMethodsPromptBlock } from "@/lib/coach-methods";
 
 /**
  * /api/support — Max, one persona on web + native (Zayne, 2026-10-21;
@@ -941,21 +942,32 @@ async function handleCoach(
     .insert({ user_id: userId, role: "user", content: message });
 
   const context = await buildCoachContext(admin, userId).catch(() => "");
+  // Scraped-methods retrieval (Slice 5): when the question matches
+  // public looksmaxxing guides, their summaries ride along in the
+  // prompt with source URLs for citation. No match → no block →
+  // the Coach answers from its own capability, exactly as before.
+  const methodsBlock = coachMethodsPromptBlock(
+    retrieveCoachMethods(message)
+  );
   // App callers get the app knowledge (screens, flows, local
   // pricing, in-app links) between the coach layer and their
   // CONTEXT — the coach answers app questions from it and
   // personal questions from CONTEXT. Non-app callers keep the
   // original coach prompt.
   const coachSystem = isApp
-    ? `${MAX_VOICE}\n\n${COACH_LAYER}\n\n${appKnowledge(pricing, trialDays, "coach")}${
+    ? `${MAX_VOICE}\n\n${COACH_LAYER}${
+        methodsBlock ? `\n\n${methodsBlock}` : ""
+      }\n\n${appKnowledge(pricing, trialDays, "coach")}${
         context ? `\n\n${context}` : ""
       }${replyLanguage ? languageDirective(replyLanguage) : ""}`.replaceAll(
         "Mewmax",
         "MewMax"
       )
     : `${MAX_VOICE}\n\n${COACH_LAYER}${
-        context ? `\n\n${context}` : ""
-      }${replyLanguage ? languageDirective(replyLanguage) : ""}`;
+        methodsBlock ? `\n\n${methodsBlock}` : ""
+      }${context ? `\n\n${context}` : ""}${
+        replyLanguage ? languageDirective(replyLanguage) : ""
+      }`;
   const contents = [
     ...normaliseHistory(body.history),
     { role: "user", parts: [{ text: message }] },
