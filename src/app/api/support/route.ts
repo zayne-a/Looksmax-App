@@ -445,6 +445,139 @@ async function askGemini(
   }
 }
 
+/**
+ * Streaming Gemini call — the same request as askGemini, only the
+ * endpoint differs (:streamGenerateContent with alt=sse). Text
+ * deltas reach onDelta as they arrive; the promise resolves to the
+ * full assembled reply. Returns null ONLY when zero deltas arrived
+ * (a mid-stream failure still returns the partial text the caller
+ * already forwarded, so the persisted reply matches what the user
+ * saw). Free keys only — same rotation as the non-streaming path.
+ */
+async function askGeminiStream(
+  key: string,
+  model: string,
+  contents: { role: string; parts: { text: string }[] }[],
+  system: string,
+  onDelta: (text: string) => void
+): Promise<string | null> {
+  let full = "";
+  try {
+    const resp = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${key}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: system }] },
+          contents,
+          generationConfig: { temperature: 0.4, maxOutputTokens: 1024 },
+        }),
+        signal: AbortSignal.timeout(60_000),
+      }
+    );
+    if (!resp.ok || !resp.body) return null;
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    for (;;) {
+      let read: ReadableStreamReadResult<Uint8Array>;
+      try {
+        read = await reader.read();
+      } catch {
+        break; // Mid-stream failure: keep the partial text.
+      }
+      if (read.done) break;
+      buffer += decoder.decode(read.value, { stream: true });
+      let idx: number;
+      while ((idx = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, idx).trim();
+        buffer = buffer.slice(idx + 1);
+        if (!line.startsWith("data:")) continue;
+        const payload = line.slice(5).trim();
+        if (payload === "[DONE]") continue;
+        try {
+          const data = JSON.parse(payload) as {
+            candidates?: { content?: { parts?: { text?: string }[] } }[];
+          };
+          const text = data.candidates?.[0]?.content?.parts
+            ?.map((p) => p.text ?? "")
+            .join("");
+          if (text) {
+            full += text;
+            onDelta(text);
+          }
+        } catch {
+          // A partial line mid-chunk — the next read completes it.
+        }
+      }
+    }
+  } catch {
+    // Fetch-level failure before any delta: full is "".
+  }
+  return full.trim() ? full : null;
+}
+
+/**
+ * Stream a reply across the key/model rotation. Deltas go to the
+ * client as they arrive. A failed attempt is retried on the next
+ * key/model ONLY while nothing has streamed yet — once the first
+ * delta is out, askGeminiStream returns the partial text and the
+ * reply stands as-is. Returns the full (or partial) text, or null
+ * when every attempt failed before a single delta.
+ */
+async function streamReply(
+  keys: string[],
+  contents: { role: string; parts: { text: string }[] }[],
+  system: string,
+  onDelta: (text: string) => void
+): Promise<string | null> {
+  for (const key of keys) {
+    for (const model of MODELS) {
+      const reply = await askGeminiStream(key, model, contents, system, onDelta);
+      if (reply !== null) return reply;
+    }
+  }
+  return null;
+}
+
+/** Plain-text 200 body — the stream-mode reply shape. Chunks are
+ *  raw reply text, no framing, so a progressive reader (XHR
+ *  onprogress in the native app) can append them as they arrive. */
+function textResponse(text: string): Response {
+  return new Response(text, {
+    headers: { "Content-Type": "text/plain; charset=utf-8" },
+  });
+}
+
+/**
+ * Wrap a streaming generation in a plain-text Response. `run`
+ * emits deltas as they arrive and handles its own fallback text
+ * when generation produced nothing; the stream closes when run
+ * resolves (persistence happens inside run, before close, so the
+ * stored reply matches what the client received).
+ */
+function streamResponse(
+  run: (emit: (text: string) => void) => Promise<void>
+): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      try {
+        await run((text) => controller.enqueue(encoder.encode(text)));
+      } finally {
+        controller.close();
+      }
+    },
+  });
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "text/plain; charset=utf-8",
+      "Cache-Control": "no-cache",
+    },
+  });
+}
+
 function supportKeys(): string[] {
   const plural = process.env.SUPPORT_GEMINI_API_KEYS;
   if (plural) {
@@ -703,8 +836,9 @@ async function handleCoach(
   replyLanguage: string | null,
   isApp: boolean,
   pricing: AppPricing | null,
-  trialDays: number
-): Promise<NextResponse> {
+  trialDays: number,
+  stream: boolean
+): Promise<NextResponse | Response> {
   const premiumDeny = () =>
     NextResponse.json({ error: "coach_premium" }, { status: 403 });
 
@@ -759,6 +893,9 @@ async function handleCoach(
     .eq("role", "user")
     .gte("created_at", startOfDay.toISOString());
   if ((count ?? 0) >= COACH_DAILY_CAP) {
+    // Stream mode speaks plain text only — a JSON body here would
+    // land in the chat verbatim.
+    if (stream) return textResponse(COACH_CAP_REPLY);
     return NextResponse.json({ reply: COACH_CAP_REPLY }, { status: 200 });
   }
 
@@ -790,6 +927,24 @@ async function handleCoach(
     { role: "user", parts: [{ text: message }] },
   ];
 
+  // Stream mode (native Coach tab): tokens reach the client as
+  // they arrive instead of after the whole reply generates. The
+  // assembled reply is persisted before the stream closes, exactly
+  // like the JSON path; the busy fallback is not persisted either
+  // way.
+  if (stream) {
+    return streamResponse(async (emit) => {
+      const reply = await streamReply(keys, contents, coachSystem, emit);
+      if (reply === null) {
+        emit(COACH_BUSY_REPLY);
+        return;
+      }
+      await admin
+        .from("chat_messages")
+        .insert({ user_id: userId, role: "assistant", content: reply });
+    });
+  }
+
   // Same rotation as support mode: dedicated keys × models.
   for (const key of keys) {
     for (const model of MODELS) {
@@ -809,12 +964,6 @@ async function handleCoach(
 
 export async function POST(req: Request) {
   const keys = supportKeys();
-  if (keys.length === 0) {
-    return NextResponse.json(
-      { reply: "Support chat is briefly unavailable — please try again in a little while." },
-      { status: 200 }
-    );
-  }
 
   let body: {
     message?: unknown;
@@ -823,6 +972,7 @@ export async function POST(req: Request) {
     language?: unknown;
     client?: unknown;
     pricing?: unknown;
+    stream?: unknown;
   };
   try {
     const parsed: unknown = await req.json();
@@ -832,6 +982,24 @@ export async function POST(req: Request) {
         : {};
   } catch {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  }
+
+  // Stream mode (native Coach tab): the reply arrives as plain-text
+  // chunks instead of one JSON body. Absent/false keeps the exact
+  // current JSON behavior — the web widget and old app versions
+  // never see a change.
+  const stream = body.stream === true;
+
+  if (keys.length === 0) {
+    if (stream) {
+      return textResponse(
+        "Support chat is briefly unavailable — please try again in a little while."
+      );
+    }
+    return NextResponse.json(
+      { reply: "Support chat is briefly unavailable — please try again in a little while." },
+      { status: 200 }
+    );
   }
 
   // The app-selected reply language (whitelisted; null = English).
@@ -857,7 +1025,8 @@ export async function POST(req: Request) {
       replyLanguage,
       isApp,
       pricing,
-      trialDays
+      trialDays,
+      stream
     );
   }
 
@@ -913,6 +1082,24 @@ export async function POST(req: Request) {
   const systemWithLanguage = replyLanguage
     ? system + languageDirective(replyLanguage)
     : system;
+
+  // Stream mode (same shape as coach mode; nothing calls support
+  // mode with stream yet — the native support panel still uses the
+  // JSON path — but the route answers it identically).
+  if (stream) {
+    const busy = isApp
+      ? "I'm having trouble answering right now — try again in a moment. Meanwhile the Vault covers most how-to questions."
+      : "I'm having trouble answering right now — try again in a moment. Meanwhile /guides covers most how-to questions.";
+    return streamResponse(async (emit) => {
+      const reply = await streamReply(
+        keys,
+        contents,
+        systemWithLanguage,
+        emit
+      );
+      if (reply === null) emit(busy);
+    });
+  }
 
   // Rotate across Max's dedicated keys; a quota hit or outage on one
   // key falls through to the next key, then the next model.
