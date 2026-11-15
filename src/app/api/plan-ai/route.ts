@@ -5,9 +5,11 @@
 // scores drive them, WEAKEST FIXABLE REGION FIRST. This route takes
 // the already-scored blend (region scores + soft criteria + geometry
 // measurements + Potential + quiz answers) and returns structured
-// daily tasks mapped to the 4 plan sections (skin, diet, exercise,
-// style) — each task with a title, detail, frequency, and a why tied
-// to the specific score/reason it addresses.
+// daily tasks mapped to the 5 plan sections (skin, diet, exercise,
+// style, sleep) — each task with a title, detail, frequency, and a
+// why tied to the specific score/reason it addresses. Sleep joined
+// the section set 2026-11-15 (Zayne: sleep is a full aspect of
+// the personalised plan, not one task buried in Exercise).
 //
 // AI SUGGESTIONS ARE FREE (Zayne 2026-11-14 22:46 IST, explicit
 // override): the AI's looksmaxxing suggestions are NOT constrained
@@ -73,7 +75,7 @@ const KEY_COOLDOWN_MS = 60_000;
 // total). Fewer than 8 total tasks is not a plan — the attempt
 // fails and the ladder retries.
 const MIN_TASKS_PER_SECTION = 1;
-const MIN_TASKS_TOTAL = 8;
+const MIN_TASKS_TOTAL = 10;
 
 const clamp = (v: number, lo: number, hi: number) =>
   Math.min(hi, Math.max(lo, v));
@@ -157,15 +159,16 @@ function isUnavailableError(status: number): boolean {
 
 // ---------- Signals ----------
 
-type SectionId = "skin" | "diet" | "exercise" | "style";
+type SectionId = "skin" | "diet" | "exercise" | "style" | "sleep";
 
-const SECTION_IDS: SectionId[] = ["skin", "diet", "exercise", "style"];
+const SECTION_IDS: SectionId[] = ["skin", "diet", "exercise", "style", "sleep"];
 
 const SECTION_TITLES: Record<SectionId, string> = {
   skin: "Skin",
   diet: "Diet",
   exercise: "Exercise",
   style: "Style",
+  sleep: "Sleep",
 };
 
 /** The 8 scored signals the tasks can address (4 AI region scores +
@@ -356,13 +359,14 @@ function buildUserText(
     "",
     "RULES:",
     "1. WEAKEST FIXABLE FIRST: rank the fixable signals by weakness, and design the plan around them — the weakest fixable signal gets the most task attention, and the first tasks in each section address it. Bone signals (midface, upperThird) rank LAST for task design — they may only inform style / hair-framing tasks, never head the plan.",
-    "2. 3–4 tasks per section, 4 sections: skin, diet, exercise, style. Every section gets tasks; a section whose signals are strong still gets maintenance tasks.",
+    "2. 3–4 tasks per section, 5 sections: skin, diet, exercise, style, sleep. Every section gets tasks; a section whose signals are strong still gets maintenance tasks.",
     "3. Each task: title, detail (concrete — what, how much, when), frequency (daily / 3x/week / weekly / once), whyYou (tied to the SPECIFIC score and reason it addresses — quote the score), addresses (the signal key it targets, or \"general\").",
     "4. Order the sections by the priority of the signals they address — the section tackling the weakest fixable signal leads.",
     "5. Return a \"priority\" array: the scored signals ranked weakest-fixable-first (fixable signals first by score ascending, then bone signals by score ascending).",
+    "6. The sleep section designs wind-down, fixed-wake-time, and caffeine-cut-off tasks from the user's quiz.sleepHours and the eyeArea signal (under-eye darkness) — sleep is the lever that moves under-eyes, so its tasks address eyeArea or \"general\".",
     "",
     "Return exactly this shape, nothing else:",
-    '{ "sections": [ { "id": "skin" | "diet" | "exercise" | "style", "title": "...", "summary": "...", "whyForYou": "...", "tasks": [ { "title": "...", "detail": "...", "frequency": "daily", "whyYou": "...", "addresses": "skinQuality" } ] } ], "priority": ["skinQuality", "lowerThird", ...] }'
+    '{ "sections": [ { "id": "skin" | "diet" | "exercise" | "style" | "sleep", "title": "...", "summary": "...", "whyForYou": "...", "tasks": [ { "title": "...", "detail": "...", "frequency": "daily", "whyYou": "...", "addresses": "skinQuality" } ] } ], "priority": ["skinQuality", "lowerThird", ...] }'
   );
   return lines.join("\n");
 }
@@ -390,11 +394,12 @@ async function callGemini(
         // scores, not creative. 0.3 (not 0.2) — task wording needs
         // a little variety across faces.
         temperature: 0.3,
-        // 4 sections × 3–4 tasks with detail + why. 2048 was NOT
+        // 5 sections × 3–4 tasks with detail + why. 2048 was NOT
         // enough: the morph-1 proof hit MAX_TOKENS at 2044 and the
-        // JSON truncated mid-task (unparseable). A full plan runs
-        // ~1800–2600 tokens; 3072 leaves real headroom.
-        maxOutputTokens: 3072,
+        // JSON truncated mid-task (unparseable). A full 4-section
+        // plan ran ~1800–2600 tokens; the 5th section (sleep,
+        // 2026-11-15) adds ~450–650, so 4096 leaves real headroom.
+        maxOutputTokens: 4096,
       },
     }),
   });
@@ -500,9 +505,9 @@ function parsePlan(
     totalTasks += tasks.length;
     sections.push({ id: id as SectionId, title, summary, whyForYou, tasks });
   }
-  // All 4 sections, enough tasks, and the weakest fixable signal
+  // All 5 sections, enough tasks, and the weakest fixable signal
   // must be addressed by at least one task.
-  if (seen.size !== 4 || totalTasks < MIN_TASKS_TOTAL) return null;
+  if (seen.size !== 5 || totalTasks < MIN_TASKS_TOTAL) return null;
   if (!weakestAddressed) return null;
 
   const rawPriority = obj.priority;
