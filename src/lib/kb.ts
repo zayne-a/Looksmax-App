@@ -340,8 +340,8 @@ function scoreSummaryFor(
 ): string {
   if (measurements && measurements.landmarksDetected) {
     const parts = [
-      `Your scan scored ${measurements.overallScore}/100 overall.`,
-      `Symmetry ${measurements.symmetryScore}/100, skin redness ${measurements.skin.redness}/100, texture ${measurements.skin.texture}/100, under-eye darkness ${measurements.skin.underEye}/100.`,
+      `Your scan scored ${Math.round(measurements.overallScore)}/100 overall.`,
+      `Symmetry ${Math.round(measurements.symmetryScore)}/100, skin redness ${Math.round(measurements.skin.redness)}/100, texture ${Math.round(measurements.skin.texture)}/100, under-eye darkness ${Math.round(measurements.skin.underEye)}/100.`,
       `Facial thirds are ${[
         measurements.facialThirds.upper,
         measurements.facialThirds.mid,
@@ -425,13 +425,21 @@ function priorityFixesFor(
 }
 
 // Every task cites its trigger via whyYou (personalization spec guardrail 1).
+// The optional 5th param marks attribute gates (Zayne 2026-11-15):
+// requiresHair / requiresBeard / requiresGlasses — the task only
+// applies to users with the attribute.
 function task(
   title: string,
   detail: string,
   frequency: string,
-  whyYou: string
+  whyYou: string,
+  opts?: {
+    requiresHair?: boolean;
+    requiresBeard?: boolean;
+    requiresGlasses?: boolean;
+  }
 ): PlanTask {
-  return { title, detail, frequency, whyYou };
+  return { title, detail, frequency, whyYou, ...opts };
 }
 
 /**
@@ -510,11 +518,11 @@ function leadProtocol(s: SkinSignals, quiz: QuizAnswers): LeadProtocol {
 // ---------- whyYou trigger builders ----------
 
 const whyScanRedness = (s: SkinSignals) =>
-  `because your scan showed elevated redness (${s.redness}/100)`;
+  `because your scan showed elevated redness (${Math.round(s.redness)}/100)`;
 const whyScanBlemishes = (s: SkinSignals) =>
-  `because your scan showed elevated blemish activity (${s.blemishes} active blemishes)`;
+  `because your scan showed elevated blemish activity (${Math.round(s.blemishes)} active blemishes)`;
 const whyScanTexture = (s: SkinSignals) =>
-  `because your scan showed rougher texture (${s.texture}/100)`;
+  `because your scan showed rougher texture (${Math.round(s.texture)}/100)`;
 const whyGoalRank = (quiz: QuizAnswers, i: number) => {
   const g = (quiz.goalRanking[i] ?? "").trim();
   return g
@@ -1528,12 +1536,24 @@ function buildExerciseSection(
 
 function buildStyleSection(
   measurements: FaceMeasurements | null,
-  _quiz: QuizAnswers,
+  quiz: QuizAnswers,
   foundations: SkinFoundations
 ): PlanSection {
   const shape = matchFaceShape(measurements);
   const topCuts = shape ? shape.haircuts.slice(0, 2) : [];
   const groomingHabits = foundations.postureGrooming.habits;
+
+  // Attribute gates (Zayne 2026-11-15: personalisation EXCLUDES
+  // what doesn't apply): hair tasks need hair, beard tasks need
+  // facial hair, the frames task needs glasses. "unknown"
+  // (skipped question / older quiz) never excludes — the safe
+  // direction for existing users.
+  const hairStatus = quiz.hairStatus ?? "unknown";
+  const beardStatus = quiz.beardStatus ?? "unknown";
+  const wearsGlasses = quiz.wearsGlasses ?? "unknown";
+  const hasHair = hairStatus !== "bald" && hairStatus !== "shaved";
+  const hasBeard = quiz.gender !== "female" && beardStatus !== "none";
+  const hasGlasses = wearsGlasses !== "no";
 
   const cutLines = topCuts.map(
     (c) => `${c.name}: ${c.description} Why it works for you — ${c.whyItWorks} Maintenance: ${c.maintenance}.`
@@ -1546,25 +1566,52 @@ function buildStyleSection(
   const mouthTape = groomingHabits.find((h) => h.name === "Mouth tape for nasal breathing");
   const tongue = groomingHabits.find((h) => h.name === "Tongue posture exercises");
 
+  // The summary + whyForYou name only what applies: a bald user
+  // reads about scalp care, not a haircut; a user who can't grow
+  // facial hair reads nothing about beards.
+  const summaryParts: string[] = [];
+  if (hasHair) summaryParts.push("a flattering haircut");
+  else summaryParts.push("scalp care");
+  if (hasBeard) summaryParts.push("deliberate facial-hair shaping");
+  summaryParts.push("brow grooming, and posture");
+  const styleSummary = `${cutSummary}: ${summaryParts.join(", ")} — the fastest visible wins.`;
+
+  const cutPriority = hasHair
+    ? topCuts.map((c) => c.name).join(" or ")
+    : "scalp care and a clean shave";
+  const styleWhyForYou = shape
+    ? hasBeard
+      ? `Your detected face shape is ${shape.name}. ${cutSummary}, the plan prioritizes: ${cutPriority}. ${shape.beardNotes}`
+      : `Your detected face shape is ${shape.name}. ${cutSummary}, the plan prioritizes: ${cutPriority}.`
+    : hasHair
+      ? "Haircut and grooming recommendations are general here since no face-shape scan was provided — get the cut that adds structure where your face needs it."
+      : "Grooming recommendations are general here since no face-shape scan was provided — scalp care, brow grooming, and posture are the fastest visible wins.";
+
   return {
     id: "style",
     title: "Style",
-    summary: `${cutSummary}: a flattering haircut, deliberate facial-hair shaping, brow grooming, and posture — the fastest visible wins.`,
-    whyForYou: shape
-      ? `Your detected face shape is ${shape.name}. ${cutSummary}, the plan prioritizes: ${topCuts.map((c) => c.name).join(" or ")}. ${shape.beardNotes}`
-      : "Haircut and grooming recommendations are general here since no face-shape scan was provided — get the cut that adds structure where your face needs it.",
+    summary: styleSummary,
+    whyForYou: styleWhyForYou,
     weeks: [
-      week(1, "Get the cut", [
-        task(
-          "Book the haircut",
-          topCuts.length
-            ? `Show your barber these references: ${cutLines.join(" ")}`
-            : "Ask your barber for a cut that adds structure and suits your face shape; bring reference photos.",
-          "once",
-          shape
-            ? `because your detected face shape is ${shape.name} — this cut is chosen for it.`
-            : "because a deliberate cut is the fastest visible win."
-        ),
+      week(1, hasHair ? "Get the cut" : "Care for the scalp", [
+        hasHair
+          ? task(
+              "Book the haircut",
+              topCuts.length
+                ? `Show your barber these references: ${cutLines.join(" ")}`
+                : "Ask your barber for a cut that adds structure and suits your face shape; bring reference photos.",
+              "once",
+              shape
+                ? `because your detected face shape is ${shape.name} — this cut is chosen for it.`
+                : "because a deliberate cut is the fastest visible win.",
+              { requiresHair: true }
+            )
+          : task(
+              "Care for the scalp",
+              "A bald or shaved scalp still needs care: SPF on the scalp every morning (it burns like any skin), moisturise after washing, and keep the shave clean and nick-free.",
+              "daily",
+              "because a healthy scalp is the bald head's version of a good cut — protected, smooth, and intentional."
+            ),
         task(
           "Clean up the brows",
           eyebrow ? `${eyebrow.detail} ${eyebrow.caution}` : "Clean up stray brow hairs conservatively.",
@@ -1578,17 +1625,22 @@ function buildStyleSection(
           "because progress is measured against this baseline."
         ),
       ]),
-      week(2, "Shape the facial hair", [
-        task(
-          "Define the beard or go clean",
-          shape
-            ? shape.beardNotes
-            : "Keep facial hair deliberate: clean lines, maintained neckline, and a shape that suits your jaw.",
-          "2x/week",
-          shape
-            ? `because your detected face shape is ${shape.name} — facial hair should flatter it.`
-            : "because deliberate facial hair reads intentional."
-        ),
+      week(2, hasBeard ? "Shape the facial hair" : "Mewing and debloat", [
+        ...(hasBeard
+          ? [
+              task(
+                "Define the beard or go clean",
+                shape
+                  ? shape.beardNotes
+                  : "Keep facial hair deliberate: clean lines, maintained neckline, and a shape that suits your jaw.",
+                "2x/week",
+                shape
+                  ? `because your detected face shape is ${shape.name} — facial hair should flatter it.`
+                  : "because deliberate facial hair reads intentional.",
+                { requiresBeard: true }
+              ),
+            ]
+          : []),
         proTask(
           "Mewing (tongue posture)",
           tongue
@@ -1616,24 +1668,29 @@ function buildStyleSection(
           "because chewing is the jaw-training method from the mewing chapters — muscle and habit, done inside normal meals, never as a stunt."
         ),
       ]),
-      week(3, "Glasses and grooming audit", [
-        task(
-          "Check your frames",
-          shape
-            ? shape.glassesNotes
-            : "Try frames that contrast your face shape: angular faces suit round frames, round faces suit angular frames.",
-          "once",
-          shape
-            ? `because your detected face shape is ${shape.name} — frames should contrast it.`
-            : "because frames should contrast your face shape."
-        ),
+      week(3, hasGlasses ? "Glasses and grooming audit" : "Grooming audit", [
+        ...(hasGlasses
+          ? [
+              task(
+                "Check your frames",
+                shape
+                  ? shape.glassesNotes
+                  : "Try frames that contrast your face shape: angular faces suit round frames, round faces suit angular frames.",
+                "once",
+                shape
+                  ? `because your detected face shape is ${shape.name} — frames should contrast it.`
+                  : "because frames should contrast your face shape.",
+                { requiresGlasses: true }
+              ),
+            ]
+          : []),
         proTask(
           "Nasal breathing at night",
           mouthTape
             ? `${mouthTape.detail} ${mouthTape.caution}`
             : "Practice breathing through the nose at night for better sleep quality.",
           "daily",
-          `${whySleep(_quiz)} — nasal breathing improves sleep quality.`
+          `${whySleep(quiz)} — nasal breathing improves sleep quality.`
         ),
         proTask(
           "Clear a blocked nose before you chase posture",
@@ -1651,18 +1708,26 @@ function buildStyleSection(
       week(4, "Review the visible change", [
         task(
           "Retake baseline photos",
-          "Same light, same angle, same expression as week 1. Compare hair, skin, and posture side by side.",
+          "Same light, same angle, same expression as week 1. Compare skin, grooming, and posture side by side.",
           "once",
           "because week-1 photos are the comparison point."
         ),
-        task(
-          "Maintain the cut",
-          topCuts.length
-            ? `Re-trim on schedule: ${topCuts[0].maintenance}`
-            : "Re-trim every 3-4 weeks to keep the shape intentional.",
-          "once",
-          "because a good cut only stays good with maintenance."
-        ),
+        hasHair
+          ? task(
+              "Maintain the cut",
+              topCuts.length
+                ? `Re-trim on schedule: ${topCuts[0].maintenance}`
+                : "Re-trim every 3-4 weeks to keep the shape intentional.",
+              "once",
+              "because a good cut only stays good with maintenance.",
+              { requiresHair: true }
+            )
+          : task(
+              "Keep the scalp routine",
+              "SPF on the scalp every morning, moisturise after washing, and keep the shave clean — the scalp routine is the maintenance now.",
+              "daily",
+              "because the scalp routine only stays good with maintenance."
+            ),
         task(
           "Keep the daily habits",
           "Posture work, tongue posture, and brow maintenance stay in the routine — they cost minutes and compound.",
