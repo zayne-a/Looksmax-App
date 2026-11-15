@@ -13,7 +13,7 @@
  *
  * Engine v2 (2026-10-22): RAW presentation, exactly as the native
  * view. For v2 scans the display value IS the engine's PSL8 —
- * clamp(4.0 + (C − 50)/12.5, 0.5, 7.9), one decimal — and the tier
+ * clamp(4.0 + (C − 68)/12.5, 0.5, 8.0), one decimal — and the tier
  * name is read off the template ladder at that displayed number.
  * POTENTIAL keeps the engine's headroom over PSL, expressed on the
  * 8-scale. (An earlier web build converted v2 through tier anchors
@@ -59,7 +59,7 @@ const clampNum = (v: number, lo: number, hi: number) =>
 function psl8Of(m: FaceMeasurements): number | null {
   const b = scoreBreakdownV2(m);
   if (!b) return null;
-  return clampNum(4.0 + (b.composite - 50) / 12.5, 0.5, 7.9);
+  return clampNum(4.0 + (b.composite - 68) / 12.5, 0.5, 8.0);
 }
 
 function piecewise(
