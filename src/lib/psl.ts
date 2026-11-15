@@ -27,7 +27,10 @@
  *    + 0.15·Misc ("bodyfat factors" honestly renamed Definition —
  *    it measures how visible the bone reads in this photo).
  *  - Calibration is anchored, not sloped:
- *    PSL8 = clamp(4.0 + (C − 50)/12.5, 0.5, 7.9); display /10 = ×1.25.
+ *    PSL8 = clamp(4.0 + (C − 50)/12.5, 0.5, 8.0); display /10 = ×1.25.
+ *    (Cap 8.0 since 2026-11-15 — Zayne: an 8 gets 8; was 7.9.
+ *    Anchor/bands here are still pre-re-fit — full re-sync is a
+ *    separate job; only the cap moves in this change.)
  *    A population-typical face lands at C ≈ 50 → PSL 5.0/10 (MTN).
  *  - Side metrics join only when the side capture passed the
  *    confidence gate in lib/face.ts; otherwise weights renormalise.
@@ -410,7 +413,7 @@ export function pslScore(m: FaceMeasurements): number {
   if (isV2(m)) {
     const b = scoreBreakdownV2(m);
     if (b) {
-      const psl8 = clamp(4.0 + (b.composite - 50) / 12.5, 0.5, 7.9);
+      const psl8 = clamp(4.0 + (b.composite - 50) / 12.5, 0.5, 8.0);
       return round1(psl8 * 1.25);
     }
   }
