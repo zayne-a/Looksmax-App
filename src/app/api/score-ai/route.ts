@@ -81,6 +81,10 @@
 // make up the headroom. Potential is unblurred for everyone, so it is
 // returned in BOTH modes. In free mode the derivation uses the soft
 // criteria + geometry (no regions exist in that call).
+// BAND (Zayne 2026-11-15): the anchored value is banded into 5–7.5
+// (and above the score) by clampPotential — it boosts confidence. A
+// face already at 7.5+ shows Potential equal to its score. The AI's
+// headroom determination is untouched; only the final value is banded.
 //
 // Failure is explicit and fast: a 20s hard timeout per Gemini attempt,
 // a 55s overall deadline, and a 503 { ok: false, error:
@@ -149,6 +153,30 @@ const clamp = (v: number, lo: number, hi: number) =>
 
 /** Round to 2 decimals — kills float artefacts like 3.9000000000000004. */
 const round2 = (v: number) => Math.round(v * 100) / 100;
+
+// POTENTIAL BAND (Zayne 2026-11-15): Potential ALWAYS lands between
+// 5 and 7.5 — it boosts confidence. It also stays above the PSL
+// score. Edge: a face already at 7.5+ cannot be both above its score
+// and at-or-under the cap, so Potential equals the score there
+// ("you're already at your potential"). 7.5+ faces are vanishingly
+// rare; every normal face sees the 5–7.5 band.
+const POTENTIAL_MIN = 5;
+const POTENTIAL_MAX = 7.5;
+// Minimum display margin of Potential over the PSL score, so the
+// "Potential is above your score" rule holds even when the AI's
+// headroom is 0 (a face it judges already at its peak).
+const POTENTIAL_MARGIN = 0.1;
+
+/** Band a computed Potential value into [5, 7.5] and above `score`
+ *  (null when no score base exists — band only, no margin). */
+function clampPotential(value: number, score: number | null): number {
+  if (score !== null && score >= POTENTIAL_MAX) return round2(score);
+  const lo =
+    score === null
+      ? POTENTIAL_MIN
+      : Math.max(POTENTIAL_MIN, round2(score + POTENTIAL_MARGIN));
+  return round2(clamp(value, lo, POTENTIAL_MAX));
+}
 
 /** keyIndex → cooldown-until (epoch ms). Module-level: persists across
  *  requests in a warm serverless instance. */
@@ -617,12 +645,14 @@ function mergeBlend(
  *   3. The model's stated value, as parsed (no components at all).
  * The headroom is always the AI's own determination from the
  * scores; only the base changes. The reason is the model's own.
+ * The anchored value is banded by clampPotential (Zayne 2026-11-15:
+ * Potential ALWAYS lands 5–7.5, above the score).
  */
 function anchorPotential(potential: Potential, blendedPsl: number | null): Potential {
   const { value, reason, currentEstimate, headroom } = potential;
   if (blendedPsl !== null && headroom !== null) {
     return {
-      value: round2(clamp(blendedPsl + headroom, 0, 8)),
+      value: clampPotential(blendedPsl + headroom, blendedPsl),
       reason,
       currentEstimate,
       headroom,
@@ -630,13 +660,17 @@ function anchorPotential(potential: Potential, blendedPsl: number | null): Poten
   }
   if (currentEstimate !== null && headroom !== null) {
     return {
-      value: round2(clamp(currentEstimate + headroom, 0, 8)),
+      value: clampPotential(currentEstimate + headroom, currentEstimate),
       reason,
       currentEstimate,
       headroom,
     };
   }
-  return potential;
+  // No components at all: band the model's stated value (null stays
+  // null — the caller falls back to geometry headroom).
+  return value === null
+    ? potential
+    : { value: clampPotential(value, null), reason, currentEstimate, headroom };
 }
 
 type Attempt =
