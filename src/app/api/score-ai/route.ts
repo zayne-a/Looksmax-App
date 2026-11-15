@@ -13,7 +13,7 @@
 //
 // Merge (proved in ~/workspace/psl-accuracy-harness/fit_refit.py —
 // the re-fit, 2026-11-15):
-//   G = clamp(4.0 + (B − 68) / 8, 0.5, 7.9) / 2, where B is the
+//   G = clamp(4.0 + (B − 68) / 8, 0.5, 8.0) / 2, where B is the
 //     bone-only weighted mean (0.40·H + 0.20·Dim + 0.25·Def) / 0.85.
 //     G is exactly half the geometry-only PSL the current engine
 //     would give for the bone alone — same anchor (68); slope 8
@@ -57,7 +57,8 @@
 //     (base weight floor 0.25). The client sends misfit/tailFrac/
 //     poseConf in the geometry payload; absent fields default to
 //     "geometry reliable" (misfit 0, tail 0, pose 1.0).
-//   PSL = clamp(final, 0.5, 7.9). The pixel Misc term is RETIRED under
+//   PSL = clamp(final, 0.5, 8.0) — cap 8.0 since 2026-11-15 (Zayne:
+//   an 8 gets 8; was 7.9). The pixel Misc term is RETIRED under
 //     50/50 — the AI owns the soft layer entirely. The merge runs
 //     SERVER-SIDE here (slice 2): the caller sends the geometry
 //     buckets (harmony/dimorphism/definition) and this route returns
@@ -649,7 +650,7 @@ function gPartOf(geometry: Record<string, unknown> | null): number | null {
     return null;
   }
   const boneMean = (0.4 * h + 0.2 * d + 0.25 * def) / 0.85;
-  return clamp(4.0 + (boneMean - 68) / 8, 0.5, 7.9) / 2;
+  return clamp(4.0 + (boneMean - 68) / 8, 0.5, 8.0) / 2;
 }
 
 /** The AI half A: mean of the non-null scores / 25. Pro: 4 regions
@@ -739,7 +740,7 @@ function resolveHalves(
   const wA =
     (0.25 + 0.75 * conf.aiConf) *
     (1 + RESOLUTION_K * Math.abs(twoG - twoA) * conf.misfit);
-  return clamp((wG * twoG + wA * twoA) / (wG + wA), 0.5, 7.9);
+  return clamp((wG * twoG + wA * twoA) / (wG + wA), 0.5, 8.0);
 }
 
 interface Blend {
