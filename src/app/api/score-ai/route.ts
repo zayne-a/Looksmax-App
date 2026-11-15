@@ -11,32 +11,53 @@
 // framework and explains each in one line. If a criterion cannot be
 // judged from the photo, it returns null for it — never invented.
 //
-// Merge (proved in ~/workspace/psl-accuracy-harness/blend_test.mjs,
-// NOT wired into the app yet):
-//   G = clamp(4.0 + (B − 68) / 12.5, 0.5, 7.9) / 2, where B is the
+// Merge (proved in ~/workspace/psl-accuracy-harness/fit_refit.py —
+// the re-fit, 2026-11-15):
+//   G = clamp(4.0 + (B − 68) / 8, 0.5, 7.9) / 2, where B is the
 //     bone-only weighted mean (0.40·H + 0.20·Dim + 0.25·Def) / 0.85.
 //     G is exactly half the geometry-only PSL the current engine
-//     would give for the bone alone — same anchor (68), same slope
-//     (12.5) — so the geometry half inherits the existing calibration
-//     (average face: B ≈ 68 → G ≈ 2.0).
+//     would give for the bone alone — same anchor (68); slope 8
+//     (was 12.5 — re-fit 2026-11-15 on criteria-anchored faces:
+//     slope 8 is the shallowest slope that keeps the PSL-8 morph
+//     above the PSL-7 TikTok face AND lifts TikTok to ~7).
 //   A = mean of the AI's non-null scores / 25. Pro mode: 4 region
-//     scores + 4 face criteria (8 signals). Free mode: 4 face
+//     scores + 3 face criteria (7 signals). Free mode: 3 face
 //     criteria only (no regions). photoQuality never enters A (it is
-//     a confidence signal, not a face score). Each AI score is 0–100
-//     with 50 = average, so the mean maps linearly to 0–4 with 2.0 at
-//     average. softComposite (returned here) is the mean of the 4
-//     face criteria — the free-mode A numerator, and half the pro
-//     numerator.
-//   RE-CENTRING (slice 2): the model scores generously — run-6 raw
-//     centre 82.6/100, not 50 — so mean A came out 3.33 and the blend
-//     inflated every face ~+1.0 PSL. Every face score is shifted down
-//     by RECENTER_SHIFT (25) at parse time, so the AI half centres at
-//     2.0/4 on an average face (fit: 17 run-6 face-modes, target mean
-//     A = geometry mean − mean G = 2.30, shift 24.8 → rounded to 25).
-//     The response carries rawMean (mean of the raw scores) so the
-//     shift can be re-fit from production data later. photoQuality is
-//     NOT re-centred (confidence signal, not a face score).
-//   PSL = clamp(G + A, 0.5, 7.9). The pixel Misc term is RETIRED under
+//     a confidence signal, not a face score). overallImpression does
+//     NOT enter A (re-fit 2026-11-15: it reads "bone, balance,
+//     harmony" — the same thing G measures — so it double-counts
+//     bone; proven by the PSL-1 morph scoring OI 84 on decent bone
+//     while its skin/eye read 48/46). Each AI score is 0–100 with
+//     50 = average, so the mean maps linearly to 0–4 with 2.0 at
+//     average. softComposite (returned here) is the mean of all 4
+//     face criteria — the full soft read, informational only.
+//   RE-CENTRING (slice 2, REMOVED in the re-fit): RECENTER_SHIFT is
+//     now 0 — no shift. The slice-2 shift (25) capped the AI half
+//     at 3.00 and made a PSL 7 mathematically impossible (blend
+//     ceiling 6.28). The re-fit (fit_refit.py, v4 prompt data) found
+//     shift 0 with slope 8 + the resolution below: TikTok 6.93
+//     (target 7.0), morph-8 7.09, weak faces stay low (ba-before
+//     4.00, liam 5.16). The shift stays a named constant so a future
+//     re-fit from production population data can restore it if the
+//     model's centre drifts. photoQuality is NOT re-centred
+//     (confidence signal, not a face score).
+//   RESOLUTION (Zayne 2026-11-15: "the AI should help figure out
+//     the final score when geometry mistakes"): the final is a
+//     CONFIDENCE-WEIGHTED blend of 2G and 2A, not the plain mean:
+//     final = (wG·2G + wA·2A)/(wG + wA). geoConf comes from the
+//     mis-fit signal — elite bone structure with punished
+//     proportions (the TikTok signature: structure 94.7,
+//     proportions 48.9) means the bands are mis-fitting an elite
+//     face, so geometry's weight drops and the AI's weight is
+//     amplified (k = 1.5) in proportion to the divergence. When
+//     geometry shows no mis-fit (weak bone, or bone and proportions
+//     agreeing), the blend stays near 50/50 — divergence alone
+//     never overrides geometry (a weak-boned face with good soft
+//     features stays low). Neither half is ever fully discarded
+//     (base weight floor 0.25). The client sends misfit/tailFrac/
+//     poseConf in the geometry payload; absent fields default to
+//     "geometry reliable" (misfit 0, tail 0, pose 1.0).
+//   PSL = clamp(final, 0.5, 7.9). The pixel Misc term is RETIRED under
 //     50/50 — the AI owns the soft layer entirely. The merge runs
 //     SERVER-SIDE here (slice 2): the caller sends the geometry
 //     buckets (harmony/dimorphism/definition) and this route returns
@@ -140,7 +161,7 @@ const MAX_PHOTO_CHARS = 4_000_000;
 // score at parse time. Fit on run-6 (17 face-modes, raw centre 82.6,
 // target mean A 2.30 → shift 24.8, rounded to 25). Re-fit from
 // production rawMean data when real scans exist — never guess.
-const RECENTER_SHIFT = 25;
+const RECENTER_SHIFT = 0;
 
 // Sanity bound on the AI's Potential headroom: no face realistically
 // gains more than 2.0 PSL from looksmaxxing. Only binds on
@@ -266,6 +287,21 @@ const FACE_CRITERIA: CriterionName[] = [
   "overallImpression",
 ];
 
+/** The face criteria that enter the AI half A: skin, eyes, hair
+ *  ONLY. overallImpression is excluded (re-fit 2026-11-15, v4 A/B +
+ *  fit_refit.py): it reads "bone, balance, harmony" — the same thing
+ *  G measures — so including it double-counts bone. Proven on the
+ *  PSL-1 morph: OI 84 (its bone is decent) while its skin/eye read
+ *  48/46; excluding OI drops the morph-1 final from 5.23 to 4.97
+ *  (under its cap) with no other face moving more than 0.06. The
+ *  slice-4 NOTE below recorded the OLD decision (OI kept); the
+ *  re-fit's fresh A/B is the evidence that reversed it. */
+const A_CRITERIA: CriterionName[] = [
+  "skinQuality",
+  "eyeArea",
+  "hairFraming",
+];
+
 // NOTE (slice 4 A/B): the audit's §4d offered "face-only text OR drop
 // overallImpression from the A mean". The A/B re-ran both: the
 // exclusion's SD benefit was ~0.02 (negligible) while it cost ordering
@@ -273,6 +309,9 @@ const FACE_CRITERIA: CriterionName[] = [
 // criterion text (item 4 below) is the fix, and overallImpression stays
 // in the mean as a face criterion. Do not re-add the exclusion without
 // a fresh A/B showing it helps.
+// SUPERSEDED (re-fit 2026-11-15): the fresh A/B exists — the v4 prompt
+// A/B + fit_refit.py (see A_CRITERIA above). OI is OUT of the mean.
+// Do not re-add it without a fresh fit showing it helps.
 
 type CriterionScore = { score: number | null; reason: string };
 type Criteria = Record<CriterionName, CriterionScore>;
@@ -301,11 +340,21 @@ type Potential = {
 };
 
 // Prompt version: v1 = the original prompt (pre-slice-4); v2 = the
-// hardened prompt below (PSL fix slice 4, audit §4d). Returned in
-// every success response so a score's prompt is provable from the
-// response itself — and so a deploy can be verified by polling for
-// the new version instead of guessing from behaviour.
-const PROMPT_VERSION = 2;
+// hardened prompt below (PSL fix slice 4, audit §4d); v3 = the
+// top-end discrimination prompt (PSL re-fit 2026-11-15): explicit
+// score anchors per criterion, grounded in criteria-anchored elite
+// faces (the TikTok PSL-7 face's praised features). v3 FAILED its
+// A/B: it inflated every face ~7–12 raw points (ba-before 50 → 63)
+// without spreading the top (top-5 range 2.0 → 4.3, need ≥ 8) —
+// "MUST score 85–95" licensed generosity instead of discrimination.
+// v4 = the corrected ladder: strict rarity at every tier, reason
+// BEFORE score (the model describes the feature, then scores to
+// match its own description), and an explicit anti-compression
+// instruction. Returned in every success response so a score's
+// prompt is provable from the response itself — and so a deploy can
+// be verified by polling for the new version instead of guessing
+// from behaviour.
+const PROMPT_VERSION = 4;
 
 const SYSTEM_PROMPT = [
   "You are a looksmaxxing face analyst scoring ONLY soft criteria against the PSL framework.",
@@ -316,7 +365,12 @@ const SYSTEM_PROMPT = [
   // let lighting, smoothing and framing move the scores — the same
   // face scored 1.5 PSL apart across two photos.
   "Judge the underlying FACE, not this photo. Two photos of the same face must receive the same scores. Ignore lighting, image quality, digital smoothing or filters, background, clothing, and the person's momentary expression.",
-  "Most faces score between 35 and 65 on any criterion. Above 80 means exceptional — rarer than 1 in 20. Do not score generously.",
+  // PSL re-fit v4 (2026-11-15): v3's ladder ("85 means striking ...
+  // an elite face MUST score 85–95") inflated every face and spread
+  // nothing. The rarity is now explicit at every tier, and the
+  // population reference is named: a merely handsome face is 65–75,
+  // not 85+. If every good face scores 90, the scores say nothing.
+  "Use the FULL 0-100 scale. 50 is average. Most faces you will ever see score 40-65 on any criterion. 70 means clearly above average — a real strength. 80 means striking — immediately noticeable, rarer than 1 in 20. 90 means elite — near-flawless, rarer than 1 in 100. 95+ means the best you have ever seen. Score against the whole population, not against other good-looking faces: a merely handsome face scores 65-75, not 85+. If you score every good face 90, your scores say nothing — spread them.",
   "If a criterion cannot be judged (for example hair not visible), return null for its score and say why in the reason. NEVER invent detail you cannot see.",
   "Keep each reason to one short sentence.",
 ].join(" ");
@@ -329,11 +383,17 @@ function buildUserText(
     "Score ONLY these 5 soft criteria for the face in this photo, as strict JSON:",
     "",
     // Per-criterion ignore lists (slice 4): each criterion names what
-    // the model must NOT let move it.
-    "1. skinQuality — skin clarity, texture, acne, redness, evenness of tone. Discount digital smoothing or filters — score the skin you can actually see, not the filter.",
-    "2. eyeArea — the eye area as it looks: eyelid exposure, under-eye darkness or bags, eye shape impression, hunter vs tired read. Ignore shadows and lighting — score the eye area itself, not the light falling on it.",
-    "3. hairFraming — hairline, hair fullness, how the hair frames the face. Judge the hair itself, not the styling or the light. Null if hair is not visible.",
-    "4. overallImpression — the face as a whole: how the features read together as a FACE — bone, balance, harmony. NOT expression, NOT presence, NOT the photo. This is a soft-criterion read of the whole face, NOT an overall attractiveness score.",
+    // the model must NOT let move it. Per-criterion elite/weak
+    // anchors (re-fit v3, rarity hardened in v4): grounded in the
+    // criteria-anchored elite faces — the TikTok PSL-7 face's
+    // praised features are the 90+ anchors, so the model has a
+    // concrete elite to score against instead of an abstract
+    // "exceptional". v4 adds the rarity: 90+ is rarer than 1 in 100,
+    // not a grade for every good face.
+    "1. skinQuality — skin clarity, texture, acne, redness, evenness of tone. Discount digital smoothing or filters — score the skin you can actually see, not the filter. 90+ means exceptionally smooth, clear, even-toned skin with no visible blemishes — near-flawless, rarer than 1 in 100. 30 means visible acne, rough texture, or strongly uneven tone.",
+    "2. eyeArea — the eye area as it looks: eyelid exposure, under-eye darkness or bags, eye shape impression, hunter vs tired read. Ignore shadows and lighting — score the eye area itself, not the light falling on it. 90+ means deep-set hunter eyes with minimal upper eyelid exposure, strong brow support, no under-eye darkness or bags — near-flawless, rarer than 1 in 100. 30 means heavy bags, drooping lids, or a deeply tired read.",
+    "3. hairFraming — hairline, hair fullness, how the hair frames the face. Judge the hair itself, not the styling or the light. Null if hair is not visible. 90+ means dense, thick hair with strong volume framing the upper face — near-flawless, rarer than 1 in 100. 30 means visibly thinning, receded, or absent framing.",
+    "4. overallImpression — the face as a whole: how the features read together as a FACE — bone, balance, harmony. NOT expression, NOT presence, NOT the photo. This is a soft-criterion read of the whole face, NOT an overall attractiveness score. 90+ means striking feature harmony with high dimorphism and sharp structural definition — a face that reads elite at a glance, rarer than 1 in 100. 30 means the features read as mismatched or weak together.",
     "5. photoQuality — how well this photo serves scoring: lighting, angle, sharpness, framing. This is a confidence signal, not a face score. If photoQuality is below 60, pull every face score toward 50 in proportion to how far below 60 it is — a bad photo must never produce extreme face scores.",
   ];
   // Geometry FIRST (slice 4): the Potential paragraph below refers to
@@ -358,16 +418,16 @@ function buildUserText(
       "",
       "LAST — Potential, derived FROM THE SCORES you have just produced (regions + soft criteria) plus the geometry measurements above — do NOT re-judge the photo independently for Potential. Show your working in three steps: (1) currentEstimate — your read of this face's CURRENT level on the 0–8 scale, from the scores (near the geometry PSL, raised by strong soft scores, lowered by weak ones); (2) headroom — the REALISTIC gain on the 0–8 scale from fixing what is fixable (0 when the scores are already high — little room left means SMALL headroom, never more than 2.0; larger only when strong bone pairs with weak soft scores); (3) value = currentEstimate + headroom. Your one-line reason MUST name the specific improvements that make up the headroom (for example 'clearing acne + better hair framing'), and MUST be consistent with the headroom size — if you say little room is left, the headroom must be small.",
       "",
-      "Return exactly this shape, nothing else:",
-      '{ "skinQuality": { "score": 0-100 or null, "reason": "..." }, "eyeArea": { "score": ..., "reason": "..." }, "hairFraming": { "score": ..., "reason": "..." }, "overallImpression": { "score": ..., "reason": "..." }, "photoQuality": { "score": ..., "reason": "..." }, "regions": { "eyes": { "score": ..., "reason": "..." }, "midface": { "score": ..., "reason": "..." }, "lowerThird": { "score": ..., "reason": "..." }, "upperThird": { "score": ..., "reason": "..." } }, "potential": { "value": 0-8 or null, "reason": "...", "currentEstimate": 0-8 or null, "headroom": 0-2 or null } }'
+      "Return exactly this shape, nothing else. Write the reason FIRST, then the score — describe what you see before you score it, and make the score match the description:",
+      '{ "skinQuality": { "reason": "...", "score": 0-100 or null }, "eyeArea": { "reason": "...", "score": ... }, "hairFraming": { "reason": "...", "score": ... }, "overallImpression": { "reason": "...", "score": ... }, "photoQuality": { "reason": "...", "score": ... }, "regions": { "eyes": { "reason": "...", "score": ... }, "midface": { "reason": "...", "score": ... }, "lowerThird": { "reason": "...", "score": ... }, "upperThird": { "reason": "...", "score": ... } }, "potential": { "value": 0-8 or null, "reason": "...", "currentEstimate": 0-8 or null, "headroom": 0-2 or null } }'
     );
   } else {
     lines.push(
       "",
       "LAST — Potential, derived FROM THE SCORES you have just produced (soft criteria) plus the geometry measurements above — do NOT re-judge the photo independently for Potential. Show your working in three steps: (1) currentEstimate — your read of this face's CURRENT level on the 0–8 scale, from the scores (near the geometry PSL, raised by strong soft scores, lowered by weak ones); (2) headroom — the REALISTIC gain on the 0–8 scale from fixing what is fixable (0 when the scores are already high — little room left means SMALL headroom, never more than 2.0; larger only when strong bone pairs with weak soft scores); (3) value = currentEstimate + headroom. Your one-line reason MUST name the specific improvements that make up the headroom (for example 'clearing acne + better hair framing'), and MUST be consistent with the headroom size — if you say little room is left, the headroom must be small.",
       "",
-      "Return exactly this shape, nothing else:",
-      '{ "skinQuality": { "score": 0-100 or null, "reason": "..." }, "eyeArea": { "score": ..., "reason": "..." }, "hairFraming": { "score": ..., "reason": "..." }, "overallImpression": { "score": ..., "reason": "..." }, "photoQuality": { "score": ..., "reason": "..." }, "potential": { "value": 0-8 or null, "reason": "...", "currentEstimate": 0-8 or null, "headroom": 0-2 or null } }'
+      "Return exactly this shape, nothing else. Write the reason FIRST, then the score — describe what you see before you score it, and make the score match the description:",
+      '{ "skinQuality": { "reason": "...", "score": 0-100 or null }, "eyeArea": { "reason": "...", "score": ... }, "hairFraming": { "reason": "...", "score": ... }, "overallImpression": { "reason": "...", "score": ... }, "photoQuality": { "reason": "...", "score": ... }, "potential": { "value": 0-8 or null, "reason": "...", "currentEstimate": 0-8 or null, "headroom": 0-2 or null } }'
     );
   }
   return lines.join("\n");
@@ -431,9 +491,12 @@ function extractText(data: unknown): string | null {
 
 /** Parse one { score, reason } entry. Null score WITH a reason
  *  ("hair not visible") is a real answer, not a failure. Face scores
- *  are RE-CENTRED (RECENTER_SHIFT) at parse time — the model scores
- *  generously (run-6 raw centre 82.6, not 50). photoQuality passes
- *  recenter=false: it is a confidence signal, not a face score. */
+ *  are RE-CENTRED (RECENTER_SHIFT) at parse time — the shift is 0
+ *  since the 2026-11-15 re-fit (the slice-2 shift of 25 capped the
+ *  AI half at 3.00 and made a PSL 7 impossible); the constant stays
+ *  so a future population-data re-fit can restore a shift if the
+ *  model's centre drifts. photoQuality passes recenter=false: it is
+ *  a confidence signal, not a face score. */
 function parseEntry(entry: unknown, recenter = true): CriterionScore {
   let score: number | null = null;
   let reason = "";
@@ -509,7 +572,7 @@ function parseScoring(
     const s = (e as { score?: unknown }).score;
     return typeof s === "number" && Number.isFinite(s) ? s : null;
   };
-  for (const name of FACE_CRITERIA) {
+  for (const name of A_CRITERIA) {
     const s = rawScoreOf(obj[name]);
     if (s !== null) rawVals.push(s);
   }
@@ -570,9 +633,9 @@ function softCompositeOf(criteria: Criteria): number | null {
 
 /** The geometry half G from the bone buckets (0–100). Null when any
  *  bucket is missing — the caller must send harmony/dimorphism/
- *  definition for the blend. Same anchor (68) and slope (12.5) as
- *  the geometry engine; this function READS the buckets, it never
- *  re-scores anything. */
+ *  definition for the blend. Same anchor (68) as the geometry
+ *  engine; slope 8 (re-fit 2026-11-15 — was 12.5). This function
+ *  READS the buckets, it never re-scores anything. */
 function gPartOf(geometry: Record<string, unknown> | null): number | null {
   if (!geometry) return null;
   const h = geometry.harmony;
@@ -586,17 +649,19 @@ function gPartOf(geometry: Record<string, unknown> | null): number | null {
     return null;
   }
   const boneMean = (0.4 * h + 0.2 * d + 0.25 * def) / 0.85;
-  return clamp(4.0 + (boneMean - 68) / 12.5, 0.5, 7.9) / 2;
+  return clamp(4.0 + (boneMean - 68) / 8, 0.5, 7.9) / 2;
 }
 
-/** The AI half A: mean of the non-null re-centred scores / 25. Pro:
- *  4 regions + 4 face criteria. Free: 4 face criteria. Null when no
- *  score exists. photoQuality never enters A. The native client's
- *  aiHalf() in faceScore.ts MUST mirror this list exactly — it
- *  re-derives A from the stored criteria. */
+/** The AI half A: mean of the non-null scores / 25. Pro: 4 regions
+ *  + 3 face criteria (skin/eye/hair). Free: 3 face criteria.
+ *  overallImpression does NOT enter A (re-fit 2026-11-15 — it
+ *  double-counts bone; see A_CRITERIA). Null when no score exists.
+ *  photoQuality never enters A. The native client's aiHalf() in
+ *  faceScore.ts MUST mirror this list exactly — it re-derives A
+ *  from the stored criteria. */
 function aPartOf(criteria: Criteria, regions: Regions | null): number | null {
   const vals: number[] = [];
-  for (const n of FACE_CRITERIA) {
+  for (const n of A_CRITERIA) {
     const s = criteria[n].score;
     if (s !== null) vals.push(s);
   }
@@ -610,14 +675,84 @@ function aPartOf(criteria: Criteria, regions: Regions | null): number | null {
   return vals.reduce((a, b) => a + b, 0) / vals.length / 25;
 }
 
+/** Divergence gain for the resolution (re-fit 2026-11-15,
+ *  fit_refit.py: k = 1.5, slope 8, shift 0). */
+const RESOLUTION_K = 1.5;
+
+interface BlendConf {
+  geoConf: number;
+  aiConf: number;
+  misfit: number;
+}
+
+/** The confidence pair for the resolution. The client sends
+ *  misfit/tailFrac/poseConf in the geometry payload (computed from
+ *  the breakdown's metric scores + the fifths yaw proxy); absent
+ *  fields default to "geometry reliable" so old clients merge
+ *  near-50/50. photoQuality null → 70 (the fit's default).
+ *  The native client's resolveBlend() in faceScore.ts MUST mirror
+ *  these formulas exactly. */
+function blendConfOf(
+  geometry: Record<string, unknown> | null,
+  criteria: Criteria,
+  regions: Regions | null
+): BlendConf {
+  const num = (v: unknown, dflt: number): number =>
+    typeof v === "number" && Number.isFinite(v) ? v : dflt;
+  const misfit = clamp(num(geometry?.misfit, 0), 0, 1);
+  const tailFrac = clamp(num(geometry?.tailFrac, 0), 0, 1);
+  const poseConf = clamp(num(geometry?.poseConf, 1), 0, 1);
+  const geoConf = clamp(
+    0.6 * (1 - misfit) + 0.2 * (1 - tailFrac) + 0.2 * poseConf,
+    0,
+    1
+  );
+  const photoQ = criteria.photoQuality.score;
+  let nulls = 0;
+  let total = 0;
+  for (const n of A_CRITERIA) {
+    total += 1;
+    if (criteria[n].score === null) nulls += 1;
+  }
+  if (regions) {
+    for (const n of REGION_NAMES) {
+      total += 1;
+      if (regions[n].score === null) nulls += 1;
+    }
+  }
+  const aiConf = clamp(
+    0.7 * ((photoQ ?? 70) / 100) + 0.3 * (1 - 0.15 * nulls),
+    0.2,
+    1
+  );
+  return { geoConf, aiConf, misfit };
+}
+
+/** The confidence-weighted resolution of the two /8 halves.
+ *  Pure math — shared (by mirror) with the native client. */
+function resolveHalves(
+  twoG: number,
+  twoA: number,
+  conf: BlendConf
+): number {
+  const wG = 0.25 + 0.75 * conf.geoConf;
+  const wA =
+    (0.25 + 0.75 * conf.aiConf) *
+    (1 + RESOLUTION_K * Math.abs(twoG - twoA) * conf.misfit);
+  return clamp((wG * twoG + wA * twoA) / (wG + wA), 0.5, 7.9);
+}
+
 interface Blend {
   gPart: number | null;
   aPart: number | null;
   blendedPsl: number | null;
 }
 
-/** The 50/50 merge. blendedPsl is null when the geometry buckets
- *  are missing (old caller) or the AI scored nothing. */
+/** The resolution merge (re-fit 2026-11-15 — replaces the plain
+ *  G + A sum). blendedPsl is the confidence-weighted resolution of
+ *  2G and 2A (see the header); gPart/aPart stay the raw halves.
+ *  blendedPsl is null when the geometry buckets are missing (old
+ *  caller) or the AI scored nothing. */
 function mergeBlend(
   geometry: Record<string, unknown> | null,
   criteria: Criteria,
@@ -627,7 +762,13 @@ function mergeBlend(
   const aPart = aPartOf(criteria, regions);
   const blendedPsl =
     gPart !== null && aPart !== null
-      ? round2(clamp(gPart + aPart, 0.5, 7.9))
+      ? round2(
+          resolveHalves(
+            2 * gPart,
+            2 * aPart,
+            blendConfOf(geometry, criteria, regions)
+          )
+        )
       : null;
   return {
     gPart: gPart === null ? null : round2(gPart),
