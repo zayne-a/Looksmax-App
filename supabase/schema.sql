@@ -173,6 +173,38 @@ create trigger profiles_protect_privileges
   before update on public.profiles
   for each row execute function public.protect_profile_privileges();
 
+-- A premium-tier plan may only be stored for a premium profile
+-- (Zayne 2026-11-15 — the downgrade rule: no premium plan survives
+-- after losing Pro). The client re-truncates premium plans for free
+-- users on read, but the database enforces the tier so a direct API
+-- caller cannot INSERT a premium plan and activate it. Also shipped
+-- as supabase/migrations/2026-11-15-plans-premium-tier-guard.sql
+-- for existing projects.
+create or replace function public.protect_plan_premium_tier()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_premium boolean;
+begin
+  if new.tier = 'premium' then
+    select is_premium into v_premium
+      from public.profiles where id = new.user_id;
+    if not coalesce(v_premium, false) then
+      raise exception 'premium-tier plans require a premium profile';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists plans_protect_premium_tier on public.plans;
+create trigger plans_protect_premium_tier
+  before insert or update on public.plans
+  for each row execute function public.protect_plan_premium_tier();
+
 -- ==================================================================
 -- Creator Portal (2026-10-22) — also shipped as
 -- supabase/migrations/2026-10-22-creator-portal.sql for existing
