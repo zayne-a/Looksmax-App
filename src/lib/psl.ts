@@ -27,19 +27,58 @@
  *    + 0.15·Misc ("bodyfat factors" honestly renamed Definition —
  *    it measures how visible the bone reads in this photo).
  *  - Calibration is anchored, not sloped:
- *    PSL8 = clamp(4.0 + (C − 50)/12.5, 0.5, 8.0); display /10 = ×1.25.
- *    (Cap 8.0 since 2026-11-15 — Zayne: an 8 gets 8; was 7.9.
- *    Anchor/bands here are still pre-re-fit — full re-sync is a
- *    separate job; only the cap moves in this change.)
+ *    PSL8 = clamp(4.0 + (C − 68)/12.5, 0.5, 8.0); display /10 = ×1.25.
+ *    (Cap 8.0 since 2026-11-15 — Zayne: an 8 gets 8; was 7.9.)
+ *    (Anchor 68 since 2026-11-14 — was 50; see the pslScore note.)
  *    A population-typical face lands at C ≈ 50 → PSL 5.0/10 (MTN).
- *  - Side metrics join only when the side capture passed the
- *    confidence gate in lib/face.ts; otherwise weights renormalise.
+ *  - Side metrics are EXCLUDED from scoring (policy (a), 2026-11-15
+ *    face-score audit §4g): the side angles score ~0 for real faces
+ *    (suspected definition mismatch vs their bands) and whether a
+ *    side photo exists at all moved the headline by ~1.5 PSL — a
+ *    binary, not a measurement. The side photo is still collected
+ *    and the side reads still appear as DISPLAY cards in the detail
+ *    deck, but no side term joins the buckets or the region scores.
+ *    Re-introduction needs a proven side-angle audit + a bounded-
+ *    influence rule (audit §4g policy (b)).
+ *
+ * Re-synced 2026-11-15 to the native engine (anchor 68, re-fit
+ * bands, side exclusion, 6-card deck reads): this file and the
+ * native src/lib/psl.ts now score identically for the same
+ * measurements. The 50/50 blend (geometry slope 8, the AI half,
+ * the misfit-gated resolution) lives in /api/score-ai, not here.
  *
  * v1 scans (no engineVersion) keep their original numbers forever:
  * the legacy mapping below is preserved verbatim and history is
  * never rescored.
  */
-import type { FaceMeasurements } from "./types";
+import type { FaceMeasurements, FrontalMetricsV2, SideMetricsV2 } from "./types";
+
+/** Optional deck-read fields the native measurement seam produces
+ *  (native lib/faceMath.ts) and stored native scans carry in their
+ *  frontal / side JSON. Web lib/types.ts doesn't declare them (the
+ *  web measurement seam never computes them), so the deck reads
+ *  below go through this structural extension — never estimated,
+ *  absent = the card skips, exactly as native guards it. */
+interface FrontalDeckFields {
+  eyelidExposureRatio?: number;
+  noseWidthRatio?: number;
+  ramusFrontalRatio?: number;
+  foreheadTaperRatio?: number;
+}
+interface SideDeckFields {
+  ramusHeightRatio?: number;
+  foreheadSlopeDeg?: number;
+}
+/** Slice-2 pixel raws (native measure pipeline) — same story. */
+interface DetailPixelRaws {
+  browCoverage?: number;
+  lashCoverage?: number;
+  hairlineRecedeRatio?: number;
+  hairLightFraction?: number;
+  hairlineDensityCoverage?: number;
+  neckWidthRatio?: number | null;
+  hyoidSkinFraction?: number | null;
+}
 
 export interface PslTier {
   label: string;
@@ -199,8 +238,11 @@ export interface ScoreBreakdownV2 {
   };
   /** The 0–100 composite C. */
   composite: number;
-  /** True when side metrics passed the gate and joined the pools. */
-  sideIncluded: boolean;
+  /** True when side metrics passed the gate. Display reads only —
+   *  side metrics NEVER join the buckets or region scores (policy
+   *  (a), 2026-11-15 audit §4g). Used by the detail-deck notes to
+   *  say whether a card's read came from the side photo. */
+  sideAvailable: boolean;
 }
 
 function weightedMean(entries: [number, number][]): number {
@@ -233,12 +275,16 @@ export function scoreBreakdownV2(m: FaceMeasurements): ScoreBreakdownV2 | null {
   const f = m.frontal;
   const g = m.gender;
 
-  // Per-third proportion scores: Gaussian around 1/3, σ = 0.022 (the
+  // Per-third proportion scores: Gaussian around 1/3, σ = 0.035 (the
   // formula's Tier-1 allows ≤1–3% deviation; pslscale's tiers run
-  // 3–6% dev at PSL 4 to <3% at PSL 5).
+  // 3–6% dev at PSL 4 to <3% at PSL 5). σ widened 2026-11-15
+  // (0.022 → 0.035, PSL re-fit): the old σ was narrower than the
+  // landmark noise on the thirds (hairline/chin placement moves a
+  // third by ~3%), so the TikTok PSL-7 face scored 30.6 on thirds
+  // with a genuinely balanced face. The ideal is unchanged.
   const thirdScore = (v: number): number => {
     const d = v - 1 / 3;
-    return 100 * Math.exp(-0.5 * (d / 0.022) * (d / 0.022));
+    return 100 * Math.exp(-0.5 * (d / 0.035) * (d / 0.035));
   };
   const thirds = {
     upper: thirdScore(m.facialThirds.upper),
@@ -247,39 +293,83 @@ export function scoreBreakdownV2(m: FaceMeasurements): ScoreBreakdownV2 | null {
   };
 
   const metrics: Record<string, number> = {
-    // F1 ESR — the heaviest frontal metric in the formula.
-    esr: bandScore(f.esr, band(g, [0.443, 0.477, 0.017, 0.017], [0.45, 0.479, 0.017, 0.017])),
+    // F1 ESR — the heaviest frontal metric in the formula. σ widened
+    // 2026-11-15 (0.017 → 0.028, PSL re-fit): the old σ was narrower
+    // than the landmark noise on the eye-spacing ratio, so elite
+    // faces a hair outside the band scored ~38.
+    esr: bandScore(f.esr, band(g, [0.443, 0.477, 0.028, 0.028], [0.45, 0.479, 0.028, 0.028])),
     // F2 thirds (mean of the three per-third scores).
     thirds: (thirds.upper + thirds.mid + thirds.lower) / 3,
     // F3 canthal tilt — asymmetric: the low/negative side falls ~2×
     // faster than the high side (spec: negative tilt punished ~2×).
-    tilt: bandScore(m.canthalTiltDeg, band(g, [5, 8.5, 1.15, 2.4], [6, 9.5, 1.25, 2.6])),
+    // Re-fit 2026-11-15 (audit V1): σLo was 1.15°, narrower than the
+    // ±3° pose noise on the tilt measurement — the TikTok PSL-7 face
+    // measured 2.72° and scored 0.2 on a genuinely positive tilt.
+    // Band widened and σLo raised to the noise floor (2.4°) both
+    // sexes; the asymmetry (low side punished harder) is kept.
+    tilt: bandScore(m.canthalTiltDeg, band(g, [4, 9, 2.4, 2.4], [5, 10, 2.4, 2.6])),
     // F4 true FWHR — scored in Dimorphism (spec pick), never "higher
-    // is better" past the band; above-band falls faster (Geniole).
-    fwhr: bandScore(m.fwhr, band(g, [1.9, 2.06, 0.1, 0.07], [1.9, 2.06, 0.1, 0.07])),
+    // is better" past the band. σ widened 2026-11-14 (0.10/0.07 →
+    // 0.14): the old σHi 0.07 made the term binary — 7 of 9 real faces
+    // measured 2.10–2.33 and scored 0–21. Population SD ≈ 0.14–0.16
+    // (Lefevre et al.); the band itself is unchanged. Re-fit
+    // 2026-11-15: σHi 0.14 → 0.28 (asymmetric — width above the band
+    // punished less): the band conflates bone width with bloat, and
+    // wide-boned elite faces (TikTok PSL 7: FWHR 2.34, scored 3.6)
+    // were zeroed for bone, not fat. Bloat is still read separately
+    // (the bloat composite below), so wide + lean no longer reads
+    // as wide + bloated.
+    fwhr: bandScore(m.fwhr, band(g, [1.9, 2.06, 0.14, 0.28], [1.9, 2.06, 0.14, 0.28])),
     // F7 total height ÷ width — replaces the debunked φ target.
-    totalHW: bandScore(f.totalHeightWidth, band(g, [1.33, 1.38, 0.03, 0.03], [1.29, 1.33, 0.03, 0.03])),
-    // F8 bigonial ÷ bizygomatic.
-    bigonial: bandScore(m.jawToCheekbone, band(g, [0.85, 0.92, 0.04, 0.04], [0.82, 0.89, 0.04, 0.04])),
-    // F6 cheekbone setedness — one-directional, saturating.
-    cheek: saturatingScore(f.cheekboneSetedness, 0.81, 0.07),
+    // σ widened 2026-11-14 (0.03 → 0.08): Farkas SDs (face height
+    // ±8mm, bizygomatic ±6mm) put the ratio SD at ≈0.08, not 0.03;
+    // the old σ zeroed the term for 8 of 9 real faces. The
+    // measurement now uses hairline→chin (faceMath faceHFull), which
+    // is what this band describes. Band centres unchanged. σ widened
+    // again 2026-11-15 (0.08 → 0.12, PSL re-fit): the TikTok PSL-7
+    // face measured 1.19 and scored 12.2 — the band still punished
+    // a long elite face harder than the measurement noise justifies.
+    totalHW: bandScore(f.totalHeightWidth, band(g, [1.33, 1.38, 0.12, 0.12], [1.29, 1.33, 0.12, 0.12])),
+    // F8 bigonial ÷ bizygomatic. Recentered 2026-11-14 (+0.06 both
+    // sexes): the band was written for the SKELETAL ratio, but the
+    // mesh measures SKIN jaw width (gonion points sit on the masseter),
+    // which runs ~0.95 on real faces — 9 of 9 measured 0.94–0.97 and
+    // scored 9–44 against the old centre 0.885. σ 0.04 → 0.03.
+    bigonial: bandScore(m.jawToCheekbone, band(g, [0.92, 0.97, 0.03, 0.03], [0.89, 0.94, 0.03, 0.03])),
+    // F6 cheekbone setedness — one-directional, saturating. σ widened
+    // 2026-11-14 (0.07 → 0.12): the old σ made it a cliff (0.67 → 2,
+    // 0.81 → 100) across the middle of the real range (median ≈0.73).
+    // Threshold lowered 2026-11-15 (0.81 → 0.75, PSL re-fit): the
+    // real range centres ≈0.73, so 0.81 sat above the median face —
+    // the threshold now marks genuinely high setedness, not the
+    // top of the population.
+    cheek: saturatingScore(f.cheekboneSetedness, 0.75, 0.12),
     // F5 jaw frontal angle is NOT scored: the spec allows dropping it
-    // if it proves unstable on reference geometry, and it does — in
-    // frontal projection the angle (ramus→corner→chin) sits at
-    // ~100–115° for every plausible face because the chin vector is
-    // mostly horizontal, so the formula's 84–95° cephalometric band
-    // is unreachable and the term would be structurally ~0 for
-    // everyone (the same dead-term failure as the v1 FWHR bug, which
-    // the calibration fixtures caught). The raw angle is still
-    // measured and stored in frontal.jawFrontalAngleDeg; its
+    // if it proves unstable on reference geometry, and it does — the
+    // frontal angle (vertex at the gonion, arms to the jaw corner and
+    // the chin) measures ~21–32° on real faces, and the corner angle
+    // ~134–148°, so NEITHER matches any cephalometric gonial band and
+    // the term would be structurally ~0 for everyone (the same
+    // dead-term failure as the v1 FWHR bug, which the calibration
+    // fixtures caught). An earlier draft of this note claimed
+    // ~100–115°; ground-truth measurement on 2026-11-14 proved that
+    // range was never true for this landmark triple. The raw angle is
+    // still measured and stored in frontal.jawFrontalAngleDeg; its
     // Harmony weight moved to F8/symmetry, its Definition weight
-    // to F8/F6 — exactly the redistribution the spec prescribes.
+    // to F8/F6 — exactly the redistribution the spec prescribes. The
+    // gonial card below follows the same rule: no side photo, no
+    // gonial score (the old frontal fallback scored this angle
+    // against a 102–112° band and read 0 for every face).
     // F9 chin-to-philtrum.
     chinPhiltrum: bandScore(f.chinPhiltrumRatio, band(g, [2.05, 2.55, 0.26, 0.26], [2.0, 2.5, 0.26, 0.26])),
-    // F10 midface ratio.
-    midface: bandScore(f.midfaceRatio, band(g, [0.93, 1.01, 0.045, 0.045], [1.0, 1.1, 0.055, 0.055])),
-    // F11 mouth ÷ nose width.
-    mouthNose: bandScore(f.mouthNoseRatio, band(g, [1.38, 1.53, 0.08, 0.08], [1.45, 1.67, 0.08, 0.08])),
+    // F10 midface ratio. σ widened 2026-11-15 (0.045/0.055 → 0.06,
+    // PSL re-fit): narrower than the landmark noise on the ratio.
+    midface: bandScore(f.midfaceRatio, band(g, [0.93, 1.01, 0.06, 0.06], [1.0, 1.1, 0.06, 0.06])),
+    // F11 mouth ÷ nose width. σ widened 2026-11-15 (0.08 → 0.12,
+    // PSL re-fit): the TikTok PSL-7 face measured 1.31 and scored
+    // 17.9 — the band punished a narrow mouth harder than the
+    // measurement noise justifies.
+    mouthNose: bandScore(f.mouthNoseRatio, band(g, [1.38, 1.53, 0.12, 0.12], [1.45, 1.67, 0.12, 0.12])),
     // F12 brow setedness (low-confidence band per spec — implemented
     // as brow→eye distance ÷ eye width and flagged there).
     browSete:
@@ -288,10 +378,18 @@ export function scoreBreakdownV2(m: FaceMeasurements): ScoreBreakdownV2 | null {
         : g === "male"
           ? ceilingScore(f.browSetedness, 0.66, 0.12)
           : bandScore(f.browSetedness, { lo: 0.4, hi: 0.755, sLo: 0.14, sHi: 0.14 }),
-    // F13 one-eye spacing test.
-    oneEye: bandScore(f.oneEyeRatio, band(g, [0.95, 1.05, 0.06, 0.06], [0.95, 1.05, 0.06, 0.06])),
-    // F14 eye aspect ratio.
-    eyeAspect: bandScore(f.eyeAspectRatio, band(g, [2.8, 3.6, 0.42, 0.42], [2.5, 3.3, 0.42, 0.42])),
+    // F13 one-eye spacing test. Recentered 2026-11-14 (1.00 → 1.10):
+    // the "one eye" rule is an idealisation — real intercanthal/eye
+    // width runs ≈1.10 (Farkas: intercanthal ~33mm, fissure ~30mm),
+    // and 9 of 9 real faces measured 1.16–1.28, scoring 0–3 against
+    // the old centre. σ unchanged. σ widened 2026-11-15 (0.06 → 0.09,
+    // PSL re-fit): still narrower than the landmark noise on the
+    // intercanthal/eye-width ratio.
+    oneEye: bandScore(f.oneEyeRatio, band(g, [1.05, 1.15, 0.09, 0.09], [1.05, 1.15, 0.09, 0.09])),
+    // F14 eye aspect ratio. σ widened 2026-11-15 (0.42 → 0.60, PSL
+    // re-fit): the TikTok PSL-7 face measured 3.96 and scored 19.3
+    // — a narrow hunter-eye fissure punished as a defect.
+    eyeAspect: bandScore(f.eyeAspectRatio, band(g, [2.8, 3.6, 0.60, 0.60], [2.5, 3.3, 0.60, 0.60])),
     // F21 eye–mouth distance (Pallett optimum 0.36 — peer-reviewed).
     eyeMouth: bandScore(f.eyeMouthRatio, band(g, [0.36, 0.36, 0.025, 0.025], [0.36, 0.36, 0.025, 0.025])),
     // F22 symmetry — the measured mirror score itself.
@@ -300,19 +398,172 @@ export function scoreBreakdownV2(m: FaceMeasurements): ScoreBreakdownV2 | null {
     lipRatio: bandScore(f.lipRatio, band(g, [1.4, 2.0, 0.32, 0.32], [1.4, 2.0, 0.32, 0.32])),
     // F17 brow tilt.
     browTilt: bandScore(f.browTiltDeg, band(g, [5, 13, 4, 4], [11, 19, 4, 4])),
-    // F18 bitemporal width.
-    bitemporal: bandScore(f.bitemporalRatio, band(g, [0.84, 0.95, 0.06, 0.06], [0.79, 0.92, 0.06, 0.06])),
+    // F18 bitemporal width. σ widened 2026-11-15 (0.06 → 0.08, PSL
+    // re-fit): narrower than the landmark noise on the ratio.
+    bitemporal: bandScore(f.bitemporalRatio, band(g, [0.84, 0.95, 0.08, 0.08], [0.79, 0.92, 0.08, 0.08])),
   };
 
-  // Side metrics — only when the gate passed (m.side present). They
-  // join the pools at their printed weights; absent = renormalised
-  // out, never estimated.
+  // Side metrics — only when the gate passed (m.side present).
+  // DISPLAY READS ONLY since 2026-11-15 (policy (a), audit §4g):
+  // they feed the detail-deck cards below (maxilla / mandible /
+  // ramus / forehead slope / gonial card) and NEVER join the
+  // buckets or the region scores. Absent = the frontal proxies
+  // below, never estimated.
   const side = m.side ?? null;
   if (side) {
     metrics.gonial = bandScore(side.gonialAngleDeg, band(g, [112, 123, 5.5, 5.5], [114, 126, 6, 6]));
     metrics.mandPlane = bandScore(side.mandibularPlaneDeg, band(g, [15, 22, 4, 4], [15, 23, 4.5, 4.5]));
     metrics.convG = bandScore(side.convexityGlabellaDeg, band(g, [168, 176, 4, 4], [168, 176, 4, 4]));
     metrics.totalConv = bandScore(side.totalConvexityDeg, band(g, [137, 148, 5.5, 5.5], [137, 148, 5.5, 5.5]));
+  }
+
+  // ---- 6-card deck reads (slice 1) — DISPLAY ONLY. None of these
+  // join the buckets below: the headline PSL and the region
+  // composites are frozen, so a new detail read can never move an
+  // existing user's headline score. Bands for the new geometry are
+  // initial judgments (documented per metric), not researched
+  // ideals — they calibrate with real scan distributions.
+  // fd/sd read the optional deck fields through the structural
+  // extension above (stored native scans carry them; web-measured
+  // scans don't — absent = the card skips).
+  const fd = f as FrontalMetricsV2 & FrontalDeckFields;
+  const sd = side as (SideMetricsV2 & SideDeckFields) | null;
+  const underEyeScore = 100 - clamp(m.skin.underEye, 0, 100);
+  // Eyelid exposure — DIRECTION FIX 2026-11-15 (PSL re-fit): the old
+  // band [0.45, 0.6] REWARDED high lid exposure, the opposite of the
+  // PSL reading — minimal exposure (deep-set hunter eyes) is the
+  // ideal, high exposure is the failo. The TikTok PSL-7 face
+  // (0.317, hunter eyes the AI praised) scored 3.4. Now a ceiling:
+  // at/below 0.35 is full marks, above falls off (0.45 → ~61,
+  // 0.60 → ~4). Display-only, as before — never joins a bucket.
+  const eyelid =
+    typeof fd.eyelidExposureRatio === "number"
+      ? ceilingScore(fd.eyelidExposureRatio, 0.35, 0.1)
+      : null;
+  const noseWidth =
+    typeof fd.noseWidthRatio === "number"
+      // Recentered 2026-11-14 (0.18–0.22 → 0.23–0.29): the old band
+      // encoded the neoclassical "one fifth" canon, but real alar
+      // width ÷ bizygomatic runs ≈0.26 (Farkas: ~36mm ÷ ~137mm) and
+      // 9 of 9 real faces — including the PSL-8 morph — measured
+      // 0.28–0.32 and scored 0–4. Centre 0.26, σ unchanged.
+      ? bandScore(fd.noseWidthRatio, { lo: 0.23, hi: 0.29, sLo: 0.03, sHi: 0.03 })
+      : null;
+  // Orbital depth: deep-set read from brow position + fissure shape
+  // (low-set brow + narrow fissure = deep-set). A side-plane
+  // refinement was considered and dropped: no bandable side signal
+  // exists in the profile chain without inventing one.
+  const orbital = weightedMean([
+    [metrics.browSete, 1],
+    [metrics.eyeAspect, 1],
+  ]);
+  // Maxilla: profile convexity when a side capture passed (straighter
+  // profile = more projected midface), else under-eye support +
+  // cheekbone height — both real midface-projection signals.
+  const maxilla = side
+    ? metrics.totalConv
+    : weightedMean([
+        [underEyeScore, 1],
+        [metrics.cheek, 1],
+      ]);
+  // Mandible: jaw width + chin balance, plus the side gonial angle
+  // when it exists.
+  const mandiblePool: [number, number][] = [
+    [metrics.bigonial, 3],
+    [metrics.chinPhiltrum, 1],
+  ];
+  if (side) mandiblePool.push([metrics.gonial, 4]);
+  const mandible = weightedMean(mandiblePool);
+  // Ramus: side height ratio when gated, else the frontal
+  // corner-to-chin shadow.
+  const ramus =
+    sd && typeof sd.ramusHeightRatio === "number"
+      ? bandScore(sd.ramusHeightRatio, { lo: 0.35, hi: 0.45, sLo: 0.05, sHi: 0.05 })
+      : typeof fd.ramusFrontalRatio === "number"
+        ? bandScore(fd.ramusFrontalRatio, { lo: 0.16, hi: 0.22, sLo: 0.03, sHi: 0.03 })
+        : null;
+  // Forehead slope: side angle (upright = better) when gated, else
+  // the frontal taper proxy — weak, flagged in the card note.
+  const foreheadSlope =
+    sd && typeof sd.foreheadSlopeDeg === "number"
+      ? ceilingScore(sd.foreheadSlopeDeg, 12, 8)
+      : typeof fd.foreheadTaperRatio === "number"
+        ? bandScore(fd.foreheadTaperRatio, { lo: 0.78, hi: 0.88, sLo: 0.04, sHi: 0.04 })
+        : null;
+  // Gonial card: the side cephalometric band when gated, else NULL —
+  // a frontal photo cannot measure the gonial angle (see the F5 note:
+  // the frontal angle is ~21–32°, the corner angle ~134–148°, neither
+  // is a gonial angle). The old frontal fallback scored the frontal
+  // angle against a 102–112° band and read 0 for every face. The card
+  // is omitted from the detail deck when null (ramus pattern).
+  const gonialCard = side ? metrics.gonial : null;
+  // Bone mass + bloat: composites of measured reads, never direct
+  // measurements — the notes say so. Bloat is the one inverted
+  // read: it grows ONLY with width BEYOND the ideal band (raw
+  // widths, not banded scores — banded scores peak AT the ideal,
+  // so 100 − fullness would call an ideal-width face maximally
+  // bloated). Narrow faces read as no bloat, correctly.
+  const boneMass = weightedMean([
+    [metrics.cheek, 2],
+    [metrics.bigonial, 2],
+    [metrics.browSete, 1],
+  ]);
+  const jawBand = band(g, [0.92, 0.97, 0.03, 0.03], [0.89, 0.94, 0.03, 0.03]);
+  const jawExcess = clamp(
+    (m.jawToCheekbone - (jawBand.lo + jawBand.hi) / 2) / 0.06,
+    0,
+    1
+  );
+  const fwhrExcess = clamp((m.fwhr - 1.98) / 0.12, 0, 1);
+  const bloat =
+    100 - weightedMean([[jawExcess * 100, 2], [fwhrExcess * 100, 1]]);
+
+  if (eyelid !== null) metrics.eyelid = eyelid;
+  if (noseWidth !== null) metrics.noseWidth = noseWidth;
+  metrics.underEye = underEyeScore;
+  metrics.orbital = orbital;
+  metrics.maxilla = maxilla;
+  metrics.mandible = mandible;
+  if (ramus !== null) metrics.ramus = ramus;
+  if (foreheadSlope !== null) metrics.foreheadSlope = foreheadSlope;
+  if (gonialCard !== null) metrics.gonialCard = gonialCard;
+  metrics.boneMass = boneMass;
+  metrics.bloat = bloat;
+
+  // ---- 6-card deck pixel reads (slice 2) — DISPLAY ONLY, same
+  // freeze as slice 1: none join the buckets. Mappings are initial
+  // judgments, documented per read; they calibrate with real scans.
+  const dp = (m as FaceMeasurements & { detailPixels?: DetailPixelRaws | null })
+    .detailPixels ?? null;
+  if (dp) {
+    if (typeof dp.browCoverage === "number") {
+      metrics.browDensity = clamp(dp.browCoverage * 125, 0, 100);
+    }
+    if (typeof dp.lashCoverage === "number") {
+      // Lash bands are mostly skin with a dark line: dense lashes
+      // cover ~half the band. Weakest signal in the set.
+      metrics.lashDensity = clamp(dp.lashCoverage * 200, 0, 100);
+    }
+    if (typeof dp.hairlineRecedeRatio === "number") {
+      const rec = clamp(dp.hairlineRecedeRatio, 0, 1);
+      metrics.hairRecede = 100 - clamp((rec / 0.5) * 100, 0, 100);
+      // Frontal-only Norwood: the crown is unseen, so the stage caps
+      // at 4 — a frontal photo cannot stage 5–7 honestly.
+      const stage = rec < 0.05 ? 1 : rec < 0.15 ? 2 : rec < 0.3 ? 3 : 4;
+      metrics.norwood = 100 - (stage - 1) * 20;
+    }
+    if (typeof dp.hairLightFraction === "number") {
+      metrics.hairThinning = 100 - clamp(dp.hairLightFraction, 0, 1) * 100;
+    }
+    if (typeof dp.hairlineDensityCoverage === "number") {
+      metrics.hairlineDensity = clamp((dp.hairlineDensityCoverage / 0.8) * 100, 0, 100);
+    }
+    if (typeof dp.neckWidthRatio === "number") {
+      metrics.neckWidth = bandScore(dp.neckWidthRatio, { lo: 0.65, hi: 0.85, sLo: 0.07, sHi: 0.07 });
+    }
+    if (typeof dp.hyoidSkinFraction === "number") {
+      metrics.hyoid = 100 - clamp(dp.hyoidSkinFraction, 0, 1) * 100;
+    }
   }
 
   // ---- Buckets (spec §5.3; weights renormalised over what's in) ----
@@ -335,14 +586,9 @@ export function scoreBreakdownV2(m: FaceMeasurements): ScoreBreakdownV2 | null {
     [metrics.browTilt, 1.2],
     [metrics.bitemporal, 1],
   ];
-  if (side) {
-    harmonyPool.push(
-      [metrics.gonial, 8],
-      [metrics.mandPlane, 2.5],
-      [metrics.convG, 2],
-      [metrics.totalConv, 1.5]
-    );
-  }
+  // No side terms in any pool (policy (a), audit §4g): side angles
+  // score ~0 for real faces and their presence/absence alone moved
+  // G by ~0.76. The side reads live in the detail deck only.
   const harmony = weightedMean(harmonyPool);
 
   // Dimorphism: the same features re-scored against the user's OWN
@@ -357,7 +603,6 @@ export function scoreBreakdownV2(m: FaceMeasurements): ScoreBreakdownV2 | null {
     [metrics.browTilt, 0.6],
     [metrics.lipRatio, 0.5],
   ];
-  if (side) dimorphismPool.push([metrics.gonial, 1]);
   const dimorphism = weightedMean(dimorphismPool);
 
   // Definition (the formula's "bodyfat factors", honestly named):
@@ -367,7 +612,6 @@ export function scoreBreakdownV2(m: FaceMeasurements): ScoreBreakdownV2 | null {
     [metrics.bigonial, 1],
     [metrics.cheek, 1],
   ];
-  if (side) definitionPool.push([metrics.gonial, 1.25]);
   const definition = weightedMean(definitionPool);
 
   // Misc: skin quality + the formula's dark-circles item, minus a
@@ -385,7 +629,7 @@ export function scoreBreakdownV2(m: FaceMeasurements): ScoreBreakdownV2 | null {
     thirds,
     buckets: { harmony, dimorphism, definition, misc },
     composite,
-    sideIncluded: !!side,
+    sideAvailable: !!side,
   };
 }
 
@@ -408,12 +652,26 @@ export function applyScoringV2(m: FaceMeasurements): FaceMeasurements {
 // ---------------------------------------------------------------------------
 
 /** PSL /10 for a scan. v2: the anchored map on the composite.
- *  v1: the legacy mapping, untouched. */
+ *  v1: the legacy mapping, untouched.
+ *
+ *  Anchor recalibrated 2026-11-14 (50 → 68): the v2 metric fixes
+ *  removed the dead terms that were silently dragging every
+ *  composite down ~18 points (totalHW/oneEye/bitemporal scored
+ *  0 for nearly every real face). With honest bands (σ ≈ population
+ *  SD) a typical face now composites ≈70, not ≈50 — the old anchor
+ *  would have scored the average man 7/10. The new anchor 68 is the
+ *  median composite of 9 ground-truth faces (70.4) minus ~2 points
+ *  for typical real-world skin (the harness holds skin perfect; real
+ *  Misc runs ~73 not 100). Slope unchanged (12.5 C per PSL8): the
+ *  composite SD across real faces is ≈10, giving a PSL SD ≈1.0, in
+ *  line with the scale. Residual uncertainty ≈ ±0.3 PSL — the anchor
+ *  rests on 9 faces, not a population sample; recalibrate against a
+ *  larger scan set when one exists. */
 export function pslScore(m: FaceMeasurements): number {
   if (isV2(m)) {
     const b = scoreBreakdownV2(m);
     if (b) {
-      const psl8 = clamp(4.0 + (b.composite - 50) / 12.5, 0.5, 8.0);
+      const psl8 = clamp(4.0 + (b.composite - 68) / 12.5, 0.5, 8.0);
       return round1(psl8 * 1.25);
     }
   }
@@ -490,7 +748,9 @@ function regionScoresV2(m: FaceMeasurements, b: ScoreBreakdownV2): RegionScore[]
     [x.lipRatio, 1.5],
     [b.thirds.lower, 2],
   ];
-  if (b.sideIncluded) lowerPool.push([x.gonial, 6]);
+  // Frontal-only (policy (a), audit §4g): the side gonial angle
+  // no longer joins the Lower Third region score. The gonial read
+  // survives as a detail-deck card when a side photo passed.
   const lowerThird = weightedMean(lowerPool);
   const upperThird = weightedMean([
     [b.thirds.upper, 2],
@@ -592,8 +852,8 @@ export function miscScores(m: FaceMeasurements): MiscScore[] {
 function miscScoresV2(m: FaceMeasurements, b: ScoreBreakdownV2): MiscScore[] {
   const x = b.metrics;
   const to10 = (v: number) => round1(clamp(v / 10, 0, 10));
-  const jawlinePool: [number, number][] = [[x.bigonial, 3]];
-  if (b.sideIncluded) jawlinePool.push([x.gonial, 8]);
+  // His Misc list (Zayne 2026-10-25), in his order. Neck Width lands
+  // with the slice-2 pixel work, between Symmetry and Bloat.
   return [
     {
       label: "Skin",
@@ -610,20 +870,24 @@ function miscScoresV2(m: FaceMeasurements, b: ScoreBreakdownV2): MiscScore[] {
       score: to10(m.symmetryScore),
       note: "Left-right mirror match across 16 landmark pairs. Sleep, posture and camera angle all move it.",
     },
+    ...(typeof x.neckWidth === "number"
+      ? [
+          {
+            label: "Neck Width",
+            score: to10(x.neckWidth),
+            note: "Neck skin span against face width — collars and long hair move it.",
+          },
+        ]
+      : []),
     {
-      label: "Jawline",
-      score: to10(weightedMean(jawlinePool)),
-      note: "Jaw width against the cheekbones — leanness changes how hard this reads.",
+      label: "Bloat",
+      score: to10(x.bloat),
+      note: "Width beyond the ideal band, inverted — lean reads high, excess width reads low. Width-based: bone widens it too, so read it with Jaw Width.",
     },
     {
-      label: "Eye Spacing",
-      score: to10(x.esr),
-      note: "Interpupillary distance against face width — the heaviest-weighted frontal metric in the community formula.",
-    },
-    {
-      label: "Proportions",
-      score: to10(x.thirds),
-      note: "How evenly your face splits into its three thirds, hairline estimated. Structure — read honestly, trained around.",
+      label: "Bone Mass",
+      score: to10(x.boneMass),
+      note: "Bone-prominence composite from cheekbones, jaw width and brow set — a computed composite, not a scan of bone.",
     },
   ];
 }
@@ -682,6 +946,303 @@ function miscScoresV1(m: FaceMeasurements): MiscScore[] {
   ];
 }
 
+export interface RegionDetailScore {
+  label: string;
+  /** 0–10, one decimal — same scale as RegionScore/MiscScore. */
+  score: number;
+  note: string;
+}
+
+export interface RegionDetails {
+  key: RegionScore["key"];
+  label: string;
+  metrics: RegionDetailScore[];
+}
+
+/** Per-region DETAIL reads for the results deck's region pages —
+ *  the individual measured traits behind each region composite,
+ *  grouped the way the reference deck pages them (Eyes / Midface /
+ *  Lower Third / Upper Third). Every entry is a metric the engine
+ *  actually scores; traits we don't measure (hair staging, lash
+ *  density) never appear as borrowed labels. Side metrics join the
+ *  Lower Third page only when the side gate passed — absent means
+ *  renormalised out, never estimated. */
+export function regionDetailScores(m: FaceMeasurements): RegionDetails[] {
+  if (isV2(m)) {
+    const b = scoreBreakdownV2(m);
+    if (b) return regionDetailScoresV2(b);
+  }
+  return regionDetailScoresV1(m);
+}
+
+function regionDetailScoresV2(b: ScoreBreakdownV2): RegionDetails[] {
+  const x = b.metrics;
+  const to10 = (v: number) => round1(clamp(v / 10, 0, 10));
+  // His 6-card lists (Zayne 2026-10-25), in his order. Slots whose
+  // measurement lands in slice 2 (pixel) are absent until then —
+  // a card never renders without a computed value, and old scans
+  // whose stored frontal lacks a new field skip that card rather
+  // than showing an estimate (history is never rescored).
+  const eyes: RegionDetailScore[] = [
+    {
+      label: "Orbital Depth",
+      score: to10(x.orbital),
+      note: "Deep-set read from brow position + fissure shape — a derived read, not a depth scan.",
+    },
+    {
+      label: "Canthal Tilt",
+      score: to10(x.tilt),
+      note: "The upward angle of the eye line — positive tilt reads sharper.",
+    },
+    ...(typeof x.browDensity === "number"
+      ? [
+          {
+            label: "Eyebrow Density",
+            score: to10(x.browDensity),
+            note: "Dark-pixel coverage of the brow boxes — measured from the photo, not the brow shape.",
+          },
+        ]
+      : []),
+    ...(typeof x.lashDensity === "number"
+      ? [
+          {
+            label: "Eyelash Density",
+            score: to10(x.lashDensity),
+            note: "Dark-pixel coverage of the lash bands — the weakest read in the set, a few pixels tall.",
+          },
+        ]
+      : []),
+    ...(typeof x.eyelid === "number"
+      ? [
+          {
+            label: "Eyelid Exposure",
+            score: to10(x.eyelid),
+            note: "How much lid sits over the iris — measured from iris centre vs fissure height.",
+          },
+        ]
+      : []),
+    {
+      label: "Under Eye Health",
+      score: to10(x.underEye),
+      note: "Under-eye darkness and hollowing — sleep moves this fastest.",
+    },
+  ];
+  const midface: RegionDetailScore[] = [
+    {
+      label: "Cheekbones",
+      score: to10(x.cheek),
+      note: "How high the cheekbones sit — height, not size.",
+    },
+    {
+      label: "Maxilla",
+      score: to10(x.maxilla),
+      note: b.sideAvailable
+        ? "Midface projection from your side profile — straighter reads more forward-grown."
+        : "Midface-projection read from under-eye support + cheekbone height (side photo refines it).",
+    },
+    ...(typeof x.noseWidth === "number"
+      ? [
+          {
+            label: "Nose",
+            score: to10(x.noseWidth),
+            note: "Nose width against face width — about a quarter of face width reads balanced.",
+          },
+        ]
+      : []),
+    {
+      label: "IPD",
+      score: to10(x.esr),
+      note: "Interpupillary distance against face width — the heaviest-weighted frontal read in the formula.",
+    },
+    {
+      label: "FWHR",
+      score: to10(x.fwhr),
+      note: "Face width against midface height — breadth through the middle of the face.",
+    },
+    {
+      label: "Compactness",
+      score: to10(x.midface),
+      note: "The middle segment's length against its ideal — compact reads younger.",
+    },
+  ];
+  const lower: RegionDetailScore[] = [
+    {
+      label: "Lips",
+      score: to10(x.lipRatio),
+      note: "Lower lip against upper lip — fullness in proportion, not size.",
+    },
+    {
+      label: "Mandible",
+      score: to10(x.mandible),
+      note: "Jaw definition from width + chin balance (side angle joins it when a side photo passes).",
+    },
+    ...(typeof x.gonialCard === "number"
+      ? [
+          {
+            label: "Gonial Angle",
+            score: to10(x.gonialCard),
+            note: "The jaw angle from your side photo — sharper reads more defined.",
+          },
+        ]
+      : []),
+    ...(typeof x.ramus === "number"
+      ? [
+          {
+            label: "Ramus",
+            score: to10(x.ramus),
+            note: b.sideAvailable
+              ? "Ramus height from your side photo — taller reads stronger."
+              : "Ramus read from lower-face height — a side photo refines it to the true ramus.",
+          },
+        ]
+      : []),
+    ...(typeof x.hyoid === "number"
+      ? [
+          {
+            label: "Hyoid Tightness",
+            score: to10(x.hyoid),
+            note: "Submental skin fill from your side photo — less fill reads tighter. Beards break this read.",
+          },
+        ]
+      : []),
+    {
+      label: "Jaw Width",
+      score: to10(x.bigonial),
+      note: "Jaw width against cheekbone width — leanness changes how hard it reads.",
+    },
+  ];
+  const upper: RegionDetailScore[] = [
+    ...(typeof x.norwood === "number"
+      ? [
+          {
+            label: "Norwood Stage",
+            score: to10(x.norwood),
+            note: "Hairline recession staged 1–4 from the front photo — the crown is unseen, so stages 5–7 are never claimed.",
+          },
+        ]
+      : []),
+    {
+      label: "Forehead Prop.",
+      score: to10(b.thirds.upper),
+      note: "The upper third's share of total face height — hairline estimated.",
+    },
+    ...(typeof x.hairRecede === "number"
+      ? [
+          {
+            label: "Hairline Recede",
+            score: to10(x.hairRecede),
+            note: "Temple hairline against the centre forelock — the continuous version of the Norwood read.",
+          },
+        ]
+      : []),
+    ...(typeof x.hairThinning === "number"
+      ? [
+          {
+            label: "Hair Thinning",
+            score: to10(x.hairThinning),
+            note: "Scalp show-through in the hair zone — light hair reads thinner than it is.",
+          },
+        ]
+      : []),
+    ...(typeof x.hairlineDensity === "number"
+      ? [
+          {
+            label: "Hairline Density",
+            score: to10(x.hairlineDensity),
+            note: "Dark-pixel coverage right on the hairline edge — a full edge reads dense.",
+          },
+        ]
+      : []),
+    ...(typeof x.foreheadSlope === "number"
+      ? [
+          {
+            label: "Forehead Slope",
+            score: to10(x.foreheadSlope),
+            note: b.sideAvailable
+              ? "Forehead inclination from your side photo — upright reads better."
+              : "Forehead-slope read from frontal taper — weak proxy, a side photo refines it.",
+          },
+        ]
+      : []),
+  ];
+  return [
+    { key: "eyes", label: "Eyes", metrics: eyes },
+    { key: "midface", label: "Midface", metrics: midface },
+    { key: "lowerThird", label: "Lower Third", metrics: lower },
+    { key: "upperThird", label: "Upper Third", metrics: upper },
+  ];
+}
+
+function regionDetailScoresV1(m: FaceMeasurements): RegionDetails[] {
+  const d = (v: number) => round1(clamp(v / 10, 0, 10));
+  return [
+    {
+      key: "eyes",
+      label: "Eyes",
+      metrics: [
+        {
+          label: "Canthal Tilt",
+          score: d(closeness(m.canthalTiltDeg, 3, 8, 10)),
+          note: "The upward angle of the eye line — positive tilt reads sharper.",
+        },
+        {
+          label: "Under-Eye",
+          score: d(100 - m.skin.underEye),
+          note: "Under-eye darkness and hollowing — sleep moves this fastest.",
+        },
+      ],
+    },
+    {
+      key: "midface",
+      label: "Midface",
+      metrics: [
+        {
+          label: "Mid Third",
+          score: d(closeness(m.facialThirds.mid, 0.31, 0.36, 0.12)),
+          note: "The middle third's share of total face height.",
+        },
+        {
+          label: "FWHR",
+          score: d(closeness(m.fwhr, 1.85, 2.05, 0.5)),
+          note: "Face width against midface height — breadth through the middle of the face.",
+        },
+      ],
+    },
+    {
+      key: "lowerThird",
+      label: "Lower Third",
+      metrics: [
+        {
+          label: "Jaw Width",
+          score: d(closeness(m.jawToCheekbone, 0.84, 0.95, 0.25)),
+          note: "Jaw width against cheekbone width — body composition changes how it reads.",
+        },
+        {
+          label: "Lower Third",
+          score: d(closeness(m.facialThirds.lower, 0.31, 0.36, 0.12)),
+          note: "The lower third's share of total face height.",
+        },
+      ],
+    },
+    {
+      key: "upperThird",
+      label: "Upper Third",
+      metrics: [
+        {
+          label: "Upper Third",
+          score: d(closeness(m.facialThirds.upper, 0.31, 0.36, 0.12)),
+          note: "The upper third's share of total face height.",
+        },
+        {
+          label: "Forehead Skin",
+          score: d(100 - (m.skin.redness * 0.5 + m.skin.texture * 0.5)),
+          note: "Redness and texture across the forehead.",
+        },
+      ],
+    },
+  ];
+}
+
 /** The ascend countdown: our programme is 90 days (Zayne, 2026-10-22
  *  — aligned with the category leader and the native app). The 90
  *  days are the 12 protocol weeks (84 days) plus a final 6-day
@@ -702,8 +1263,8 @@ export function daysUntilAscend(start: Date, now: Date = new Date()): number {
   return clamp(Math.ceil(msLeft / (24 * 60 * 60 * 1000)), 0, ASCEND_PROGRAM_DAYS);
 }
 
-export function formatAscendDate(d: Date): string {
-  return d.toLocaleDateString("en-US", {
+export function formatAscendDate(d: Date, locale = "en-US"): string {
+  return d.toLocaleDateString(locale, {
     month: "long",
     day: "numeric",
     year: "numeric",
