@@ -28,6 +28,13 @@ export interface QuizAnswers {
   motivation: string;
   /** How soon the user wants results: 4 | 8 | 12 weeks, or 0 = no deadline. */
   timelineWeeks: 4 | 8 | 12 | 0;
+  /** Grooming attributes (Zayne 2026-11-15 — personalisation
+   *  EXCLUDES what doesn't apply): hair tasks need hair, beard
+   *  tasks need facial hair, the frames task needs glasses.
+   *  "unknown" (skipped question / older quiz) never excludes. */
+  hairStatus?: "bald" | "shaved" | "short" | "full" | "unknown";
+  beardStatus?: "full" | "stubble" | "clean" | "none" | "unknown";
+  wearsGlasses?: "yes" | "no" | "unknown";
 }
 
 export interface SkinMetrics {
@@ -139,6 +146,15 @@ export interface PlanTask {
    *  teasers (title + frequency) for free users and full
    *  instructions for premium users. Absent on ordinary tasks. */
   proOnly?: boolean;
+  /** Attribute gates (Zayne 2026-11-15): the task only applies
+   *  to users with the attribute — hair tasks need hair, beard
+   *  tasks need facial hair, the frames task needs glasses. The
+   *  KB builder omits gated tasks for users without the
+   *  attribute; the flags also let stored plans be filtered at
+   *  render time. Absent = applies to everyone. */
+  requiresHair?: boolean;
+  requiresBeard?: boolean;
+  requiresGlasses?: boolean;
 }
 
 export interface PlanWeek {
