@@ -41,6 +41,13 @@
 // admin → 403. The native client gates on isPremium too, but the
 // server is the authority.
 //
+// LANGUAGE (Zayne, 2026-11-15): the caller sends `language` (the
+// English language name, same as /api/support) and the tasks are
+// designed IN that language — titles, details, frequencies,
+// whyYou, summaries. JSON keys, section ids and `addresses`
+// values stay English (they are programmatic). Absent or
+// unrecognised → English, exactly as before.
+//
 // Failure is explicit and fast: a 25s hard timeout per Gemini
 // attempt, a 55s overall deadline, and a 503 { ok: false, error:
 // "ai_unavailable" } when every attempt fails — the caller keeps the
@@ -304,11 +311,64 @@ const SYSTEM_PROMPT = [
   "Keep titles short (under 10 words), details concrete (what to do, how much, when), frequencies real (daily, 3x/week, weekly).",
 ].join(" ");
 
+/**
+ * Reply language (Zayne, 2026-10-24 — same whitelist as
+ * /api/support): the native app sends the language the user
+ * picked in its language selector, and the value is accepted
+ * ONLY as an exact (case-insensitive) match against this list
+ * of canonical English names; anything else is ignored and the
+ * plan is designed in English. Raw user input is never
+ * interpolated into a prompt: the name that reaches the prompt
+ * always comes from this list.
+ */
+const PLAN_LANGUAGES = [
+  "English",
+  "Chinese",
+  "Hindi",
+  "Spanish",
+  "French",
+  "German",
+  "Russian",
+  "Portuguese",
+  "Italian",
+  "Romanian",
+  "Azerbaijani",
+  "Arabic",
+  "Bengali",
+  "Urdu",
+  "Indonesian",
+  "Japanese",
+  "Turkish",
+  "Korean",
+  "Vietnamese",
+  "Persian",
+  "Swahili",
+  "Marathi",
+  "Tamil",
+  "Telugu",
+  "Polish",
+  "Ukrainian",
+  "Dutch",
+  "Thai",
+] as const;
+
+/** The accepted non-English design language for this request, or
+ *  null for English / anything unrecognised (English needs no
+ *  directive). */
+function sanitisePlanLanguage(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const wanted = raw.trim().toLowerCase();
+  if (!wanted) return null;
+  const match = PLAN_LANGUAGES.find((l) => l.toLowerCase() === wanted);
+  return match && match !== "English" ? match : null;
+}
+
 function buildUserText(
   blend: BlendInput,
   geometry: Record<string, unknown> | null,
   quiz: Record<string, unknown> | null,
-  steer: string | null
+  steer: string | null,
+  planLanguage: string | null
 ): string {
   const scores = signalScores(blend);
   const lines: string[] = [
@@ -353,6 +413,16 @@ function buildUserText(
       "",
       `USER STEER — the user asked for this change to the plan: "${steer}".`,
       "Honour it: shift task emphasis as asked (more/fewer tasks for the named area). Weakest-fixable-first still stands unless the user explicitly overrides the priority. Always keep at least one task addressing the weakest fixable signal, even when steered away from it."
+    );
+  }
+  if (planLanguage) {
+    // LANGUAGE (Zayne, 2026-11-15): every user-facing string in
+    // the plan is written in the user's language. The JSON shape,
+    // the section ids and the `addresses` values stay English —
+    // they are programmatic, and the client validates them.
+    lines.push(
+      "",
+      `LANGUAGE: Write ALL user-facing text in ${planLanguage} — section titles, summaries, whyForYou, and every task's title, detail, frequency and whyYou. Keep the JSON keys, the section ids ("skin", "diet", "exercise", "style", "sleep"), and the "addresses" values in English exactly as specified. Frequencies must be real ${planLanguage} words (the ${planLanguage} word for daily, 3x/week, weekly).`
     );
   }
   lines.push(
@@ -831,6 +901,8 @@ export async function POST(req: NextRequest) {
     typeof b.steer === "string" && b.steer.trim().length > 0
       ? b.steer.trim().slice(0, 200)
       : null;
+  // The design language (whitelisted; null = English).
+  const planLanguage = sanitisePlanLanguage(b.language);
 
   const scores = signalScores(blend);
   const weakest = weakestFixable(scores);
@@ -843,7 +915,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const userText = buildUserText(blend, geometry, quiz, steer);
+  const userText = buildUserText(blend, geometry, quiz, steer, planLanguage);
   const now = Date.now();
   const keyOrder = orderedKeyIndexes(keys.length, now);
 
@@ -899,6 +971,7 @@ export async function POST(req: NextRequest) {
           priority: attempt.priority,
           weakestFixable: weakest,
           steer,
+          language: planLanguage ?? "English",
           latencyMs: Date.now() - startedAt,
         });
       }
@@ -948,6 +1021,7 @@ export async function POST(req: NextRequest) {
         priority: attempt.priority,
         weakestFixable: weakest,
         steer,
+        language: planLanguage ?? "English",
         latencyMs: Date.now() - startedAt,
       });
     }
