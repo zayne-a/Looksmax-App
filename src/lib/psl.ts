@@ -633,6 +633,114 @@ export function scoreBreakdownV2(m: FaceMeasurements): ScoreBreakdownV2 | null {
   };
 }
 
+// ---------- Hybrid v5 geometry helpers (2026-11-15) ----------
+// The hybrid assembly (score-ai route v5 + the native blend.ts mirror)
+// weighs MEASURED bone + harmony with the AI's soft reads. These
+// helpers are the geometry half of that assembly. They MUST mirror
+// the native client's src/lib/blend.ts and the harness
+// (~/workspace/psl-accuracy-harness/validate_hybrid_v5.mjs) exactly —
+// the harness cross-checks all three on every validation face.
+
+/** The bone composite B from the three buckets: the same weighted
+ *  mean the geometry-only PSL anchors on (0.40·H + 0.20·Dim +
+ *  0.25·Def) / 0.85. B is the hybrid's bone input — except when fat
+ *  is present (AI leanness < 50), where the AI's visible-bone read
+ *  governs instead (geometry reads fat width as bone; see the
+ *  route's visible-bone rule). */
+export function boneCompositeOf(buckets: {
+  harmony: number;
+  dimorphism: number;
+  definition: number;
+}): number {
+  return (
+    (0.4 * buckets.harmony +
+      0.2 * buckets.dimorphism +
+      0.25 * buckets.definition) /
+    0.85
+  );
+}
+
+/** The mis-fit signal from the metric scores: elite bone structure
+ *  (high bigonial/chinPhiltrum/cheek/symmetry/browSete) with
+ *  punished proportions (low tilt/thirds/totalHW/fwhr/esr/midface)
+ *  means the bands are mis-fitting an elite face — the TikTok
+ *  signature (structure 94.7, proportions 48.9, misfit 1.0). The
+ *  same formula the 50/50 blend's geometryConfidence used. */
+export function misfitFromMetrics(
+  metricScores: Record<string, number | null | undefined>
+): number {
+  const mean = (keys: string[]): number => {
+    const vals = keys
+      .map((k) => metricScores[k])
+      .filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+    return vals.length > 0
+      ? vals.reduce((a, b) => a + b, 0) / vals.length
+      : 0;
+  };
+  const struct = mean([
+    "bigonial",
+    "chinPhiltrum",
+    "cheek",
+    "symmetry",
+    "browSete",
+  ]);
+  const prop = mean(["tilt", "thirds", "totalHW", "fwhr", "esr", "midface"]);
+  const gap = struct - prop;
+  return (
+    clamp((gap - 15) / 25, 0, 1) * clamp((struct - 80) / 10, 0, 1)
+  );
+}
+
+/** The harmony pool restricted to NON-proportion metrics, weighted
+ *  by the same weights as scoreBreakdownV2's harmony pool. The
+ *  proportion metrics (esr, thirds, tilt, totalHW, midface,
+ *  mouthNose, oneEye, eyeAspect) are the ones whose bands punish
+ *  elite faces; the structure metrics (cheek, symmetry, bigonial,
+ *  chinPhiltrum, browSete, eyeMouth, lipRatio, browTilt,
+ *  bitemporal) stay reliable. Null when no structure metric is
+ *  present. */
+export function harmonyStructureOf(
+  metricScores: Record<string, number | null | undefined>
+): number | null {
+  const pool: [string, number][] = [
+    ["cheek", 5],
+    ["symmetry", 6],
+    ["bigonial", 6],
+    ["chinPhiltrum", 2.5],
+    ["browSete", 2],
+    ["eyeMouth", 2],
+    ["lipRatio", 1.5],
+    ["browTilt", 1.2],
+    ["bitemporal", 1],
+  ];
+  let acc = 0;
+  let wSum = 0;
+  for (const [key, w] of pool) {
+    const v = metricScores[key];
+    if (typeof v === "number" && Number.isFinite(v)) {
+      acc += w * v;
+      wSum += w;
+    }
+  }
+  return wSum > 0 ? acc / wSum : null;
+}
+
+/** The mis-fit-corrected Harmony: H_fixed = (1−misfit)·H +
+ *  misfit·H_struct. When the bands fit (misfit 0 — every ordinary
+ *  face), H_fixed IS H. When they mis-fit an elite face (misfit
+ *  1.0 — TikTok), the punished proportion metrics drop out and the
+ *  structure metrics carry Harmony (TikTok: 68.3 → 89.7). The
+ *  hybrid's harmony input. */
+export function harmonyFixedOf(
+  metricScores: Record<string, number | null | undefined>,
+  harmony: number
+): number {
+  const struct = harmonyStructureOf(metricScores);
+  if (struct === null) return harmony;
+  const misfit = misfitFromMetrics(metricScores);
+  return (1 - misfit) * harmony + misfit * struct;
+}
+
 /** Stamp a v2 scan's summary fields from the breakdown (the scan flow
  *  calls this once skin is merged): overallScore = composite C,
  *  goldenRatioScore = Harmony (the legacy field's v2 meaning — see
