@@ -48,6 +48,26 @@
 // values stay English (they are programmatic). Absent or
 // unrecognised → English, exactly as before.
 //
+// DAILY MODE (Zayne, 2026-11-15 — the nightly build): `mode:
+// "daily"` designs TOMORROW in full detail from the persona — the
+// night audit (done/missed, weakest section), the scan, the
+// check-ins, adherence, and the protocol pool (the user's own
+// protocol tasks, sent by the client). The AI checks the RESOURCES
+// against the PERSONA: protocols first (select/adapt/extend), the
+// KB excerpts + scraped method library as grounding, and beyond
+// the protocols where it helps — with a named source per
+// beyond-protocol task. Web sourcing is the model's knowledge of
+// real published methods, named per task — there is NO live web
+// search wired (Gemini search grounding is paid; the no-paid-APIs
+// rule forbids it). The day is GUIDED: ordered, timed, exact —
+// not a suggestion list. Every task carries a payoff line (what
+// you get if you keep it up) and the hard exclusions from the
+// persona's attributes (bald/shaved → no hair tasks; no beard →
+// no beard tasks; no glasses → no frames task). Daily mode leads
+// with Flash-Lite (500 RPD — the daily workhorse) and falls back
+// to Flash; weekly mode is unchanged (Flash leads, Lite falls
+// back). One call per user per night, cached per day client-side.
+//
 // Failure is explicit and fast: a 25s hard timeout per Gemini
 // attempt, a 55s overall deadline, and a 503 { ok: false, error:
 // "ai_unavailable" } when every attempt fails — the caller keeps the
@@ -55,6 +75,13 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
+
+import {
+  coachMethodsPromptBlock,
+  retrieveCoachMethods,
+} from "@/lib/coach-methods";
+import { getRelevantKbExcerpts } from "@/lib/kb";
+import type { QuizAnswers } from "@/lib/types";
 
 export const maxDuration = 60;
 
@@ -292,6 +319,52 @@ interface AiTask {
   /** The signal this task addresses — one of the 8 keys, or
    *  "general" for a task that serves the whole face (e.g. sleep). */
   addresses: SignalKey | "general";
+  /** Daily mode only: the consistency payoff — what the user gets
+   *  if they keep this task up for 2–4 weeks. Absent on weekly
+   *  plans (the client fills those from its payoff map). */
+  payoff?: string;
+  /** Daily mode only: the named source for a task that came from
+   *  beyond the protocols (a method name / guide). Protocol tasks
+   *  carry no source. */
+  source?: string;
+}
+
+/** The nightly build's persona context (mode "daily" only) — the
+ *  client sends this as `day`. Every field is optional at parse
+ *  time: a partial context degrades the prompt, never 400s. */
+interface DayContextInput {
+  journeyDay: number | null;
+  journeyWeek: number | null;
+  phase: string | null;
+  adherenceOverall: number | null;
+  adherencePerSection: Partial<Record<SectionId, number>>;
+  yesterdayMissed: { sectionId: string; title: string }[];
+  yesterdayTasks: string[];
+  weakestSection: SectionId | null;
+  checkin: {
+    adherence: string | null;
+    skinReaction: string | null;
+    sleepQuality: string | null;
+    weightTrend: string | null;
+    createdAt: string | null;
+  } | null;
+  daysSinceScan: number | null;
+  auditDone: number | null;
+  auditTotal: number | null;
+  auditMissedBySection: Partial<Record<SectionId, number>>;
+}
+
+/** One protocol-pool entry (mode "daily" only) — the client's
+ *  flattened effective-plan tasks, the grounded base the AI draws
+ *  from first. */
+interface ProtocolPoolEntryInput {
+  sectionId: SectionId;
+  title: string;
+  detail: string;
+  frequency: string;
+  requiresHair: boolean;
+  requiresBeard: boolean;
+  requiresGlasses: boolean;
 }
 
 interface AiSection {
@@ -310,6 +383,31 @@ const SYSTEM_PROMPT = [
   "Every task must say WHY it exists, tied to the specific score and reason it addresses.",
   "Keep titles short (under 10 words), details concrete (what to do, how much, when), frequencies real (daily, 3x/week, weekly).",
 ].join(" ");
+
+// Daily mode (the nightly build): one guided day, designed by
+// matching the RESOURCES (protocols, KB, method library, web
+// knowledge) against the PERSONA (scan, audit, check-ins,
+// adherence, goals, attributes). Protocols first, whatever helps
+// wins — but every task is grounded, timed, exact, and honest
+// about its source.
+const DAILY_SYSTEM_PROMPT = [
+  "You are a looksmaxxing coach designing ONE guided day — tomorrow — for a specific user.",
+  "You design from the PERSONA you are given (their scan scores, last night's audit, check-ins, adherence, goals, attributes) and the RESOURCES listed (their protocols, KB excerpts, retrieved methods).",
+  "Match resources against the persona: a resource that does not fit this user never makes the day. Never invent scores, never re-judge the face, never promise outcomes.",
+  "Protocols first: select, adapt and extend the user's own protocol tasks before anything else. Beyond the protocols is allowed where it helps — a real method from the retrieved library or your knowledge of real published methods — and every beyond-protocol task names its source.",
+  "Safety floor only: suggest daily habits — no drugs, steroids, surgery, or medical procedures, and no prescription-only recommendations.",
+  "The day is GUIDED, not a suggestion list: ordered, timed, exact — what to do, when, in what order.",
+  "Every task says WHY it exists (tied to a specific score, audit fact, or check-in) and what you GET if you keep it up (the payoff line).",
+  "Keep titles short (under 10 words), details concrete (what to do, how much, when), frequencies real (daily, 3x/week, weekly).",
+].join(" ");
+
+// Daily output budget: ~15 tasks with detail + why + payoff.
+// 3072 leaves headroom over the ~2200 a full daily design runs;
+// the weekly 4096 stays for the weekly design.
+const DAILY_MAX_TOKENS = 3072;
+// The protocol pool is capped so a long plan can't bloat the
+// prompt — the effective plan dedupes to ~50 entries anyway.
+const MAX_PROTOCOL_ENTRIES = 80;
 
 /**
  * Reply language (Zayne, 2026-10-24 — same whitelist as
@@ -441,13 +539,225 @@ function buildUserText(
   return lines.join("\n");
 }
 
+/**
+ * Daily mode (the nightly build): tomorrow's guided programme,
+ * designed by matching the RESOURCES against the PERSONA. The
+ * protocol pool is the grounded base (select/adapt/extend first);
+ * the KB excerpts + retrieved methods ground the vocabulary; the
+ * persona (audit, check-ins, adherence, attributes) filters and
+ * drives the day. Exported for the harness (the route's own
+ * prompt is unit-testable without a live call).
+ */
+export function buildDailyUserText(
+  blend: BlendInput,
+  geometry: Record<string, unknown> | null,
+  quiz: Record<string, unknown> | null,
+  day: DayContextInput | null,
+  protocols: ProtocolPoolEntryInput[],
+  planLanguage: string | null
+): string {
+  const scores = signalScores(blend);
+  const dayLabel =
+    day?.journeyDay !== null && day?.journeyDay !== undefined
+      ? `day ${day.journeyDay} of their 90-day programme (week ${day.journeyWeek ?? "?"}, ${day.phase ?? "Foundation"} phase)`
+      : "a day of their 90-day programme";
+  const lines: string[] = [
+    `Design TOMORROW's guided daily programme for this user — ${dayLabel}. The scores below are the full analysis — design ONLY from them.`,
+    "",
+    "SCORED SIGNALS (0–100, 50 = average; lower = weaker and more urgent):",
+  ];
+  for (const key of SIGNAL_KEYS) {
+    const entry = scores.get(key);
+    if (entry) {
+      lines.push(
+        `- ${key}: ${entry.score}/100 — "${entry.reason}"${FIXABLE[key] ? "" : " [BONE — not fixable by tasks]"}`
+      );
+    } else {
+      lines.push(`- ${key}: not scored — do NOT design tasks for it.`);
+    }
+  }
+  lines.push(
+    "",
+    `Blended PSL: ${blend.blendedPsl ?? "unknown"}/8 (geometry half ${blend.gPart ?? "?"}, AI half ${blend.aPart ?? "?"})`,
+    blend.potential
+      ? `Potential: ${blend.potential.value ?? "unknown"}/8 — ${blend.potential.reason}`
+      : "Potential: unknown"
+  );
+  if (geometry) {
+    lines.push("", "GEOMETRY (already measured, do not re-score):", JSON.stringify(geometry));
+  }
+  if (quiz) {
+    lines.push("", "USER CONTEXT (quiz answers — respect them, e.g. skin type, budget, body goal):", JSON.stringify(quiz));
+  }
+  if (day) {
+    const pct = (v: number | null) =>
+      v === null ? "unknown" : `${Math.round(v * 100)}%`;
+    lines.push("", "PERSONA — this user's state (the filter and the driver):");
+    lines.push(
+      `- Adherence (last 7 days): ${pct(day.adherenceOverall)} overall.` +
+        (Object.keys(day.adherencePerSection).length > 0
+          ? ` Per section: ${Object.entries(day.adherencePerSection)
+              .map(([s, v]) => `${s} ${pct(v)}`)
+              .join(", ")}.`
+          : "")
+    );
+    if (day.auditDone !== null && day.auditTotal !== null) {
+      lines.push(
+        `- Yesterday's audit: ${day.auditDone}/${day.auditTotal} tasks done.` +
+          (Object.keys(day.auditMissedBySection).length > 0
+            ? ` Missed by section: ${Object.entries(day.auditMissedBySection)
+                .map(([s, n]) => `${s} ${n}`)
+                .join(", ")}.`
+            : "")
+      );
+    }
+    if (day.yesterdayMissed.length > 0) {
+      lines.push(
+        `- Yesterday's MISSED tasks (tomorrow's focus — resurface with a fresh angle, not the same words): ${day.yesterdayMissed
+          .map((m) => `[${m.sectionId}] ${m.title}`)
+          .join("; ")}`
+      );
+    }
+    if (day.weakestSection) {
+      lines.push(`- Weakest section (lowest adherence): ${day.weakestSection} — it leads tomorrow.`);
+    }
+    if (day.checkin) {
+      const c = day.checkin;
+      lines.push(
+        `- Latest check-in${c.createdAt ? ` (${c.createdAt.slice(0, 10)})` : ""}: routine followed ${c.adherence ?? "unknown"}, skin reaction ${c.skinReaction ?? "unknown"}, sleep ${c.sleepQuality ?? "unknown"}, weight trend ${c.weightTrend ?? "unknown"}.`
+      );
+    }
+    if (day.daysSinceScan !== null) {
+      lines.push(`- Days since the latest scan: ${day.daysSinceScan}.`);
+    }
+  }
+  if (day && day.yesterdayTasks.length > 0) {
+    lines.push(
+      "",
+      `YESTERDAY'S TASKS (vary them — do not repeat yesterday verbatim; the morning anchor titles may stay, but change the detail/angle or rotate the non-anchor tasks): ${day.yesterdayTasks.join(" | ")}`
+    );
+  }
+  if (protocols.length > 0) {
+    lines.push(
+      "",
+      "PROTOCOLS — the user's own protocol tasks (the grounded base: SELECT, ADAPT and EXTEND from these first — do not invent from nothing while a protocol task fits):"
+    );
+    for (const p of protocols) {
+      const reqs = [
+        p.requiresHair ? "needs hair" : "",
+        p.requiresBeard ? "needs beard" : "",
+        p.requiresGlasses ? "needs glasses" : "",
+      ]
+        .filter(Boolean)
+        .join(", ");
+      lines.push(
+        `- [${p.sectionId}] ${p.title} (${p.frequency}): ${p.detail}${reqs ? ` {${reqs}}` : ""}`
+      );
+    }
+  }
+  // KB excerpts (null measurements — the scan's scores are already
+  // in the prompt above; the excerpts ground vocabulary and
+  // constraints). Best-effort: an odd quiz shape skips the block
+  // rather than failing the build. The excerpts are GENERAL — the
+  // HARD EXCLUSIONS below override any hair/beard/glasses lines
+  // in them.
+  if (quiz) {
+    try {
+      const excerpts = getRelevantKbExcerpts(
+        null,
+        quiz as unknown as QuizAnswers
+      );
+      if (excerpts.trim().length > 0) {
+        lines.push("", "KB EXCERPTS (matched protocols — vocabulary and constraints):", excerpts);
+      }
+    } catch {
+      // Skip the block; the protocols above still ground the day.
+    }
+  }
+  // Scraped methods, retrieved by what the persona needs most
+  // (weakest signal + weakest section + missed tasks).
+  const weakest = weakestFixable(scores);
+  const methodQuery = [
+    weakest ?? "",
+    day?.weakestSection ?? "",
+    ...(day?.yesterdayMissed.map((m) => m.title) ?? []),
+  ]
+    .filter(Boolean)
+    .join(" ");
+  if (methodQuery.trim().length > 0) {
+    try {
+      const methods = retrieveCoachMethods(methodQuery, 6);
+      const block = coachMethodsPromptBlock(methods);
+      if (block.trim().length > 0) {
+        lines.push("", block);
+      }
+    } catch {
+      // Skip the block; the day still builds.
+    }
+  }
+  // HARD EXCLUSIONS — the persona's attributes (Zayne 2026-11-15:
+  // personalisation means EXCLUDING what doesn't apply). These
+  // override the protocols, the KB excerpts, and the methods.
+  const exclusions: string[] = [];
+  const hairStatus = typeof quiz?.hairStatus === "string" ? quiz.hairStatus : "unknown";
+  const beardStatus = typeof quiz?.beardStatus === "string" ? quiz.beardStatus : "unknown";
+  const wearsGlasses = typeof quiz?.wearsGlasses === "string" ? quiz.wearsGlasses : "unknown";
+  const gender = typeof quiz?.gender === "string" ? quiz.gender : "unknown";
+  if (hairStatus === "bald" || hairStatus === "shaved") {
+    exclusions.push(
+      "NO HAIR TASKS: this user has no hair to cut or style — never assign haircut, styling, or hair-product tasks. Scalp care is fine."
+    );
+  }
+  if (gender === "female" || beardStatus === "none") {
+    exclusions.push(
+      "NO BEARD TASKS: this user has no beard — never assign beard shaping, trimming, or beard-product tasks."
+    );
+  }
+  if (wearsGlasses === "no") {
+    exclusions.push(
+      "NO GLASSES TASKS: this user does not wear glasses — never assign frames or glasses-care tasks."
+    );
+  }
+  if (exclusions.length > 0) {
+    lines.push("", "HARD EXCLUSIONS (absolute — these override everything above):");
+    for (const e of exclusions) lines.push(`- ${e}`);
+  }
+  if (planLanguage) {
+    lines.push(
+      "",
+      `LANGUAGE: Write ALL user-facing text in ${planLanguage} — section titles, summaries, whyForYou, and every task's title, detail, frequency, whyYou and payoff. Keep the JSON keys, the section ids ("skin", "diet", "exercise", "style", "sleep"), and the "addresses" values in English exactly as specified. Frequencies must be real ${planLanguage} words (the ${planLanguage} word for daily, 3x/week, weekly).`
+    );
+  }
+  lines.push(
+    "",
+    "RULES:",
+    "1. PROTOCOLS FIRST, WHATEVER HELPS: select, adapt and extend the PROTOCOLS above first — most of tomorrow comes from them. Where no protocol task fits what the persona needs, go beyond: a real method from the retrieved library or your knowledge of real published methods — never an invented method — and name its source in the task's \"source\" field.",
+    "2. GUIDED, TIMED, EXACT: the day reads as a timed programme, not a suggestion list — skin 7:00, style 7:45, diet 12:30, exercise 18:00, sleep 22:00. Order the tasks within each section by when to do them, and make each task exact (what to do, how much, when).",
+    "3. PERSONALISE FROM THE AUDIT: yesterday's missed tasks resurface with a fresh angle (new detail, new framing — not the same words); the weakest section leads the day; tasks the user completed progress (more load, more depth, more reps).",
+    "4. PERSONALISE FROM THE CHECK-IN: skin reaction irritation/worse → gentler actives, drop the harsh step; poor sleep → the sleep section leads and wind-down gets the detail; weight trend up/down → the diet tasks re-target to the body goal.",
+    "5. PERSONALISE FROM ADHERENCE: low adherence (under 70%) → fewer, easier tasks (3 per section, the essentials); high adherence (70%+) → progress (4 per section, deeper work).",
+    "6. FULLY DETAILED: every task has concrete detail + a whyYou tied to a SPECIFIC score, audit fact, or check-in (quote it) + a payoff line — what the user gets if they keep this task up for 2–4 weeks, grounded in the task and their state.",
+    "7. ANCHOR STABILITY: the morning anchor tasks (the AM routine) keep the SAME titles every day — vary their detail, never their titles. Non-anchor tasks rotate and vary.",
+    "8. HARD EXCLUSIONS: never assign a task the exclusions above rule out — a task that cannot apply to this user must not appear, in any section.",
+    "9. SAFETY FLOOR: daily habits only — no drugs, steroids, surgery, medical procedures, no prescription-only recommendations.",
+    "10. WEAKEST FIXABLE FIRST: at least one task addresses the weakest fixable signal, and the section tackling it leads.",
+    "11. 3–4 tasks per section, 5 sections: skin, diet, exercise, style, sleep. Every section gets tasks; a section whose signals are strong still gets maintenance tasks.",
+    "",
+    "Return exactly this shape, nothing else:",
+    '{ "sections": [ { "id": "skin" | "diet" | "exercise" | "style" | "sleep", "title": "...", "summary": "...", "whyForYou": "...", "tasks": [ { "title": "...", "detail": "...", "frequency": "daily", "whyYou": "...", "addresses": "skinQuality", "payoff": "...", "source": "..." } ] } ], "priority": ["skinQuality", "lowerThird", ...] }',
+    "The \"source\" field is for beyond-protocol tasks only — omit it (or leave it empty) for protocol tasks."
+  );
+  return lines.join("\n");
+}
+
 // ---------- Gemini ----------
 
 async function callGemini(
   model: string,
   apiKey: string,
   userText: string,
-  timeoutMs: number
+  timeoutMs: number,
+  opts?: { systemPrompt?: string; maxOutputTokens?: number }
 ): Promise<Response> {
   // Key is passed as a query param per the Gemini API contract; it is never logged.
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
@@ -456,7 +766,9 @@ async function callGemini(
     headers: { "Content-Type": "application/json" },
     signal: AbortSignal.timeout(timeoutMs),
     body: JSON.stringify({
-      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      systemInstruction: {
+        parts: [{ text: opts?.systemPrompt ?? SYSTEM_PROMPT }],
+      },
       contents: [{ role: "user", parts: [{ text: userText }] }],
       generationConfig: {
         responseMimeType: "application/json",
@@ -469,7 +781,8 @@ async function callGemini(
         // JSON truncated mid-task (unparseable). A full 4-section
         // plan ran ~1800–2600 tokens; the 5th section (sleep,
         // 2026-11-15) adds ~450–650, so 4096 leaves real headroom.
-        maxOutputTokens: 4096,
+        // Daily mode passes a smaller budget (3072).
+        maxOutputTokens: opts?.maxOutputTokens ?? 4096,
       },
     }),
   });
@@ -508,7 +821,9 @@ function cleanStr(v: unknown, max: number): string | null {
  * retries with another model/key: a plan that ignores the weakest
  * region is not a plan, it is a miss.
  */
-function parsePlan(
+/** Exported for the harness (the route's validation is
+ *  unit-testable without a live call). */
+export function parsePlan(
   rawText: string,
   weakest: SignalKey | null
 ): { sections: AiSection[]; priority: SignalKey[] } | null {
@@ -564,12 +879,19 @@ function parsePlan(
         return null;
       }
       if (weakest !== null && addresses === weakest) weakestAddressed = true;
+      // Daily mode: the payoff + source pass through when present
+      // (optional — weekly plans don't carry them, and the client
+      // fills a missing payoff from its own map).
+      const payoff = cleanStr(tk.payoff, 300);
+      const source = cleanStr(tk.source, 120);
       tasks.push({
         title: taskTitle,
         detail,
         frequency,
         whyYou,
         addresses: addresses as SignalKey | "general",
+        ...(payoff ? { payoff } : {}),
+        ...(source ? { source } : {}),
       });
     }
     totalTasks += tasks.length;
@@ -625,10 +947,17 @@ async function tryAttempt(
   apiKey: string,
   userText: string,
   weakest: SignalKey | null,
-  timeoutMs: number
+  timeoutMs: number,
+  geminiOpts?: { systemPrompt?: string; maxOutputTokens?: number }
 ): Promise<Attempt> {
   try {
-    const res = await callGemini(model, apiKey, userText, timeoutMs);
+    const res = await callGemini(
+      model,
+      apiKey,
+      userText,
+      timeoutMs,
+      geminiOpts
+    );
     const body = await res.text();
     if (!res.ok) {
       return {
@@ -701,6 +1030,138 @@ async function tryAttempt(
       error: "fetch failed",
     };
   }
+}
+
+type LadderResult =
+  | {
+      ok: true;
+      model: string;
+      sections: AiSection[];
+      priority: SignalKey[];
+    }
+  | {
+      ok: false;
+      lastError: string;
+      sawLeadQuota: boolean;
+      deadlineHit: boolean;
+    };
+
+/**
+ * The model ladder, shared by both modes: the LEAD model gets up
+ * to MAX_FLASH_KEYS keys (a quota error (429) or permission error
+ * (403) on a key abandons that key for the whole request — both
+ * are key-level; two consecutive quota errors mean the lead
+ * bucket is blown pool-wide for this minute — the keys share few
+ * projects, proven in the slice-1 harness — so the loop stops
+ * burning lead attempts and falls through). The FALLBACK model
+ * gets one attempt on the first available key. A 503 abandons the
+ * MODEL for the rest of the request (per-model capacity — another
+ * key on the same model 503s too). A model that times out twice
+ * in a row is skipped for the rest of the request. Nothing starts
+ * past the deadline.
+ *
+ * Weekly leads with Flash (quality) and falls back to Lite;
+ * daily leads with Lite (500 RPD — the daily workhorse) and
+ * falls back to Flash. The response names the model actually
+ * used, so a fallback is visible, never silent.
+ */
+async function runLadder(
+  leadModel: string,
+  fallbackModel: string,
+  userText: string,
+  weakest: SignalKey | null,
+  keys: string[],
+  keyOrder: number[],
+  deadline: number,
+  geminiOpts?: { systemPrompt?: string; maxOutputTokens?: number }
+): Promise<LadderResult> {
+  let lastError = "no attempt made";
+  let sawLeadQuota = false;
+  let consecutiveQuota = 0;
+  let leadQuotaBlown = false;
+  const modelTimeouts = new Map<string, number>();
+  const skippedModels = new Set<string>();
+  const unavailableModels = new Set<string>();
+  const leadKeys = keyOrder.slice(0, MAX_FLASH_KEYS);
+  for (const ki of leadKeys) {
+    if (leadQuotaBlown) break;
+    const models = [leadModel].filter(
+      (m) => !skippedModels.has(m) && !unavailableModels.has(m)
+    );
+    for (const model of models) {
+      const remaining = deadline - Date.now();
+      if (remaining < 1_000) {
+        return { ok: false, lastError, sawLeadQuota, deadlineHit: true };
+      }
+      const attempt = await tryAttempt(
+        model,
+        keys[ki],
+        userText,
+        weakest,
+        Math.min(ATTEMPT_TIMEOUT_MS, remaining),
+        geminiOpts
+      );
+      if (attempt.ok) {
+        return {
+          ok: true,
+          model: attempt.model,
+          sections: attempt.sections,
+          priority: attempt.priority,
+        };
+      }
+      lastError = attempt.error;
+      if (attempt.timedOut) {
+        const n = (modelTimeouts.get(model) ?? 0) + 1;
+        modelTimeouts.set(model, n);
+        if (n >= 2) skippedModels.add(model);
+      }
+      if (attempt.unavailable) {
+        // Per-model capacity — no point trying this model on
+        // another key; the loop moves on (and the fallback gets
+        // its turn).
+        unavailableModels.add(model);
+      }
+      if (attempt.quota) {
+        sawLeadQuota = true;
+        consecutiveQuota += 1;
+        keyCooldowns.set(ki, Date.now() + KEY_COOLDOWN_MS);
+        if (consecutiveQuota >= 2) leadQuotaBlown = true;
+        break; // key-level failure — next key (or fallback, if blown).
+      }
+      consecutiveQuota = 0;
+      if (attempt.fatal) {
+        keyCooldowns.set(ki, Date.now() + KEY_COOLDOWN_MS);
+        break; // key-level failure — next key.
+      }
+    }
+  }
+
+  // Fallback: one attempt on the first available key.
+  if (Date.now() < deadline - 1_000) {
+    const fallbackKey =
+      keyOrder.find((ki) => !isKeyCoolingDown(ki, Date.now())) ?? keyOrder[0];
+    const attempt = await tryAttempt(
+      fallbackModel,
+      keys[fallbackKey],
+      userText,
+      weakest,
+      Math.min(ATTEMPT_TIMEOUT_MS, deadline - Date.now()),
+      geminiOpts
+    );
+    if (attempt.ok) {
+      return {
+        ok: true,
+        model: attempt.model,
+        sections: attempt.sections,
+        priority: attempt.priority,
+      };
+    }
+    lastError = attempt.error;
+    if (attempt.quota || attempt.fatal) {
+      keyCooldowns.set(fallbackKey, Date.now() + KEY_COOLDOWN_MS);
+    }
+  }
+  return { ok: false, lastError, sawLeadQuota, deadlineHit: false };
 }
 
 // ---------- Auth (same pattern as /api/weekly-plan and /api/score-ai) ----------
@@ -834,6 +1295,133 @@ function parseBlend(b: Record<string, unknown>): BlendInput | null {
   };
 }
 
+/** Daily mode: parse the persona context (`day`). Defensive —
+ *  every field is optional; a malformed `day` degrades the prompt
+ *  (the persona block is omitted) instead of 400ing the build. */
+function parseDayContext(raw: unknown): DayContextInput | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const d = raw as Record<string, unknown>;
+  const num = (v: unknown): number | null =>
+    typeof v === "number" && Number.isFinite(v) ? v : null;
+  const str = (v: unknown, max: number): string | null =>
+    typeof v === "string" && v.trim().length > 0
+      ? v.trim().slice(0, max)
+      : null;
+  const perSection = (v: unknown): Partial<Record<SectionId, number>> => {
+    const out: Partial<Record<SectionId, number>> = {};
+    if (typeof v !== "object" || v === null) return out;
+    const rec = v as Record<string, unknown>;
+    for (const id of SECTION_IDS) {
+      const n = num(rec[id]);
+      if (n !== null) out[id] = clamp(n, 0, 1);
+    }
+    return out;
+  };
+  const adherenceRaw =
+    typeof d.adherence === "object" && d.adherence !== null
+      ? (d.adherence as Record<string, unknown>)
+      : null;
+  const missedRaw = Array.isArray(d.yesterdayMissed) ? d.yesterdayMissed : [];
+  const yesterdayMissed: { sectionId: string; title: string }[] = [];
+  for (const m of missedRaw.slice(0, 20)) {
+    if (typeof m !== "object" || m === null) continue;
+    const mm = m as Record<string, unknown>;
+    const sectionId = str(mm.sectionId, 20);
+    const title = str(mm.title, 120);
+    if (sectionId && title) yesterdayMissed.push({ sectionId, title });
+  }
+  const yesterdayTasks = Array.isArray(d.yesterdayTasks)
+    ? d.yesterdayTasks
+        .filter((t): t is string => typeof t === "string")
+        .map((t) => t.slice(0, 120))
+        .slice(0, 30)
+    : [];
+  const checkinRaw =
+    typeof d.checkin === "object" && d.checkin !== null
+      ? (d.checkin as Record<string, unknown>)
+      : null;
+  const auditRaw =
+    typeof d.audit === "object" && d.audit !== null
+      ? (d.audit as Record<string, unknown>)
+      : null;
+  const auditMissed: Partial<Record<SectionId, number>> = {};
+  if (typeof auditRaw?.missedBySection === "object" && auditRaw.missedBySection !== null) {
+    const rec = auditRaw.missedBySection as Record<string, unknown>;
+    for (const id of SECTION_IDS) {
+      const n = num(rec[id]);
+      if (n !== null) auditMissed[id] = Math.max(0, Math.floor(n));
+    }
+  }
+  const weakestSection = str(d.weakestSection, 20);
+  return {
+    journeyDay: num(d.journeyDay),
+    journeyWeek: num(d.journeyWeek),
+    phase: str(d.phase, 30),
+    adherenceOverall:
+      adherenceRaw !== null ? num(adherenceRaw.overall) : null,
+    adherencePerSection: perSection(adherenceRaw?.perSection),
+    yesterdayMissed,
+    yesterdayTasks,
+    weakestSection:
+      weakestSection && SECTION_IDS.includes(weakestSection as SectionId)
+        ? (weakestSection as SectionId)
+        : null,
+    checkin: checkinRaw
+      ? {
+          adherence: str(checkinRaw.adherence, 20),
+          skinReaction: str(checkinRaw.skinReaction, 20),
+          sleepQuality: str(checkinRaw.sleepQuality, 20),
+          weightTrend: str(checkinRaw.weightTrend, 20),
+          createdAt: str(checkinRaw.createdAt, 30),
+        }
+      : null,
+    daysSinceScan: num(d.daysSinceScan),
+    auditDone: auditRaw ? num(auditRaw.done) : null,
+    auditTotal: auditRaw ? num(auditRaw.total) : null,
+    auditMissedBySection: auditMissed,
+  };
+}
+
+/** Daily mode: parse the protocol pool (`protocols`). Invalid
+ *  entries are skipped, not fatal — the pool degrades. Capped so
+ *  a long plan can't bloat the prompt. */
+function parseProtocolPool(raw: unknown): ProtocolPoolEntryInput[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ProtocolPoolEntryInput[] = [];
+  for (const entry of raw.slice(0, MAX_PROTOCOL_ENTRIES)) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const e = entry as Record<string, unknown>;
+    const sectionId = e.sectionId;
+    const title =
+      typeof e.title === "string" && e.title.trim().length > 0
+        ? e.title.trim().slice(0, 120)
+        : null;
+    const detail =
+      typeof e.detail === "string" ? e.detail.trim().slice(0, 400) : "";
+    const frequency =
+      typeof e.frequency === "string" && e.frequency.trim().length > 0
+        ? e.frequency.trim().slice(0, 40)
+        : "daily";
+    if (
+      typeof sectionId !== "string" ||
+      !SECTION_IDS.includes(sectionId as SectionId) ||
+      !title
+    ) {
+      continue;
+    }
+    out.push({
+      sectionId: sectionId as SectionId,
+      title,
+      detail,
+      frequency,
+      requiresHair: e.requiresHair === true,
+      requiresBeard: e.requiresBeard === true,
+      requiresGlasses: e.requiresGlasses === true,
+    });
+  }
+  return out;
+}
+
 export async function POST(req: NextRequest) {
   const startedAt = Date.now();
   const deadline = startedAt + OVERALL_DEADLINE_MS;
@@ -903,6 +1491,12 @@ export async function POST(req: NextRequest) {
       : null;
   // The design language (whitelisted; null = English).
   const planLanguage = sanitisePlanLanguage(b.language);
+  // DAILY MODE (the nightly build): mode "daily" designs
+  // TOMORROW from the persona + the protocol pool. Absent or
+  // anything else = the weekly design, exactly as before.
+  const isDaily = b.mode === "daily";
+  const day = isDaily ? parseDayContext(b.day) : null;
+  const protocols = isDaily ? parseProtocolPool(b.protocols) : [];
 
   const scores = signalScores(blend);
   const weakest = weakestFixable(scores);
@@ -915,128 +1509,70 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const userText = buildUserText(blend, geometry, quiz, steer, planLanguage);
+  const userText = isDaily
+    ? buildDailyUserText(
+        blend,
+        geometry,
+        quiz,
+        day,
+        protocols,
+        planLanguage
+      )
+    : buildUserText(blend, geometry, quiz, steer, planLanguage);
   const now = Date.now();
   const keyOrder = orderedKeyIndexes(keys.length, now);
 
-  // Flash first: up to MAX_FLASH_KEYS keys on 3.6 (3.8 is NOT in
-  // this route's ladder — it hangs on every probe). A quota error
-  // (429) or permission error (403) on a key abandons that key for
-  // the whole request — both are key-level. Two consecutive quota
-  // errors mean the Flash bucket is blown pool-wide for this minute
-  // (the keys share few projects — proven in the slice-1 harness,
-  // where every key 429'd at once), so the loop stops burning Flash
-  // attempts and falls through to Lite, which has its own quota
-  // bucket. A 503 abandons the MODEL for the rest of the request
-  // (per-model capacity — another key on the same model 503s too).
-  // A model that times out twice in a row is skipped for the rest
-  // of the request. Nothing starts past the deadline.
-  let lastError = "no attempt made";
-  let sawFlashQuota = false;
-  let consecutiveQuota = 0;
-  let flashQuotaBlown = false;
-  const modelTimeouts = new Map<string, number>();
-  const skippedModels = new Set<string>();
-  const unavailableModels = new Set<string>();
-  const flashKeys = keyOrder.slice(0, MAX_FLASH_KEYS);
-  for (const ki of flashKeys) {
-    if (flashQuotaBlown) break;
-    const models = [FLASH_LEAD].filter(
-      (m) => !skippedModels.has(m) && !unavailableModels.has(m)
-    );
-    for (const model of models) {
-      const remaining = deadline - Date.now();
-      if (remaining < 1_000) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: "ai_unavailable",
-            detail: `deadline reached (last attempt: ${lastError})`,
-          },
-          { status: 503 }
-        );
-      }
-      const attempt = await tryAttempt(
-        model,
-        keys[ki],
+  // The ladder: weekly leads with Flash (quality) and falls back
+  // to Lite; daily leads with Lite (500 RPD — the daily
+  // workhorse) and falls back to Flash. Daily also passes its
+  // own system prompt + output budget.
+  const geminiOpts = isDaily
+    ? { systemPrompt: DAILY_SYSTEM_PROMPT, maxOutputTokens: DAILY_MAX_TOKENS }
+    : undefined;
+  const result = isDaily
+    ? await runLadder(
+        LITE_MODEL,
+        FLASH_LEAD,
         userText,
         weakest,
-        Math.min(ATTEMPT_TIMEOUT_MS, remaining)
+        keys,
+        keyOrder,
+        deadline,
+        geminiOpts
+      )
+    : await runLadder(
+        FLASH_LEAD,
+        LITE_MODEL,
+        userText,
+        weakest,
+        keys,
+        keyOrder,
+        deadline,
+        geminiOpts
       );
-      if (attempt.ok) {
-        return NextResponse.json({
-          ok: true,
-          model: attempt.model,
-          sections: attempt.sections,
-          priority: attempt.priority,
-          weakestFixable: weakest,
-          steer,
-          language: planLanguage ?? "English",
-          latencyMs: Date.now() - startedAt,
-        });
-      }
-      lastError = attempt.error;
-      if (attempt.timedOut) {
-        const n = (modelTimeouts.get(model) ?? 0) + 1;
-        modelTimeouts.set(model, n);
-        if (n >= 2) skippedModels.add(model);
-      }
-      if (attempt.unavailable) {
-        // Per-model capacity — no point trying this model on
-        // another key; the loop moves on (and Lite gets its turn).
-        unavailableModels.add(model);
-      }
-      if (attempt.quota) {
-        sawFlashQuota = true;
-        consecutiveQuota += 1;
-        keyCooldowns.set(ki, Date.now() + KEY_COOLDOWN_MS);
-        if (consecutiveQuota >= 2) flashQuotaBlown = true;
-        break; // key-level failure — next key (or Lite, if blown).
-      }
-      consecutiveQuota = 0;
-      if (attempt.fatal) {
-        keyCooldowns.set(ki, Date.now() + KEY_COOLDOWN_MS);
-        break; // key-level failure — next key.
-      }
-    }
-  }
-
-  // Last resort: Flash-Lite on the first available key — only when
-  // Flash failed everywhere (quota or capacity). The response names
-  // the model, so a Lite fallback is visible, never silent.
-  if (Date.now() < deadline - 1_000) {
-    const liteKey = keyOrder.find((ki) => !isKeyCoolingDown(ki, Date.now())) ?? keyOrder[0];
-    const attempt = await tryAttempt(
-      LITE_MODEL,
-      keys[liteKey],
-      userText,
-      weakest,
-      Math.min(ATTEMPT_TIMEOUT_MS, deadline - Date.now())
-    );
-    if (attempt.ok) {
-      return NextResponse.json({
-        ok: true,
-        model: attempt.model,
-        sections: attempt.sections,
-        priority: attempt.priority,
-        weakestFixable: weakest,
-        steer,
-        language: planLanguage ?? "English",
-        latencyMs: Date.now() - startedAt,
-      });
-    }
-    lastError = attempt.error;
-    if (attempt.quota || attempt.fatal)
-      keyCooldowns.set(liteKey, Date.now() + KEY_COOLDOWN_MS);
+  if (result.ok) {
+    return NextResponse.json({
+      ok: true,
+      mode: isDaily ? "daily" : "weekly",
+      model: result.model,
+      sections: result.sections,
+      priority: result.priority,
+      weakestFixable: weakest,
+      steer,
+      language: planLanguage ?? "English",
+      latencyMs: Date.now() - startedAt,
+    });
   }
 
   return NextResponse.json(
     {
       ok: false,
       error: "ai_unavailable",
-      detail: sawFlashQuota
-        ? `flash quota exhausted; lite also failed (${lastError})`
-        : lastError,
+      detail: result.deadlineHit
+        ? `deadline reached (last attempt: ${result.lastError})`
+        : result.sawLeadQuota
+          ? `${isDaily ? "lite" : "flash"} quota exhausted; ${isDaily ? "flash" : "lite"} also failed (${result.lastError})`
+          : result.lastError,
     },
     { status: 503 }
   );
