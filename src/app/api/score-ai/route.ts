@@ -238,6 +238,14 @@ const FACE_CRITERIA: CriterionName[] = [
   "overallImpression",
 ];
 
+// NOTE (slice 4 A/B): the audit's §4d offered "face-only text OR drop
+// overallImpression from the A mean". The A/B re-ran both: the
+// exclusion's SD benefit was ~0.02 (negligible) while it cost ordering
+// (Spearman 0.82 → 0.78), so the exclusion was NOT kept — the face-only
+// criterion text (item 4 below) is the fix, and overallImpression stays
+// in the mean as a face criterion. Do not re-add the exclusion without
+// a fresh A/B showing it helps.
+
 type CriterionScore = { score: number | null; reason: string };
 type Criteria = Record<CriterionName, CriterionScore>;
 
@@ -264,11 +272,24 @@ type Potential = {
   headroom: number | null;
 };
 
+// Prompt version: v1 = the original prompt (pre-slice-4); v2 = the
+// hardened prompt below (PSL fix slice 4, audit §4d). Returned in
+// every success response so a score's prompt is provable from the
+// response itself — and so a deploy can be verified by polling for
+// the new version instead of guessing from behaviour.
+const PROMPT_VERSION = 2;
+
 const SYSTEM_PROMPT = [
   "You are a looksmaxxing face analyst scoring ONLY soft criteria against the PSL framework.",
   "You do NOT give an overall attractiveness score, a PSL, or a free-form opinion.",
   "Score each named criterion 0-100, where 50 is average for a young adult male face.",
-  "Judge ONLY what you can see in this photo. If a criterion cannot be judged (for example hair not visible), return null for its score and say why in the reason. NEVER invent detail you cannot see.",
+  // PSL fix slice 4 (audit §4d): the FACE gets scored, not the photo.
+  // The old instruction ("Judge ONLY what you can see in this photo")
+  // let lighting, smoothing and framing move the scores — the same
+  // face scored 1.5 PSL apart across two photos.
+  "Judge the underlying FACE, not this photo. Two photos of the same face must receive the same scores. Ignore lighting, image quality, digital smoothing or filters, background, clothing, and the person's momentary expression.",
+  "Most faces score between 35 and 65 on any criterion. Above 80 means exceptional — rarer than 1 in 20. Do not score generously.",
+  "If a criterion cannot be judged (for example hair not visible), return null for its score and say why in the reason. NEVER invent detail you cannot see.",
   "Keep each reason to one short sentence.",
 ].join(" ");
 
@@ -279,12 +300,24 @@ function buildUserText(
   const lines: string[] = [
     "Score ONLY these 5 soft criteria for the face in this photo, as strict JSON:",
     "",
-    "1. skinQuality — skin clarity, texture, acne, redness, evenness of tone.",
-    "2. eyeArea — the eye area as it looks: eyelid exposure, under-eye darkness or bags, eye shape impression, hunter vs tired read.",
-    "3. hairFraming — hairline, hair fullness, how the hair frames the face. Null if hair is not visible.",
-    "4. overallImpression — the face as a whole: how the features read together, expression, presence. This is a soft-criterion read of the whole face, NOT an overall attractiveness score.",
-    "5. photoQuality — how well this photo serves scoring: lighting, angle, sharpness, framing. This is a confidence signal, not a face score.",
+    // Per-criterion ignore lists (slice 4): each criterion names what
+    // the model must NOT let move it.
+    "1. skinQuality — skin clarity, texture, acne, redness, evenness of tone. Discount digital smoothing or filters — score the skin you can actually see, not the filter.",
+    "2. eyeArea — the eye area as it looks: eyelid exposure, under-eye darkness or bags, eye shape impression, hunter vs tired read. Ignore shadows and lighting — score the eye area itself, not the light falling on it.",
+    "3. hairFraming — hairline, hair fullness, how the hair frames the face. Judge the hair itself, not the styling or the light. Null if hair is not visible.",
+    "4. overallImpression — the face as a whole: how the features read together as a FACE — bone, balance, harmony. NOT expression, NOT presence, NOT the photo. This is a soft-criterion read of the whole face, NOT an overall attractiveness score.",
+    "5. photoQuality — how well this photo serves scoring: lighting, angle, sharpness, framing. This is a confidence signal, not a face score. If photoQuality is below 60, pull every face score toward 50 in proportion to how far below 60 it is — a bad photo must never produce extreme face scores.",
   ];
+  // Geometry FIRST (slice 4): the Potential paragraph below refers to
+  // "the geometry measurements above" — the old code appended the
+  // geometry JSON AFTER that paragraph, so "above" was a lie.
+  if (geometry) {
+    lines.push(
+      "",
+      "Geometry already measured this face (do NOT re-score bone structure — it is already exact):",
+      JSON.stringify(geometry)
+    );
+  }
   if (includeRegions) {
     lines.push(
       "",
@@ -307,13 +340,6 @@ function buildUserText(
       "",
       "Return exactly this shape, nothing else:",
       '{ "skinQuality": { "score": 0-100 or null, "reason": "..." }, "eyeArea": { "score": ..., "reason": "..." }, "hairFraming": { "score": ..., "reason": "..." }, "overallImpression": { "score": ..., "reason": "..." }, "photoQuality": { "score": ..., "reason": "..." }, "potential": { "value": 0-8 or null, "reason": "...", "currentEstimate": 0-8 or null, "headroom": 0-2 or null } }'
-    );
-  }
-  if (geometry) {
-    lines.push(
-      "",
-      "Geometry already measured this face (do NOT re-score bone structure — it is already exact):",
-      JSON.stringify(geometry)
     );
   }
   return lines.join("\n");
@@ -537,7 +563,9 @@ function gPartOf(geometry: Record<string, unknown> | null): number | null {
 
 /** The AI half A: mean of the non-null re-centred scores / 25. Pro:
  *  4 regions + 4 face criteria. Free: 4 face criteria. Null when no
- *  score exists. photoQuality never enters A. */
+ *  score exists. photoQuality never enters A. The native client's
+ *  aiHalf() in faceScore.ts MUST mirror this list exactly — it
+ *  re-derives A from the stored criteria. */
 function aPartOf(criteria: Criteria, regions: Regions | null): number | null {
   const vals: number[] = [];
   for (const n of FACE_CRITERIA) {
@@ -969,6 +997,9 @@ function successResponse(
   return NextResponse.json({
     ok: true,
     model,
+    // Which prompt scored this photo (slice 4) — provenance, and the
+    // deploy check: poll until this reads the new version.
+    promptVersion: PROMPT_VERSION,
     criteria,
     regions,
     potential,
